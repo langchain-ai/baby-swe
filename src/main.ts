@@ -1,5 +1,6 @@
 import { app, BrowserWindow } from 'electron';
 import * as path from 'path';
+import { setupAgentIPC } from './agent';
 
 function createWindow(): void {
   const mainWindow = new BrowserWindow({
@@ -16,6 +17,7 @@ function createWindow(): void {
 }
 
 app.whenReady().then(() => {
+  setupAgentIPC();
   createWindow();
 
   app.on('activate', () => {

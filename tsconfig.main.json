@@ -11,6 +11,6 @@
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true
   },
-  "include": ["src/main.ts", "src/preload.ts"],
+  "include": ["src/main.ts", "src/preload.ts", "src/agent.ts"],
   "exclude": ["node_modules"]
 }

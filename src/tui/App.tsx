@@ -3,74 +3,39 @@ import { useStore } from '../store';
 import { HeaderBar, MessageView, PromptBar, Footer } from './components';
 import type { Chunk } from '../types';
 
-const DUMMY_RESPONSES: Record<string, Chunk[]> = {
-  default: [
-    {
-      kind: 'text',
-      text: "I'm baby-swe, a coding assistant. I can help you with software engineering tasks like writing code, debugging, and explaining concepts. What would you like to work on?",
-    },
-  ],
-  hello: [
-    { kind: 'text', text: 'Hello! How can I help you today?' },
-  ],
-  'write a function': [
-    { kind: 'text', text: "Sure! Here's a simple function:" },
-    {
-      kind: 'code',
-      text: `function greet(name: string): string {
-  return \`Hello, \${name}!\`;
-}`,
-      language: 'typescript',
-    },
-    { kind: 'text', text: 'This function takes a name and returns a greeting string.' },
-  ],
-  'read file': [
-    {
-      kind: 'tool-execution',
-      toolCallId: 'tool-1',
-      toolName: 'read_file',
-      toolArgs: { path: 'src/index.ts' },
-      status: 'success',
-      output: 'Read 45 lines from src/index.ts',
-      elapsedMs: 23,
-    },
-    { kind: 'text', text: 'I\'ve read the file. It contains the main entry point for your application.' },
-  ],
-  error: [
-    {
-      kind: 'tool-execution',
-      toolCallId: 'tool-2',
-      toolName: 'execute_shell',
-      toolArgs: { command: 'npm test' },
-      status: 'error',
-      output: 'Command failed with exit code 1: Test suite failed',
-      elapsedMs: 1523,
-    },
-    { kind: 'error', text: 'The tests failed. Would you like me to investigate?' },
-  ],
-  list: [
-    { kind: 'text', text: 'Here are some things I can help with:' },
-    {
-      kind: 'list',
-      lines: [
-        'Writing and reviewing code',
-        'Debugging issues',
-        'Explaining concepts',
-        'Refactoring and optimization',
-        'Writing tests',
-      ],
-    },
-  ],
-};
+function parseContentToChunks(content: string): Chunk[] {
+  const chunks: Chunk[] = [];
+  const codeBlockRegex = /```(\w+)?\n([\s\S]*?)```/g;
+  let lastIndex = 0;
+  let match;
 
-function getDummyResponse(query: string): Chunk[] {
-  const lowerQuery = query.toLowerCase();
-  for (const key of Object.keys(DUMMY_RESPONSES)) {
-    if (lowerQuery.includes(key)) {
-      return DUMMY_RESPONSES[key];
+  while ((match = codeBlockRegex.exec(content)) !== null) {
+    if (match.index > lastIndex) {
+      const textBefore = content.slice(lastIndex, match.index).trim();
+      if (textBefore) {
+        chunks.push({ kind: 'text', text: textBefore });
+      }
+    }
+    chunks.push({
+      kind: 'code',
+      language: match[1] || undefined,
+      text: match[2].trim(),
+    });
+    lastIndex = match.index + match[0].length;
+  }
+
+  if (lastIndex < content.length) {
+    const remaining = content.slice(lastIndex).trim();
+    if (remaining) {
+      chunks.push({ kind: 'text', text: remaining });
     }
   }
-  return DUMMY_RESPONSES.default;
+
+  if (chunks.length === 0) {
+    chunks.push({ kind: 'text', text: content });
+  }
+
+  return chunks;
 }
 
 export function App() {
@@ -86,11 +51,16 @@ export function App() {
       addMessage('user', [{ kind: 'text', text: query }]);
       setBusy(true);
 
-      await new Promise((resolve) => setTimeout(resolve, 800 + Math.random() * 700));
-
-      const response = getDummyResponse(query);
-      addMessage('agent', response);
-      setBusy(false);
+      try {
+        const response = await window.agent.invoke(query);
+        const chunks = parseContentToChunks(response.content);
+        addMessage('agent', chunks);
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+        addMessage('agent', [{ kind: 'error', text: errorMessage }]);
+      } finally {
+        setBusy(false);
+      }
     },
     [addMessage, setBusy]
   );
