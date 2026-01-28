@@ -1,31 +1,50 @@
-import { useStore } from '../../store';
-import { Logo } from './Logo';
-
 export function HeaderBar() {
-  const { modelConfig, mode } = useStore();
-
   return (
-    <div className="border border-gray-700 rounded-lg p-3 mb-2">
-      <div className="flex items-start justify-between">
-        <Logo />
-        <div className="text-right text-sm">
-          <div>
-            <span className="text-cyan-400 font-bold">model:</span>{' '}
-            <span className="text-gray-300">{modelConfig.name}</span>{' '}
-            <span className="text-gray-500 text-xs">({modelConfig.effort})</span>
-            <span className="text-gray-600 text-xs ml-2">/model to change</span>
-          </div>
-          <div className="mt-1">
-            <span className="text-cyan-400 font-bold">mode:</span>{' '}
-            <span className="text-gray-300">{mode}</span>
-            <span className="text-gray-600 text-xs ml-2">tab to switch</span>
-          </div>
-          <div className="mt-1">
-            <span className="text-cyan-400 font-bold">cwd:</span>{' '}
-            <span className="text-gray-300">~/Documents/Dev/baby-swe</span>
-          </div>
-        </div>
+    <div className="flex items-center justify-between px-4 py-3">
+      <div className="flex items-center gap-2">
+        <span className="text-gray-200 font-medium bg-[#1a1f2e] px-3 py-1 rounded-md text-sm">
+          New Chat
+        </span>
+      </div>
+      <div className="flex items-center gap-2">
+        <button className="p-2 text-gray-500 hover:text-gray-300 rounded-md hover:bg-[#1a1f2e] transition-colors">
+          <PlusIcon />
+        </button>
+        <button className="p-2 text-gray-500 hover:text-gray-300 rounded-md hover:bg-[#1a1f2e] transition-colors">
+          <ClockIcon />
+        </button>
+        <button className="p-2 text-gray-500 hover:text-gray-300 rounded-md hover:bg-[#1a1f2e] transition-colors">
+          <MoreIcon />
+        </button>
       </div>
     </div>
+  );
+}
+
+function PlusIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="12" y1="5" x2="12" y2="19" />
+      <line x1="5" y1="12" x2="19" y2="12" />
+    </svg>
+  );
+}
+
+function ClockIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="10" />
+      <polyline points="12 6 12 12 16 14" />
+    </svg>
+  );
+}
+
+function MoreIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="1" />
+      <circle cx="19" cy="12" r="1" />
+      <circle cx="5" cy="12" r="1" />
+    </svg>
   );
 }

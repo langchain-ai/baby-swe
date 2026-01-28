@@ -1,6 +1,6 @@
-import { useEffect, useCallback } from 'react';
+import { useCallback } from 'react';
 import { useStore } from '../store';
-import { HeaderBar, MessageView, PromptBar, Footer } from './components';
+import { HeaderBar, MessageView, PromptBar } from './components';
 import type { Chunk } from '../types';
 
 function parseContentToChunks(content: string): Chunk[] {
@@ -39,12 +39,8 @@ function parseContentToChunks(content: string): Chunk[] {
 }
 
 export function App() {
-  const { addMessage, setBusy, toggleBlink } = useStore();
-
-  useEffect(() => {
-    const interval = setInterval(toggleBlink, 600);
-    return () => clearInterval(interval);
-  }, [toggleBlink]);
+  const { messages, addMessage, setBusy } = useStore();
+  const hasMessages = messages.length > 0;
 
   const handleSubmit = useCallback(
     async (query: string) => {
@@ -65,12 +61,28 @@ export function App() {
     [addMessage, setBusy]
   );
 
+  if (!hasMessages) {
+    return (
+      <div className="flex flex-col h-screen bg-[#0a0f1a] text-gray-100">
+        <HeaderBar />
+        <div className="flex-1 flex flex-col items-center justify-center px-4">
+          <div className="w-full max-w-2xl">
+            <PromptBar onSubmit={handleSubmit} />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="flex flex-col h-screen bg-gray-950 text-gray-100 p-4 font-mono">
+    <div className="flex flex-col h-screen bg-[#0a0f1a] text-gray-100">
       <HeaderBar />
       <MessageView />
-      <PromptBar onSubmit={handleSubmit} />
-      <Footer />
+      <div className="px-4 pb-4">
+        <div className="max-w-4xl mx-auto">
+          <PromptBar onSubmit={handleSubmit} />
+        </div>
+      </div>
     </div>
   );
 }
