@@ -1,7 +1,8 @@
 {
   "name": "baby-swe",
+  "productName": "Baby SWE",
   "version": "1.0.0",
-  "description": "A basic Electron application with TypeScript and Tailwind",
+  "description": "A terminal-style AI coding assistant",
   "main": "dist/main.js",
   "scripts": {
     "dev": "bun run build && concurrently -k \"bun run watch:main\" \"bun run watch:renderer\" \"bun run watch:css\" \"bun run watch:electron\"",

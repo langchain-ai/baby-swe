@@ -27,6 +27,8 @@ interface AppState {
   blink: boolean;
   threads: Thread[];
   currentThreadId: string | null;
+  selectedFolder: string | null;
+  folderLoading: boolean;
 
   addMessage: (author: Message['author'], chunks: Chunk[]) => string;
   updateToolExecution: (messageId: string, toolCallId: string, status: ToolStatus, output?: string, elapsedMs?: number) => void;
@@ -35,11 +37,12 @@ interface AppState {
   setBusy: (busy: boolean) => void;
   toggleBlink: () => void;
   clearMessages: () => void;
-  loadThreadsFromStorage: () => void;
+  loadThreadsFromStorage: () => Promise<void>;
   newThread: () => void;
   switchThread: (id: string) => void;
   deleteThread: (id: string) => void;
   renameThread: (id: string, title: string) => void;
+  setSelectedFolder: (folder: string | null) => Promise<void>;
 }
 
 export const useStore = create<AppState>((set, get) => ({
@@ -55,6 +58,8 @@ export const useStore = create<AppState>((set, get) => ({
   blink: true,
   threads: [],
   currentThreadId: null,
+  selectedFolder: null,
+  folderLoading: false,
 
   addMessage: (author, chunks) => {
     const id = uuidv4();
@@ -89,7 +94,9 @@ export const useStore = create<AppState>((set, get) => ({
         updatedThreads = [newThread, ...state.threads];
       }
 
-      saveThreads(updatedThreads);
+      if (state.selectedFolder) {
+        saveThreads(updatedThreads);
+      }
 
       return {
         messages: newMessages,
@@ -117,7 +124,9 @@ export const useStore = create<AppState>((set, get) => ({
         const updatedThreads = state.threads.map((t) =>
           t.id === state.currentThreadId ? { ...t, messages: newMessages, updatedAt: Date.now() } : t
         );
-        saveThreads(updatedThreads);
+        if (state.selectedFolder) {
+          saveThreads(updatedThreads);
+        }
         return { messages: newMessages, threads: updatedThreads };
       }
 
@@ -138,13 +147,23 @@ export const useStore = create<AppState>((set, get) => ({
     set({ messages: [], currentThreadId: null });
   },
 
-  loadThreadsFromStorage: () => {
-    const threads = loadThreads();
+  loadThreadsFromStorage: async () => {
+    const { selectedFolder } = get();
+    if (!selectedFolder) {
+      set({ threads: [], messages: [], currentThreadId: null });
+      return;
+    }
+
+    set({ folderLoading: true });
+    const threads = await loadThreads();
     const savedModelConfig = loadModelConfig();
-    set((state) => ({
+    set({
       threads,
+      messages: [],
+      currentThreadId: null,
+      folderLoading: false,
       ...(savedModelConfig && { modelConfig: savedModelConfig }),
-    }));
+    });
   },
 
   newThread: () => {
@@ -162,7 +181,9 @@ export const useStore = create<AppState>((set, get) => ({
   deleteThread: (id) => {
     set((state) => {
       const updatedThreads = state.threads.filter((t) => t.id !== id);
-      saveThreads(updatedThreads);
+      if (state.selectedFolder) {
+        saveThreads(updatedThreads);
+      }
 
       if (state.currentThreadId === id) {
         return { threads: updatedThreads, messages: [], currentThreadId: null };
@@ -174,8 +195,21 @@ export const useStore = create<AppState>((set, get) => ({
   renameThread: (id, title) => {
     set((state) => {
       const updatedThreads = state.threads.map((t) => (t.id === id ? { ...t, title } : t));
-      saveThreads(updatedThreads);
+      if (state.selectedFolder) {
+        saveThreads(updatedThreads);
+      }
       return { threads: updatedThreads };
     });
+  },
+
+  setSelectedFolder: async (folder) => {
+    set({ selectedFolder: folder, folderLoading: true, threads: [], messages: [], currentThreadId: null });
+
+    if (folder) {
+      const threads = await loadThreads();
+      set({ threads, folderLoading: false });
+    } else {
+      set({ folderLoading: false });
+    }
   },
 }));

@@ -1,19 +1,19 @@
 import type { Thread, ModelConfig } from './types';
 
-const STORAGE_KEY = 'baby-swe-threads';
 const MODEL_KEY = 'baby-swe-model';
+const THREADS_FILE = 'threads.json';
 
-export function saveThreads(threads: Thread[]): void {
+export async function saveThreads(threads: Thread[]): Promise<void> {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(threads));
+    await window.folder.writeData(THREADS_FILE, JSON.stringify(threads));
   } catch (e) {
     console.error('Failed to save threads:', e);
   }
 }
 
-export function loadThreads(): Thread[] {
+export async function loadThreads(): Promise<Thread[]> {
   try {
-    const data = localStorage.getItem(STORAGE_KEY);
+    const data = await window.folder.readData(THREADS_FILE);
     return data ? JSON.parse(data) : [];
   } catch (e) {
     console.error('Failed to load threads:', e);

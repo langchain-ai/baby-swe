@@ -1,6 +1,6 @@
 import { useCallback, useEffect } from 'react';
 import { useStore } from '../store';
-import { HeaderBar, MessageView, PromptBar } from './components';
+import { HeaderBar, MessageView, PromptBar, FolderSelectScreen } from './components';
 import type { Chunk } from '../types';
 
 function parseContentToChunks(content: string): Chunk[] {
@@ -39,12 +39,28 @@ function parseContentToChunks(content: string): Chunk[] {
 }
 
 export function App() {
-  const { messages, addMessage, setBusy, loadThreadsFromStorage } = useStore();
+  const { messages, addMessage, setBusy, selectedFolder, setSelectedFolder, loadThreadsFromStorage } = useStore();
   const hasMessages = messages.length > 0;
 
   useEffect(() => {
-    loadThreadsFromStorage();
-  }, [loadThreadsFromStorage]);
+    const unsubscribe = window.folder.onChanged((folder) => {
+      setSelectedFolder(folder);
+    });
+    return unsubscribe;
+  }, [setSelectedFolder]);
+
+  useEffect(() => {
+    if (selectedFolder) {
+      loadThreadsFromStorage();
+    }
+  }, [selectedFolder, loadThreadsFromStorage]);
+
+  const handleOpenFolder = useCallback(async () => {
+    const folder = await window.folder.select();
+    if (folder) {
+      setSelectedFolder(folder);
+    }
+  }, [setSelectedFolder]);
 
   const handleSubmit = useCallback(
     async (query: string) => {
@@ -64,6 +80,10 @@ export function App() {
     },
     [addMessage, setBusy]
   );
+
+  if (!selectedFolder) {
+    return <FolderSelectScreen onOpenFolder={handleOpenFolder} />;
+  }
 
   if (!hasMessages) {
     return (

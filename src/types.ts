@@ -1,3 +1,23 @@
+declare global {
+  interface Window {
+    versions: {
+      node: () => string;
+      chrome: () => string;
+      electron: () => string;
+    };
+    agent: {
+      invoke: (message: string) => Promise<{ content: string }>;
+    };
+    folder: {
+      select: () => Promise<string | null>;
+      get: () => Promise<string | null>;
+      readData: (filename: string) => Promise<string | null>;
+      writeData: (filename: string, data: string) => Promise<boolean>;
+      onChanged: (callback: (folder: string | null) => void) => () => void;
+    };
+  }
+}
+
 export type Author = 'user' | 'agent' | 'system' | 'tool';
 
 export type ChunkKind = 'text' | 'code' | 'error' | 'list' | 'tool-execution';

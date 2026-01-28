@@ -43,6 +43,17 @@ export function PromptBar({ onSubmit }: PromptBarProps) {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.shiftKey && e.key === 'Tab') {
+        e.preventDefault();
+        setMode(mode === 'agent' ? 'plan' : 'agent');
+      }
+    }
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [mode, setMode]);
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey && query.trim() && !busy) {
       e.preventDefault();
@@ -72,7 +83,9 @@ export function PromptBar({ onSubmit }: PromptBarProps) {
               onClick={() => setShowModeMenu(!showModeMenu)}
               className="flex items-center gap-1.5 px-2 py-1 text-sm text-gray-400 hover:text-gray-200 rounded-md hover:bg-[#2a3142] transition-colors"
             >
-              <span className="text-cyan-400">∞</span>
+              <span className={mode === 'agent' ? 'text-cyan-400' : 'text-purple-400'}>
+                {mode === 'agent' ? '∞' : '◇'}
+              </span>
               <span>{mode === 'agent' ? 'Agent' : 'Plan'}</span>
               <span className="text-gray-600">▾</span>
             </button>
