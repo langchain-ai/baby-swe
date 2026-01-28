@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useCallback, useEffect } from 'react';
 import { useStore } from '../store';
 import { HeaderBar, MessageView, PromptBar } from './components';
 import type { Chunk } from '../types';
@@ -39,8 +39,12 @@ function parseContentToChunks(content: string): Chunk[] {
 }
 
 export function App() {
-  const { messages, addMessage, setBusy } = useStore();
+  const { messages, addMessage, setBusy, loadThreadsFromStorage } = useStore();
   const hasMessages = messages.length > 0;
+
+  useEffect(() => {
+    loadThreadsFromStorage();
+  }, [loadThreadsFromStorage]);
 
   const handleSubmit = useCallback(
     async (query: string) => {

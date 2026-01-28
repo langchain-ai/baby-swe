@@ -51,3 +51,11 @@ export interface ModelConfig {
   provider: string;
   effort: string;
 }
+
+export interface Thread {
+  id: string;
+  title: string;
+  createdAt: number;
+  updatedAt: number;
+  messages: Message[];
+}

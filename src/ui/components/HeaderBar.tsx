@@ -1,21 +1,53 @@
+import { useState, useRef, useEffect } from 'react';
+import { useStore } from '../../store';
+import { ThreadHistory } from './ThreadHistory';
+
 export function HeaderBar() {
+  const { currentThreadId, threads, newThread } = useStore();
+  const [showHistory, setShowHistory] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  const currentThread = threads.find((t) => t.id === currentThreadId);
+  const title = currentThread?.title || 'New Chat';
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setShowHistory(false);
+      }
+    }
+    if (showHistory) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [showHistory]);
+
   return (
     <div className="flex items-center justify-between px-4 py-3">
-      <div className="flex items-center gap-2">
-        <span className="text-gray-200 font-medium bg-[#1a1f2e] px-3 py-1 rounded-md text-sm">
-          New Chat
-        </span>
-      </div>
-      <div className="flex items-center gap-2">
-        <button className="p-2 text-gray-500 hover:text-gray-300 rounded-md hover:bg-[#1a1f2e] transition-colors">
+      <span className="text-gray-200 font-medium text-sm truncate max-w-[200px]">
+        {title}
+      </span>
+      <div className="flex items-center gap-2 relative" ref={containerRef}>
+        <button
+          onClick={() => newThread()}
+          className="p-2 text-gray-500 hover:text-gray-300 rounded-md hover:bg-[#1a1f2e] transition-colors"
+        >
           <PlusIcon />
         </button>
-        <button className="p-2 text-gray-500 hover:text-gray-300 rounded-md hover:bg-[#1a1f2e] transition-colors">
+        <button
+          onClick={() => setShowHistory(!showHistory)}
+          className={`p-2 rounded-md transition-colors ${
+            showHistory
+              ? 'text-gray-300 bg-[#1a1f2e]'
+              : 'text-gray-500 hover:text-gray-300 hover:bg-[#1a1f2e]'
+          }`}
+        >
           <ClockIcon />
         </button>
         <button className="p-2 text-gray-500 hover:text-gray-300 rounded-md hover:bg-[#1a1f2e] transition-colors">
           <MoreIcon />
         </button>
+        {showHistory && <ThreadHistory onClose={() => setShowHistory(false)} />}
       </div>
     </div>
   );

@@ -5,10 +5,19 @@ interface PromptBarProps {
   onSubmit: (query: string) => void;
 }
 
+const MODELS = [
+  { id: 'claude-sonnet-4-5-20250514', label: 'Sonnet 4.5' },
+  { id: 'claude-opus-4-5-20250514', label: 'Opus 4.5' },
+] as const;
+
 export function PromptBar({ onSubmit }: PromptBarProps) {
   const [query, setQuery] = useState('');
-  const { busy, modelConfig } = useStore();
+  const { busy, mode, modelConfig, setMode, setModelConfig } = useStore();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [showModeMenu, setShowModeMenu] = useState(false);
+  const [showModelMenu, setShowModelMenu] = useState(false);
+  const modeRef = useRef<HTMLDivElement>(null);
+  const modelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     textareaRef.current?.focus();
@@ -21,6 +30,19 @@ export function PromptBar({ onSubmit }: PromptBarProps) {
     }
   }, [query]);
 
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (modeRef.current && !modeRef.current.contains(e.target as Node)) {
+        setShowModeMenu(false);
+      }
+      if (modelRef.current && !modelRef.current.contains(e.target as Node)) {
+        setShowModelMenu(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey && query.trim() && !busy) {
       e.preventDefault();
@@ -28,6 +50,8 @@ export function PromptBar({ onSubmit }: PromptBarProps) {
       setQuery('');
     }
   };
+
+  const currentModel = MODELS.find((m) => m.id === modelConfig.name) || MODELS[0];
 
   return (
     <div className="bg-[#1a1f2e] border border-[#2a3142] rounded-xl overflow-hidden">
@@ -43,15 +67,74 @@ export function PromptBar({ onSubmit }: PromptBarProps) {
       />
       <div className="flex items-center justify-between px-3 pb-3">
         <div className="flex items-center gap-2">
-          <button className="flex items-center gap-1.5 px-2 py-1 text-sm text-gray-400 hover:text-gray-200 rounded-md hover:bg-[#2a3142] transition-colors">
-            <span className="text-cyan-400">∞</span>
-            <span>Agent</span>
-            <span className="text-gray-600">▾</span>
-          </button>
-          <button className="flex items-center gap-1.5 px-2 py-1 text-sm text-gray-400 hover:text-gray-200 rounded-md hover:bg-[#2a3142] transition-colors">
-            <span>{modelConfig.name.includes('opus') ? 'Opus 4.5' : modelConfig.name.includes('sonnet') ? 'Sonnet 4' : 'Claude'}</span>
-            <span className="text-gray-600">▾</span>
-          </button>
+          <div className="relative" ref={modeRef}>
+            <button
+              onClick={() => setShowModeMenu(!showModeMenu)}
+              className="flex items-center gap-1.5 px-2 py-1 text-sm text-gray-400 hover:text-gray-200 rounded-md hover:bg-[#2a3142] transition-colors"
+            >
+              <span className="text-cyan-400">∞</span>
+              <span>{mode === 'agent' ? 'Agent' : 'Plan'}</span>
+              <span className="text-gray-600">▾</span>
+            </button>
+            {showModeMenu && (
+              <div className="absolute bottom-full left-0 mb-1 bg-[#12171f] border border-gray-700 rounded-lg shadow-xl overflow-hidden z-50">
+                <button
+                  onClick={() => {
+                    setMode('agent');
+                    setShowModeMenu(false);
+                  }}
+                  className={`w-full px-4 py-2 text-sm text-left hover:bg-[#1a1f2e] transition-colors flex items-center gap-2 ${
+                    mode === 'agent' ? 'text-gray-200' : 'text-gray-400'
+                  }`}
+                >
+                  <span className="text-cyan-400">∞</span>
+                  Agent
+                  {mode === 'agent' && <CheckIcon />}
+                </button>
+                <button
+                  onClick={() => {
+                    setMode('plan');
+                    setShowModeMenu(false);
+                  }}
+                  className={`w-full px-4 py-2 text-sm text-left hover:bg-[#1a1f2e] transition-colors flex items-center gap-2 ${
+                    mode === 'plan' ? 'text-gray-200' : 'text-gray-400'
+                  }`}
+                >
+                  <span className="text-purple-400">◇</span>
+                  Plan
+                  {mode === 'plan' && <CheckIcon />}
+                </button>
+              </div>
+            )}
+          </div>
+          <div className="relative" ref={modelRef}>
+            <button
+              onClick={() => setShowModelMenu(!showModelMenu)}
+              className="flex items-center gap-1.5 px-2 py-1 text-sm text-gray-400 hover:text-gray-200 rounded-md hover:bg-[#2a3142] transition-colors"
+            >
+              <span>{currentModel.label}</span>
+              <span className="text-gray-600">▾</span>
+            </button>
+            {showModelMenu && (
+              <div className="absolute bottom-full left-0 mb-1 bg-[#12171f] border border-gray-700 rounded-lg shadow-xl overflow-hidden z-50 min-w-[120px]">
+                {MODELS.map((model) => (
+                  <button
+                    key={model.id}
+                    onClick={() => {
+                      setModelConfig({ name: model.id });
+                      setShowModelMenu(false);
+                    }}
+                    className={`w-full px-4 py-2 text-sm text-left hover:bg-[#1a1f2e] transition-colors flex items-center justify-between gap-4 whitespace-nowrap ${
+                      modelConfig.name === model.id ? 'text-gray-200' : 'text-gray-400'
+                    }`}
+                  >
+                    {model.label}
+                    {modelConfig.name === model.id && <CheckIcon />}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
         <div className="flex items-center gap-1">
           <button className="p-2 text-gray-500 hover:text-gray-300 rounded-md hover:bg-[#2a3142] transition-colors">
@@ -69,6 +152,14 @@ export function PromptBar({ onSubmit }: PromptBarProps) {
         </div>
       </div>
     </div>
+  );
+}
+
+function CheckIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-cyan-400">
+      <polyline points="20 6 9 17 4 12" />
+    </svg>
   );
 }
 
