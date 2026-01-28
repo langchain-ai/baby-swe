@@ -20,7 +20,7 @@ src/
 ├── store.ts          # Zustand global state
 ├── types.ts          # TypeScript types
 ├── agent.ts          # DeepAgents configuration
-└── tui/
+└── ui/
     ├── App.tsx       # Main app component
     └── components/   # UI components
 ```

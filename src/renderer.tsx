@@ -1,5 +1,5 @@
 import { createRoot } from 'react-dom/client';
-import { App } from './tui/App';
+import { App } from './ui/App';
 
 const container = document.getElementById('root');
 if (container) {
