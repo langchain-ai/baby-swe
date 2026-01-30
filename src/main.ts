@@ -163,7 +163,7 @@ app.whenReady().then(() => {
   createMenu();
   setupFolderIPC();
   createWindow();
-  setupAgentIPC(mainWindow!);
+  setupAgentIPC(mainWindow!, () => currentFolder);
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
