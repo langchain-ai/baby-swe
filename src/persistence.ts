@@ -1,40 +1,25 @@
-import type { Thread, ModelConfig } from './types';
+import type { Thread, GlobalSettings, Project } from './types';
 
-const MODEL_KEY = 'baby-swe-model';
-const THREADS_FILE = 'threads.json';
+export async function loadSettings(): Promise<GlobalSettings> {
+  return window.storage.getSettings();
+}
 
-export async function saveThreads(threads: Thread[]): Promise<void> {
-  try {
-    await window.folder.writeData(THREADS_FILE, JSON.stringify(threads));
-  } catch (e) {
-    console.error('Failed to save threads:', e);
-  }
+export async function saveSettings(settings: GlobalSettings): Promise<void> {
+  await window.storage.saveSettings(settings);
+}
+
+export async function loadRecentProjects(): Promise<Project[]> {
+  return window.storage.getRecentProjects();
 }
 
 export async function loadThreads(): Promise<Thread[]> {
-  try {
-    const data = await window.folder.readData(THREADS_FILE);
-    return data ? JSON.parse(data) : [];
-  } catch (e) {
-    console.error('Failed to load threads:', e);
-    return [];
-  }
+  return window.storage.getThreads();
 }
 
-export function saveModelConfig(config: ModelConfig): void {
-  try {
-    localStorage.setItem(MODEL_KEY, JSON.stringify(config));
-  } catch (e) {
-    console.error('Failed to save model config:', e);
-  }
+export async function saveThread(thread: Thread): Promise<void> {
+  await window.storage.saveThread(thread);
 }
 
-export function loadModelConfig(): ModelConfig | null {
-  try {
-    const data = localStorage.getItem(MODEL_KEY);
-    return data ? JSON.parse(data) : null;
-  } catch (e) {
-    console.error('Failed to load model config:', e);
-    return null;
-  }
+export async function deleteThread(threadId: string): Promise<void> {
+  await window.storage.deleteThread(threadId);
 }

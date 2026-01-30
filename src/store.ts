@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { v4 as uuidv4 } from 'uuid';
-import type { Message, Chunk, Mode, ModelConfig, ToolStatus, Thread, Session } from './types';
-import { saveThreads, loadThreads, saveModelConfig, loadModelConfig } from './persistence';
+import type { Message, Chunk, Mode, ModelConfig, ToolStatus, Thread, Session, Project } from './types';
+import { loadSettings, saveSettings, loadRecentProjects, loadThreads, saveThread, deleteThread as deleteThreadFromStorage } from './persistence';
 
 function generateTitle(messages: Message[]): string {
   const firstUserMessage = messages.find((m) => m.author === 'user');
@@ -26,8 +26,9 @@ interface AppState {
   tokenUsage: { input: number; output: number; total: number };
   blink: boolean;
   threads: Thread[];
-  selectedFolder: string | null;
-  folderLoading: boolean;
+  currentProject: Project | null;
+  recentProjects: Project[];
+  projectLoading: boolean;
 
   createSession: () => string;
   closeSession: (id: string) => void;
@@ -46,11 +47,12 @@ interface AppState {
   setMode: (mode: Mode) => void;
   setModelConfig: (config: Partial<ModelConfig>) => void;
   toggleBlink: () => void;
+  loadRecentProjects: () => Promise<void>;
   loadThreadsFromStorage: () => Promise<void>;
   switchThread: (id: string) => void;
   deleteThread: (id: string) => void;
   renameThread: (id: string, title: string) => void;
-  setSelectedFolder: (folder: string | null) => Promise<void>;
+  setCurrentProject: (project: Project | null) => Promise<void>;
 }
 
 export const useStore = create<AppState>((set, get) => ({
@@ -65,8 +67,9 @@ export const useStore = create<AppState>((set, get) => ({
   tokenUsage: { input: 0, output: 0, total: 0 },
   blink: true,
   threads: [],
-  selectedFolder: null,
-  folderLoading: false,
+  currentProject: null,
+  recentProjects: [],
+  projectLoading: false,
 
   createSession: () => {
     const id = uuidv4();
@@ -132,6 +135,7 @@ export const useStore = create<AppState>((set, get) => ({
     });
     const newMessage: Message = { id, author, timestamp, chunks };
 
+    const { currentProject, threads } = get();
     set((state) => {
       const session = state.sessions[sessionId];
       if (!session) return state;
@@ -147,9 +151,10 @@ export const useStore = create<AppState>((set, get) => ({
         updatedAt: now,
       };
 
-      const updatedThreads = syncSessionToThreads(state.threads, updatedSession);
-      if (state.selectedFolder) {
-        saveThreads(updatedThreads);
+      const updatedThreads = syncSessionToThreads(state.threads, updatedSession, currentProject?.id);
+      if (currentProject) {
+        const threadToSave = updatedThreads.find((t) => t.messages[0]?.id === updatedSession.messages[0]?.id);
+        if (threadToSave) saveThread(threadToSave);
       }
 
       return {
@@ -161,6 +166,7 @@ export const useStore = create<AppState>((set, get) => ({
   },
 
   updateToolExecution: (sessionId, messageId, toolCallId, status, output, elapsedMs) => {
+    const { currentProject } = get();
     set((state) => {
       const session = state.sessions[sessionId];
       if (!session) return state;
@@ -182,9 +188,10 @@ export const useStore = create<AppState>((set, get) => ({
         updatedAt: Date.now(),
       };
 
-      const updatedThreads = syncSessionToThreads(state.threads, updatedSession);
-      if (state.selectedFolder) {
-        saveThreads(updatedThreads);
+      const updatedThreads = syncSessionToThreads(state.threads, updatedSession, currentProject?.id);
+      if (currentProject) {
+        const threadToSave = updatedThreads.find((t) => t.messages[0]?.id === updatedSession.messages[0]?.id);
+        if (threadToSave) saveThread(threadToSave);
       }
 
       return {
@@ -248,6 +255,7 @@ export const useStore = create<AppState>((set, get) => ({
   },
 
   finalizeStream: (sessionId) => {
+    const { currentProject } = get();
     set((state) => {
       const session = state.sessions[sessionId];
       if (!session || !session.streamingMessageId) return state;
@@ -269,9 +277,10 @@ export const useStore = create<AppState>((set, get) => ({
         updatedAt: Date.now(),
       };
 
-      const updatedThreads = syncSessionToThreads(state.threads, updatedSession);
-      if (state.selectedFolder) {
-        saveThreads(updatedThreads);
+      const updatedThreads = syncSessionToThreads(state.threads, updatedSession, currentProject?.id);
+      if (currentProject) {
+        const threadToSave = updatedThreads.find((t) => t.messages[0]?.id === updatedSession.messages[0]?.id);
+        if (threadToSave) saveThread(threadToSave);
       }
 
       return {
@@ -320,27 +329,32 @@ export const useStore = create<AppState>((set, get) => ({
   setModelConfig: (config) =>
     set((state) => {
       const newConfig = { ...state.modelConfig, ...config };
-      saveModelConfig(newConfig);
+      saveSettings({ version: 1, modelConfig: newConfig });
       return { modelConfig: newConfig };
     }),
   toggleBlink: () => set((state) => ({ blink: !state.blink })),
 
+  loadRecentProjects: async () => {
+    const projects = await loadRecentProjects();
+    set({ recentProjects: projects });
+  },
+
   loadThreadsFromStorage: async () => {
-    const { selectedFolder } = get();
-    if (!selectedFolder) {
+    const { currentProject } = get();
+    if (!currentProject) {
       set({ threads: [], sessions: {}, activeSessionId: null });
       return;
     }
 
-    set({ folderLoading: true });
+    set({ projectLoading: true });
     const threads = await loadThreads();
-    const savedModelConfig = loadModelConfig();
+    const settings = await loadSettings();
     set({
       threads,
       sessions: {},
       activeSessionId: null,
-      folderLoading: false,
-      ...(savedModelConfig && { modelConfig: savedModelConfig }),
+      projectLoading: false,
+      modelConfig: settings.modelConfig,
     });
   },
 
@@ -371,38 +385,44 @@ export const useStore = create<AppState>((set, get) => ({
   },
 
   deleteThread: (id) => {
+    const { currentProject } = get();
     set((state) => {
       const updatedThreads = state.threads.filter((t) => t.id !== id);
-      if (state.selectedFolder) {
-        saveThreads(updatedThreads);
+      if (currentProject) {
+        deleteThreadFromStorage(id);
       }
       return { threads: updatedThreads };
     });
   },
 
   renameThread: (id, title) => {
+    const { currentProject } = get();
     set((state) => {
-      const updatedThreads = state.threads.map((t) => (t.id === id ? { ...t, title } : t));
-      if (state.selectedFolder) {
-        saveThreads(updatedThreads);
+      const thread = state.threads.find((t) => t.id === id);
+      if (!thread) return state;
+      const updatedThread = { ...thread, title };
+      const updatedThreads = state.threads.map((t) => (t.id === id ? updatedThread : t));
+      if (currentProject) {
+        saveThread(updatedThread);
       }
       return { threads: updatedThreads };
     });
   },
 
-  setSelectedFolder: async (folder) => {
-    set({ selectedFolder: folder, folderLoading: true, threads: [], sessions: {}, activeSessionId: null });
+  setCurrentProject: async (project) => {
+    set({ currentProject: project, projectLoading: true, threads: [], sessions: {}, activeSessionId: null });
 
-    if (folder) {
+    if (project) {
       const threads = await loadThreads();
-      set({ threads, folderLoading: false });
+      const settings = await loadSettings();
+      set({ threads, projectLoading: false, modelConfig: settings.modelConfig });
     } else {
-      set({ folderLoading: false });
+      set({ projectLoading: false });
     }
   },
 }));
 
-function syncSessionToThreads(threads: Thread[], session: Session): Thread[] {
+function syncSessionToThreads(threads: Thread[], session: Session, projectId?: string): Thread[] {
   if (session.messages.length === 0) return threads;
 
   const existingIndex = threads.findIndex((t) =>
@@ -411,6 +431,7 @@ function syncSessionToThreads(threads: Thread[], session: Session): Thread[] {
 
   const thread: Thread = {
     id: existingIndex >= 0 ? threads[existingIndex].id : uuidv4(),
+    projectId: projectId || (existingIndex >= 0 ? threads[existingIndex].projectId : ''),
     title: session.title,
     createdAt: existingIndex >= 0 ? threads[existingIndex].createdAt : session.createdAt,
     updatedAt: session.updatedAt,

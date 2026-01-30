@@ -6,8 +6,10 @@ export function App() {
   const {
     sessions,
     activeSessionId,
-    selectedFolder,
-    setSelectedFolder,
+    currentProject,
+    recentProjects,
+    setCurrentProject,
+    loadRecentProjects,
     loadThreadsFromStorage,
     createSession,
     closeSession,
@@ -23,17 +25,21 @@ export function App() {
   const sessionList = Object.values(sessions);
 
   useEffect(() => {
-    const unsubscribe = window.folder.onChanged((folder) => {
-      setSelectedFolder(folder);
-    });
-    return unsubscribe;
-  }, [setSelectedFolder]);
+    loadRecentProjects();
+  }, [loadRecentProjects]);
 
   useEffect(() => {
-    if (selectedFolder) {
+    const unsubscribe = window.storage.onProjectChanged((project) => {
+      setCurrentProject(project);
+    });
+    return unsubscribe;
+  }, [setCurrentProject]);
+
+  useEffect(() => {
+    if (currentProject) {
       loadThreadsFromStorage();
     }
-  }, [selectedFolder, loadThreadsFromStorage]);
+  }, [currentProject, loadThreadsFromStorage]);
 
   useEffect(() => {
     const unsubscribe = window.agent.onStreamEvent((event) => {
@@ -53,11 +59,12 @@ export function App() {
   }, [appendStreamToken, finalizeStream, abortStream]);
 
   const handleOpenFolder = useCallback(async () => {
-    const folder = await window.folder.select();
-    if (folder) {
-      setSelectedFolder(folder);
-    }
-  }, [setSelectedFolder]);
+    await window.storage.openProject();
+  }, []);
+
+  const handleSelectRecent = useCallback(async (path: string) => {
+    await window.storage.openProject(path);
+  }, []);
 
   const handleNewSession = useCallback(() => {
     createSession();
@@ -86,8 +93,14 @@ export function App() {
     [activeSessionId, createSession, addMessageToSession, startStreaming]
   );
 
-  if (!selectedFolder) {
-    return <FolderSelectScreen onOpenFolder={handleOpenFolder} />;
+  if (!currentProject) {
+    return (
+      <FolderSelectScreen
+        onOpenFolder={handleOpenFolder}
+        onSelectRecent={handleSelectRecent}
+        recentProjects={recentProjects}
+      />
+    );
   }
 
   const hasMessages = activeSession && activeSession.messages.length > 0;

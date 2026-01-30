@@ -1,15 +1,15 @@
 import { app, BrowserWindow, Menu, dialog, ipcMain } from 'electron';
 import * as path from 'path';
-import * as fs from 'fs';
 import { setupAgentIPC } from './agent';
+import * as storage from './storage';
+import type { Project } from './types';
 
 let mainWindow: BrowserWindow | null = null;
-let currentFolder: string | null = null;
+let currentProject: Project | null = null;
 
 function updateWindowTitle(): void {
   if (!mainWindow) return;
-  const folderName = currentFolder ? path.basename(currentFolder) : null;
-  mainWindow.setTitle(folderName ? `Baby SWE - ${folderName}` : 'Baby SWE');
+  mainWindow.setTitle(currentProject ? `Baby SWE - ${currentProject.name}` : 'Baby SWE');
 }
 
 function createMenu(): void {
@@ -25,18 +25,19 @@ function createMenu(): void {
               properties: ['openDirectory'],
             });
             if (!result.canceled && result.filePaths.length > 0) {
-              currentFolder = result.filePaths[0];
+              currentProject = storage.getOrCreateProject(result.filePaths[0]);
+              storage.migrateFromFolderStorage(currentProject);
               updateWindowTitle();
-              mainWindow?.webContents.send('folder:changed', currentFolder);
+              mainWindow?.webContents.send('project:changed', currentProject);
             }
           },
         },
         {
           label: 'Close Folder',
           click: () => {
-            currentFolder = null;
+            currentProject = null;
             updateWindowTitle();
-            mainWindow?.webContents.send('folder:changed', null);
+            mainWindow?.webContents.send('project:changed', null);
           },
         },
         { type: 'separator' },
@@ -96,49 +97,50 @@ function createMenu(): void {
   Menu.setApplicationMenu(menu);
 }
 
-function setupFolderIPC(): void {
-  ipcMain.handle('folder:select', async () => {
-    const result = await dialog.showOpenDialog(mainWindow!, {
-      properties: ['openDirectory'],
-    });
-    if (!result.canceled && result.filePaths.length > 0) {
-      currentFolder = result.filePaths[0];
-      updateWindowTitle();
-      return currentFolder;
-    }
-    return null;
+function setupStorageIPC(): void {
+  ipcMain.handle('storage:getSettings', () => storage.loadSettings());
+
+  ipcMain.handle('storage:saveSettings', (_event, settings) => {
+    storage.saveSettings(settings);
   });
 
-  ipcMain.handle('folder:get', () => currentFolder);
+  ipcMain.handle('storage:getRecentProjects', () => storage.getRecentProjects());
 
-  ipcMain.handle('folder:readData', (_event, filename: string) => {
-    if (!currentFolder) return null;
-    const dataDir = path.join(currentFolder, '.baby-swe');
-    const filePath = path.join(dataDir, filename);
-    try {
-      if (fs.existsSync(filePath)) {
-        return fs.readFileSync(filePath, 'utf-8');
-      }
-    } catch (e) {
-      console.error('Failed to read folder data:', e);
+  ipcMain.handle('storage:openProject', async (_event, folderPath?: string) => {
+    if (!folderPath) {
+      const result = await dialog.showOpenDialog(mainWindow!, {
+        properties: ['openDirectory'],
+      });
+      if (result.canceled || result.filePaths.length === 0) return null;
+      folderPath = result.filePaths[0];
     }
-    return null;
+
+    currentProject = storage.getOrCreateProject(folderPath);
+    storage.migrateFromFolderStorage(currentProject);
+    updateWindowTitle();
+    mainWindow?.webContents.send('project:changed', currentProject);
+    return currentProject;
   });
 
-  ipcMain.handle('folder:writeData', (_event, filename: string, data: string) => {
-    if (!currentFolder) return false;
-    const dataDir = path.join(currentFolder, '.baby-swe');
-    const filePath = path.join(dataDir, filename);
-    try {
-      if (!fs.existsSync(dataDir)) {
-        fs.mkdirSync(dataDir, { recursive: true });
-      }
-      fs.writeFileSync(filePath, data, 'utf-8');
-      return true;
-    } catch (e) {
-      console.error('Failed to write folder data:', e);
-      return false;
-    }
+  ipcMain.handle('storage:closeProject', () => {
+    currentProject = null;
+    updateWindowTitle();
+    mainWindow?.webContents.send('project:changed', null);
+  });
+
+  ipcMain.handle('storage:getThreads', () => {
+    if (!currentProject) return [];
+    return storage.loadThreadsForProject(currentProject.id);
+  });
+
+  ipcMain.handle('storage:saveThread', (_event, thread) => {
+    if (!currentProject) return;
+    storage.saveThread(currentProject.id, thread);
+  });
+
+  ipcMain.handle('storage:deleteThread', (_event, threadId: string) => {
+    if (!currentProject) return;
+    storage.deleteThread(currentProject.id, threadId);
   });
 }
 
@@ -160,10 +162,11 @@ function createWindow(): void {
 }
 
 app.whenReady().then(() => {
+  storage.initStorage();
   createMenu();
-  setupFolderIPC();
+  setupStorageIPC();
   createWindow();
-  setupAgentIPC(mainWindow!, () => currentFolder);
+  setupAgentIPC(mainWindow!, () => currentProject?.path || null);
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {

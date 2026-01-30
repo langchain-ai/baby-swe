@@ -1,10 +1,13 @@
 import { Logo } from './Logo';
+import type { Project } from '../../types';
 
 interface FolderSelectScreenProps {
   onOpenFolder: () => void;
+  onSelectRecent: (path: string) => void;
+  recentProjects: Project[];
 }
 
-export function FolderSelectScreen({ onOpenFolder }: FolderSelectScreenProps) {
+export function FolderSelectScreen({ onOpenFolder, onSelectRecent, recentProjects }: FolderSelectScreenProps) {
   return (
     <div className="flex flex-col items-center justify-center h-screen bg-[#0a0f1a] text-gray-100">
       <div className="flex flex-col items-center gap-8">
@@ -19,6 +22,28 @@ export function FolderSelectScreen({ onOpenFolder }: FolderSelectScreenProps) {
             Open Folder
           </button>
         </div>
+
+        {recentProjects.length > 0 && (
+          <div className="mt-4 w-full max-w-md">
+            <p className="text-gray-500 text-sm mb-3 text-center">Recent</p>
+            <div className="space-y-2">
+              {recentProjects.map((project) => (
+                <button
+                  key={project.id}
+                  onClick={() => onSelectRecent(project.path)}
+                  className="w-full flex items-center gap-3 px-4 py-3 bg-gray-800/50 hover:bg-gray-700/50 rounded-lg transition-colors text-left"
+                >
+                  <FolderIcon />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-gray-200 truncate">{project.name}</p>
+                    <p className="text-gray-500 text-xs truncate">{project.path}</p>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         <p className="text-gray-600 text-sm mt-4">
           Or use File {'>'} Open Folder from the menu bar
         </p>

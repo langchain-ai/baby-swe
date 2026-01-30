@@ -1,3 +1,16 @@
+export interface Project {
+  id: string;
+  path: string;
+  name: string;
+  createdAt: number;
+  lastOpenedAt: number;
+}
+
+export interface GlobalSettings {
+  version: number;
+  modelConfig: ModelConfig;
+}
+
 declare global {
   interface Window {
     versions: {
@@ -11,12 +24,16 @@ declare global {
       cancel: (sessionId: string) => void;
       onStreamEvent: (callback: (event: StreamEvent) => void) => () => void;
     };
-    folder: {
-      select: () => Promise<string | null>;
-      get: () => Promise<string | null>;
-      readData: (filename: string) => Promise<string | null>;
-      writeData: (filename: string, data: string) => Promise<boolean>;
-      onChanged: (callback: (folder: string | null) => void) => () => void;
+    storage: {
+      getSettings: () => Promise<GlobalSettings>;
+      saveSettings: (settings: GlobalSettings) => Promise<void>;
+      getRecentProjects: () => Promise<Project[]>;
+      openProject: (folderPath?: string) => Promise<Project | null>;
+      closeProject: () => Promise<void>;
+      onProjectChanged: (callback: (project: Project | null) => void) => () => void;
+      getThreads: () => Promise<Thread[]>;
+      saveThread: (thread: Thread) => Promise<void>;
+      deleteThread: (threadId: string) => Promise<void>;
     };
   }
 }
@@ -77,6 +94,7 @@ export interface ModelConfig {
 
 export interface Thread {
   id: string;
+  projectId: string;
   title: string;
   createdAt: number;
   updatedAt: number;

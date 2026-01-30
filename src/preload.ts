@@ -24,14 +24,18 @@ contextBridge.exposeInMainWorld('agent', {
   },
 });
 
-contextBridge.exposeInMainWorld('folder', {
-  select: () => ipcRenderer.invoke('folder:select'),
-  get: () => ipcRenderer.invoke('folder:get'),
-  readData: (filename: string) => ipcRenderer.invoke('folder:readData', filename),
-  writeData: (filename: string, data: string) => ipcRenderer.invoke('folder:writeData', filename, data),
-  onChanged: (callback: (folder: string | null) => void) => {
-    const handler = (_event: Electron.IpcRendererEvent, folder: string | null) => callback(folder);
-    ipcRenderer.on('folder:changed', handler);
-    return () => ipcRenderer.removeListener('folder:changed', handler);
+contextBridge.exposeInMainWorld('storage', {
+  getSettings: () => ipcRenderer.invoke('storage:getSettings'),
+  saveSettings: (settings: unknown) => ipcRenderer.invoke('storage:saveSettings', settings),
+  getRecentProjects: () => ipcRenderer.invoke('storage:getRecentProjects'),
+  openProject: (folderPath?: string) => ipcRenderer.invoke('storage:openProject', folderPath),
+  closeProject: () => ipcRenderer.invoke('storage:closeProject'),
+  onProjectChanged: (callback: (project: unknown) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, project: unknown) => callback(project);
+    ipcRenderer.on('project:changed', handler);
+    return () => ipcRenderer.removeListener('project:changed', handler);
   },
+  getThreads: () => ipcRenderer.invoke('storage:getThreads'),
+  saveThread: (thread: unknown) => ipcRenderer.invoke('storage:saveThread', thread),
+  deleteThread: (threadId: string) => ipcRenderer.invoke('storage:deleteThread', threadId),
 });
