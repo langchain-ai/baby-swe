@@ -161,9 +161,9 @@ function createWindow(): void {
 
 app.whenReady().then(() => {
   createMenu();
-  setupAgentIPC();
   setupFolderIPC();
   createWindow();
+  setupAgentIPC(mainWindow!);
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {

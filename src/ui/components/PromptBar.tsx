@@ -3,6 +3,7 @@ import { useStore } from '../../store';
 
 interface PromptBarProps {
   onSubmit: (query: string) => void;
+  busy: boolean;
 }
 
 const MODELS = [
@@ -10,9 +11,9 @@ const MODELS = [
   { id: 'claude-opus-4-5-20250514', label: 'Opus 4.5' },
 ] as const;
 
-export function PromptBar({ onSubmit }: PromptBarProps) {
+export function PromptBar({ onSubmit, busy }: PromptBarProps) {
   const [query, setQuery] = useState('');
-  const { busy, mode, modelConfig, setMode, setModelConfig } = useStore();
+  const { mode, modelConfig, setMode, setModelConfig } = useStore();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [showModeMenu, setShowModeMenu] = useState(false);
   const [showModelMenu, setShowModelMenu] = useState(false);

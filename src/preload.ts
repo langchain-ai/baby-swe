@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
+import type { StreamEvent } from './types';
 
 contextBridge.exposeInMainWorld('versions', {
   node: () => process.versions.node,
@@ -8,6 +9,19 @@ contextBridge.exposeInMainWorld('versions', {
 
 contextBridge.exposeInMainWorld('agent', {
   invoke: (message: string) => ipcRenderer.invoke('agent:invoke', message),
+  stream: (sessionId: string, message: string) => {
+    ipcRenderer.send('agent:stream', sessionId, message);
+  },
+  cancel: (sessionId: string) => {
+    ipcRenderer.send('agent:cancel', sessionId);
+  },
+  onStreamEvent: (callback: (event: StreamEvent) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, streamEvent: StreamEvent) => {
+      callback(streamEvent);
+    };
+    ipcRenderer.on('agent:stream-event', handler);
+    return () => ipcRenderer.removeListener('agent:stream-event', handler);
+  },
 });
 
 contextBridge.exposeInMainWorld('folder', {

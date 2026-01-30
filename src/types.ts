@@ -7,6 +7,9 @@ declare global {
     };
     agent: {
       invoke: (message: string) => Promise<{ content: string }>;
+      stream: (sessionId: string, message: string) => void;
+      cancel: (sessionId: string) => void;
+      onStreamEvent: (callback: (event: StreamEvent) => void) => () => void;
     };
     folder: {
       select: () => Promise<string | null>;
@@ -79,3 +82,20 @@ export interface Thread {
   updatedAt: number;
   messages: Message[];
 }
+
+export interface Session {
+  id: string;
+  title: string;
+  messages: Message[];
+  streamingContent: string | null;
+  streamingMessageId: string | null;
+  isStreaming: boolean;
+  busy: boolean;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export type StreamEvent =
+  | { type: 'token'; sessionId: string; token: string }
+  | { type: 'done'; sessionId: string }
+  | { type: 'error'; sessionId: string; error: string };
