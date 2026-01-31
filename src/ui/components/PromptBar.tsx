@@ -1,6 +1,7 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { useStore } from '../../store';
 import { CommandAutocomplete, getFilteredCommandCount, getCommandAtIndex } from './CommandAutocomplete';
+import { FileAutocomplete, fuzzySearch, getFileAtIndex } from './FileAutocomplete';
 import type { Command } from '../../commands';
 
 interface PromptBarProps {
@@ -20,6 +21,9 @@ export function PromptBar({ onSubmit, busy }: PromptBarProps) {
   const [showModeMenu, setShowModeMenu] = useState(false);
   const [showModelMenu, setShowModelMenu] = useState(false);
   const [commandSelectedIndex, setCommandSelectedIndex] = useState(0);
+  const [fileSelectedIndex, setFileSelectedIndex] = useState(0);
+  const [projectFiles, setProjectFiles] = useState<string[]>([]);
+  const [cursorPosition, setCursorPosition] = useState(0);
   const modeRef = useRef<HTMLDivElement>(null);
   const modelRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -27,6 +31,18 @@ export function PromptBar({ onSubmit, busy }: PromptBarProps) {
   const isTypingCommand = query.startsWith('/');
   const commandQuery = isTypingCommand ? query.slice(1).split(/\s/)[0] : '';
   const showCommandAutocomplete = isTypingCommand && !query.includes(' ');
+
+  const getFileAutocompleteContext = useCallback(() => {
+    const beforeCursor = query.slice(0, cursorPosition);
+    const atIndex = beforeCursor.lastIndexOf('@');
+    if (atIndex === -1) return null;
+    const fragment = beforeCursor.slice(atIndex);
+    if (fragment.includes(' ')) return null;
+    return { atIndex, fileQuery: fragment.slice(1) };
+  }, [query, cursorPosition]);
+
+  const fileContext = getFileAutocompleteContext();
+  const showFileAutocomplete = fileContext !== null && !showCommandAutocomplete;
 
   useEffect(() => {
     textareaRef.current?.focus();
@@ -42,6 +58,14 @@ export function PromptBar({ onSubmit, busy }: PromptBarProps) {
   useEffect(() => {
     setCommandSelectedIndex(0);
   }, [commandQuery]);
+
+  useEffect(() => {
+    setFileSelectedIndex(0);
+  }, [fileContext?.fileQuery]);
+
+  useEffect(() => {
+    window.fs.listFiles().then(setProjectFiles);
+  }, []);
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -70,6 +94,33 @@ export function PromptBar({ onSubmit, busy }: PromptBarProps) {
   const handleCommandSelect = (command: Command) => {
     setQuery(`/${command.name} `);
     textareaRef.current?.focus();
+  };
+
+  const handleFileSelect = (filePath: string) => {
+    if (!fileContext) return;
+    const prefix = query.slice(0, fileContext.atIndex);
+    const suffix = query.slice(cursorPosition);
+    const insertion = `@${filePath}${suffix.startsWith(' ') ? '' : ' '}`;
+    const newQuery = prefix + insertion + suffix;
+    setQuery(newQuery);
+    const newCursor = prefix.length + insertion.length;
+    setCursorPosition(newCursor);
+    setTimeout(() => {
+      if (textareaRef.current) {
+        textareaRef.current.selectionStart = newCursor;
+        textareaRef.current.selectionEnd = newCursor;
+        textareaRef.current.focus();
+      }
+    }, 0);
+  };
+
+  const handleTextareaChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setQuery(e.target.value);
+    setCursorPosition(e.target.selectionStart);
+  };
+
+  const handleTextareaSelect = (e: React.SyntheticEvent<HTMLTextAreaElement>) => {
+    setCursorPosition((e.target as HTMLTextAreaElement).selectionStart);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -114,6 +165,45 @@ export function PromptBar({ onSubmit, busy }: PromptBarProps) {
       }
     }
 
+    if (showFileAutocomplete && fileContext) {
+      const suggestions = fuzzySearch(fileContext.fileQuery, projectFiles);
+      const count = suggestions.length;
+
+      if (count > 0) {
+        if (e.key === 'ArrowDown') {
+          e.preventDefault();
+          setFileSelectedIndex((prev) => (prev + 1) % count);
+          return;
+        }
+
+        if (e.key === 'ArrowUp') {
+          e.preventDefault();
+          setFileSelectedIndex((prev) => (prev - 1 + count) % count);
+          return;
+        }
+
+        if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey)) {
+          e.preventDefault();
+          const filePath = getFileAtIndex(fileContext.fileQuery, projectFiles, fileSelectedIndex);
+          if (filePath) {
+            handleFileSelect(filePath);
+          }
+          return;
+        }
+      }
+
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        if (fileContext.atIndex >= 0) {
+          const prefix = query.slice(0, fileContext.atIndex);
+          const suffix = query.slice(cursorPosition);
+          setQuery(prefix + suffix);
+          setCursorPosition(prefix.length);
+        }
+        return;
+      }
+    }
+
     if (e.key === 'Enter' && !e.shiftKey && query.trim() && !busy) {
       e.preventDefault();
       onSubmit(query.trim());
@@ -132,11 +222,19 @@ export function PromptBar({ onSubmit, busy }: PromptBarProps) {
           onSelect={handleCommandSelect}
         />
       )}
+      {showFileAutocomplete && fileContext && (
+        <FileAutocomplete
+          query={fileContext.fileQuery}
+          selectedIndex={fileSelectedIndex}
+          onSelect={handleFileSelect}
+        />
+      )}
       <div className="bg-[#1a1f2e] border border-[#2a3142] rounded-xl overflow-hidden">
         <textarea
           ref={textareaRef}
           value={query}
-          onChange={(e) => setQuery(e.target.value)}
+          onChange={handleTextareaChange}
+          onSelect={handleTextareaSelect}
           onKeyDown={handleKeyDown}
           disabled={busy}
           placeholder={busy ? 'Working...' : 'Plan, @ for context, / for commands'}

@@ -39,3 +39,7 @@ contextBridge.exposeInMainWorld('storage', {
   saveThread: (thread: unknown) => ipcRenderer.invoke('storage:saveThread', thread),
   deleteThread: (threadId: string) => ipcRenderer.invoke('storage:deleteThread', threadId),
 });
+
+contextBridge.exposeInMainWorld('fs', {
+  listFiles: () => ipcRenderer.invoke('fs:listFiles'),
+});

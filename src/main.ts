@@ -1,8 +1,60 @@
 import { app, BrowserWindow, Menu, dialog, ipcMain } from 'electron';
 import * as path from 'path';
+import { execSync } from 'child_process';
+import * as fs from 'fs';
 import { setupAgentIPC } from './agent';
 import * as storage from './storage';
 import type { Project } from './types';
+
+const MAX_FALLBACK_FILES = 1000;
+const FALLBACK_PATTERNS = ['*', '*/*', '*/*/*', '*/*/*/*'];
+const IGNORE_DIRS = new Set(['.git', 'node_modules', '__pycache__', '.venv', 'build', 'dist', '.next', '.cache']);
+
+function listProjectFiles(projectPath: string): string[] {
+  try {
+    const result = execSync('git ls-files', {
+      cwd: projectPath,
+      encoding: 'utf-8',
+      timeout: 5000,
+    });
+    const files = result.trim().split('\n').filter(Boolean);
+    return files;
+  } catch {
+    return listFilesWithGlob(projectPath);
+  }
+}
+
+function listFilesWithGlob(projectPath: string): string[] {
+  const files: string[] = [];
+  const seen = new Set<string>();
+
+  function walkDir(dir: string, depth: number, maxDepth: number): void {
+    if (depth > maxDepth || files.length >= MAX_FALLBACK_FILES) return;
+
+    try {
+      const entries = fs.readdirSync(dir, { withFileTypes: true });
+      for (const entry of entries) {
+        if (files.length >= MAX_FALLBACK_FILES) return;
+        if (entry.name.startsWith('.') || IGNORE_DIRS.has(entry.name)) continue;
+
+        const fullPath = path.join(dir, entry.name);
+        const relativePath = path.relative(projectPath, fullPath);
+
+        if (entry.isFile()) {
+          if (!seen.has(relativePath)) {
+            seen.add(relativePath);
+            files.push(relativePath);
+          }
+        } else if (entry.isDirectory()) {
+          walkDir(fullPath, depth + 1, maxDepth);
+        }
+      }
+    } catch {}
+  }
+
+  walkDir(projectPath, 0, 4);
+  return files;
+}
 
 let mainWindow: BrowserWindow | null = null;
 let currentProject: Project | null = null;
@@ -141,6 +193,11 @@ function setupStorageIPC(): void {
   ipcMain.handle('storage:deleteThread', (_event, threadId: string) => {
     if (!currentProject) return;
     storage.deleteThread(currentProject.id, threadId);
+  });
+
+  ipcMain.handle('fs:listFiles', () => {
+    if (!currentProject?.path) return [];
+    return listProjectFiles(currentProject.path);
   });
 }
 

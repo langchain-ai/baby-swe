@@ -35,6 +35,9 @@ declare global {
       saveThread: (thread: Thread) => Promise<void>;
       deleteThread: (threadId: string) => Promise<void>;
     };
+    fs: {
+      listFiles: () => Promise<string[]>;
+    };
   }
 }
 
