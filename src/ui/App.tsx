@@ -1,6 +1,7 @@
 import { useCallback, useEffect } from 'react';
 import { useStore } from '../store';
 import { HeaderBar, MessageView, PromptBar, FolderSelectScreen, TabBar } from './components';
+import { executeCommand, type CommandContext } from '../commands';
 
 export function App() {
   const {
@@ -8,11 +9,13 @@ export function App() {
     activeSessionId,
     currentProject,
     recentProjects,
+    tokenUsage,
     setCurrentProject,
     loadRecentProjects,
     loadThreadsFromStorage,
     createSession,
     closeSession,
+    clearSession,
     switchSession,
     addMessageToSession,
     startStreaming,
@@ -79,6 +82,18 @@ export function App() {
 
   const handleSubmit = useCallback(
     async (query: string) => {
+      const commandCtx: CommandContext = {
+        sessionId: activeSessionId,
+        createSession,
+        clearSession,
+        addSystemMessage: (sessionId, chunks) => addMessageToSession(sessionId, 'system', chunks),
+        tokenUsage,
+      };
+
+      if (executeCommand(query, commandCtx)) {
+        return;
+      }
+
       if (!activeSessionId) {
         const newId = createSession();
         addMessageToSession(newId, 'user', [{ kind: 'text', text: query }]);
@@ -90,7 +105,7 @@ export function App() {
         window.agent.stream(activeSessionId, query);
       }
     },
-    [activeSessionId, createSession, addMessageToSession, startStreaming]
+    [activeSessionId, createSession, clearSession, addMessageToSession, startStreaming, tokenUsage]
   );
 
   if (!currentProject) {

@@ -41,3 +41,8 @@ bun run dev
 ## Environment
 
 Requires `.env` with `ANTHROPIC_API_KEY`
+
+## Development Guidelines
+
+- Always run `bun run build` after making changes to verify TypeScript compiles without errors
+- Watch for circular dependencies when creating new modules

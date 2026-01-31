@@ -32,6 +32,7 @@ interface AppState {
 
   createSession: () => string;
   closeSession: (id: string) => void;
+  clearSession: (id: string) => void;
   switchSession: (id: string) => void;
   renameSession: (id: string, title: string) => void;
   getActiveSession: () => Session | null;
@@ -99,6 +100,28 @@ export const useStore = create<AppState>((set, get) => ({
         ? (remainingIds.length > 0 ? remainingIds[0] : null)
         : state.activeSessionId;
       return { sessions: remaining, activeSessionId: newActiveId };
+    });
+  },
+
+  clearSession: (id) => {
+    set((state) => {
+      const session = state.sessions[id];
+      if (!session) return state;
+      return {
+        sessions: {
+          ...state.sessions,
+          [id]: {
+            ...session,
+            messages: [],
+            title: 'New Chat',
+            streamingContent: null,
+            streamingMessageId: null,
+            isStreaming: false,
+            busy: false,
+            updatedAt: Date.now(),
+          },
+        },
+      };
     });
   },
 

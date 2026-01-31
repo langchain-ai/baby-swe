@@ -1,5 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useStore } from '../../store';
+import { CommandAutocomplete, getFilteredCommandCount, getCommandAtIndex } from './CommandAutocomplete';
+import type { Command } from '../../commands';
 
 interface PromptBarProps {
   onSubmit: (query: string) => void;
@@ -17,8 +19,14 @@ export function PromptBar({ onSubmit, busy }: PromptBarProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [showModeMenu, setShowModeMenu] = useState(false);
   const [showModelMenu, setShowModelMenu] = useState(false);
+  const [commandSelectedIndex, setCommandSelectedIndex] = useState(0);
   const modeRef = useRef<HTMLDivElement>(null);
   const modelRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  const isTypingCommand = query.startsWith('/');
+  const commandQuery = isTypingCommand ? query.slice(1).split(/\s/)[0] : '';
+  const showCommandAutocomplete = isTypingCommand && !query.includes(' ');
 
   useEffect(() => {
     textareaRef.current?.focus();
@@ -30,6 +38,10 @@ export function PromptBar({ onSubmit, busy }: PromptBarProps) {
       textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 200)}px`;
     }
   }, [query]);
+
+  useEffect(() => {
+    setCommandSelectedIndex(0);
+  }, [commandQuery]);
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -55,7 +67,53 @@ export function PromptBar({ onSubmit, busy }: PromptBarProps) {
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [mode, setMode]);
 
+  const handleCommandSelect = (command: Command) => {
+    setQuery(`/${command.name} `);
+    textareaRef.current?.focus();
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (showCommandAutocomplete) {
+      const count = getFilteredCommandCount(commandQuery);
+
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setCommandSelectedIndex((prev) => (prev + 1) % count);
+        return;
+      }
+
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setCommandSelectedIndex((prev) => (prev - 1 + count) % count);
+        return;
+      }
+
+      if (e.key === 'Tab') {
+        e.preventDefault();
+        const command = getCommandAtIndex(commandQuery, commandSelectedIndex);
+        if (command) {
+          handleCommandSelect(command);
+        }
+        return;
+      }
+
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setQuery('');
+        return;
+      }
+
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        const command = getCommandAtIndex(commandQuery, commandSelectedIndex);
+        if (command) {
+          onSubmit(`/${command.name}`);
+          setQuery('');
+        }
+        return;
+      }
+    }
+
     if (e.key === 'Enter' && !e.shiftKey && query.trim() && !busy) {
       e.preventDefault();
       onSubmit(query.trim());
@@ -66,103 +124,112 @@ export function PromptBar({ onSubmit, busy }: PromptBarProps) {
   const currentModel = MODELS.find((m) => m.id === modelConfig.name) || MODELS[0];
 
   return (
-    <div className="bg-[#1a1f2e] border border-[#2a3142] rounded-xl overflow-hidden">
-      <textarea
-        ref={textareaRef}
-        value={query}
-        onChange={(e) => setQuery(e.target.value)}
-        onKeyDown={handleKeyDown}
-        disabled={busy}
-        placeholder={busy ? 'Working...' : 'Plan, @ for context, / for commands'}
-        rows={3}
-        className="w-full bg-transparent text-gray-200 outline-none placeholder-gray-500 p-4 resize-none"
-      />
-      <div className="flex items-center justify-between px-3 pb-3">
-        <div className="flex items-center gap-2">
-          <div className="relative" ref={modeRef}>
-            <button
-              onClick={() => setShowModeMenu(!showModeMenu)}
-              className="flex items-center gap-1.5 px-2 py-1 text-sm text-gray-400 hover:text-gray-200 rounded-md hover:bg-[#2a3142] transition-colors"
-            >
-              <span className={mode === 'agent' ? 'text-cyan-400' : 'text-purple-400'}>
-                {mode === 'agent' ? '∞' : '◇'}
-              </span>
-              <span>{mode === 'agent' ? 'Agent' : 'Plan'}</span>
-              <span className="text-gray-600">▾</span>
-            </button>
-            {showModeMenu && (
-              <div className="absolute bottom-full left-0 mb-1 bg-[#12171f] border border-gray-700 rounded-lg shadow-xl overflow-hidden z-50">
-                <button
-                  onClick={() => {
-                    setMode('agent');
-                    setShowModeMenu(false);
-                  }}
-                  className={`w-full px-4 py-2 text-sm text-left hover:bg-[#1a1f2e] transition-colors flex items-center gap-2 ${
-                    mode === 'agent' ? 'text-gray-200' : 'text-gray-400'
-                  }`}
-                >
-                  <span className="text-cyan-400">∞</span>
-                  Agent
-                  {mode === 'agent' && <CheckIcon />}
-                </button>
-                <button
-                  onClick={() => {
-                    setMode('plan');
-                    setShowModeMenu(false);
-                  }}
-                  className={`w-full px-4 py-2 text-sm text-left hover:bg-[#1a1f2e] transition-colors flex items-center gap-2 ${
-                    mode === 'plan' ? 'text-gray-200' : 'text-gray-400'
-                  }`}
-                >
-                  <span className="text-purple-400">◇</span>
-                  Plan
-                  {mode === 'plan' && <CheckIcon />}
-                </button>
-              </div>
-            )}
-          </div>
-          <div className="relative" ref={modelRef}>
-            <button
-              onClick={() => setShowModelMenu(!showModelMenu)}
-              className="flex items-center gap-1.5 px-2 py-1 text-sm text-gray-400 hover:text-gray-200 rounded-md hover:bg-[#2a3142] transition-colors"
-            >
-              <span>{currentModel.label}</span>
-              <span className="text-gray-600">▾</span>
-            </button>
-            {showModelMenu && (
-              <div className="absolute bottom-full left-0 mb-1 bg-[#12171f] border border-gray-700 rounded-lg shadow-xl overflow-hidden z-50 min-w-[120px]">
-                {MODELS.map((model) => (
+    <div className="relative" ref={containerRef}>
+      {showCommandAutocomplete && (
+        <CommandAutocomplete
+          query={commandQuery}
+          selectedIndex={commandSelectedIndex}
+          onSelect={handleCommandSelect}
+        />
+      )}
+      <div className="bg-[#1a1f2e] border border-[#2a3142] rounded-xl overflow-hidden">
+        <textarea
+          ref={textareaRef}
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={handleKeyDown}
+          disabled={busy}
+          placeholder={busy ? 'Working...' : 'Plan, @ for context, / for commands'}
+          rows={3}
+          className="w-full bg-transparent text-gray-200 outline-none placeholder-gray-500 p-4 resize-none"
+        />
+        <div className="flex items-center justify-between px-3 pb-3">
+          <div className="flex items-center gap-2">
+            <div className="relative" ref={modeRef}>
+              <button
+                onClick={() => setShowModeMenu(!showModeMenu)}
+                className="flex items-center gap-1.5 px-2 py-1 text-sm text-gray-400 hover:text-gray-200 rounded-md hover:bg-[#2a3142] transition-colors"
+              >
+                <span className={mode === 'agent' ? 'text-cyan-400' : 'text-purple-400'}>
+                  {mode === 'agent' ? '∞' : '◇'}
+                </span>
+                <span>{mode === 'agent' ? 'Agent' : 'Plan'}</span>
+                <span className="text-gray-600">▾</span>
+              </button>
+              {showModeMenu && (
+                <div className="absolute bottom-full left-0 mb-1 bg-[#12171f] border border-gray-700 rounded-lg shadow-xl overflow-hidden z-50">
                   <button
-                    key={model.id}
                     onClick={() => {
-                      setModelConfig({ name: model.id });
-                      setShowModelMenu(false);
+                      setMode('agent');
+                      setShowModeMenu(false);
                     }}
-                    className={`w-full px-4 py-2 text-sm text-left hover:bg-[#1a1f2e] transition-colors flex items-center justify-between gap-4 whitespace-nowrap ${
-                      modelConfig.name === model.id ? 'text-gray-200' : 'text-gray-400'
+                    className={`w-full px-4 py-2 text-sm text-left hover:bg-[#1a1f2e] transition-colors flex items-center gap-2 ${
+                      mode === 'agent' ? 'text-gray-200' : 'text-gray-400'
                     }`}
                   >
-                    {model.label}
-                    {modelConfig.name === model.id && <CheckIcon />}
+                    <span className="text-cyan-400">∞</span>
+                    Agent
+                    {mode === 'agent' && <CheckIcon />}
                   </button>
-                ))}
-              </div>
-            )}
+                  <button
+                    onClick={() => {
+                      setMode('plan');
+                      setShowModeMenu(false);
+                    }}
+                    className={`w-full px-4 py-2 text-sm text-left hover:bg-[#1a1f2e] transition-colors flex items-center gap-2 ${
+                      mode === 'plan' ? 'text-gray-200' : 'text-gray-400'
+                    }`}
+                  >
+                    <span className="text-purple-400">◇</span>
+                    Plan
+                    {mode === 'plan' && <CheckIcon />}
+                  </button>
+                </div>
+              )}
+            </div>
+            <div className="relative" ref={modelRef}>
+              <button
+                onClick={() => setShowModelMenu(!showModelMenu)}
+                className="flex items-center gap-1.5 px-2 py-1 text-sm text-gray-400 hover:text-gray-200 rounded-md hover:bg-[#2a3142] transition-colors"
+              >
+                <span>{currentModel.label}</span>
+                <span className="text-gray-600">▾</span>
+              </button>
+              {showModelMenu && (
+                <div className="absolute bottom-full left-0 mb-1 bg-[#12171f] border border-gray-700 rounded-lg shadow-xl overflow-hidden z-50 min-w-[120px]">
+                  {MODELS.map((model) => (
+                    <button
+                      key={model.id}
+                      onClick={() => {
+                        setModelConfig({ name: model.id });
+                        setShowModelMenu(false);
+                      }}
+                      className={`w-full px-4 py-2 text-sm text-left hover:bg-[#1a1f2e] transition-colors flex items-center justify-between gap-4 whitespace-nowrap ${
+                        modelConfig.name === model.id ? 'text-gray-200' : 'text-gray-400'
+                      }`}
+                    >
+                      {model.label}
+                      {modelConfig.name === model.id && <CheckIcon />}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
-        </div>
-        <div className="flex items-center gap-1">
-          <button className="p-2 text-gray-500 hover:text-gray-300 rounded-md hover:bg-[#2a3142] transition-colors">
-            <AtIcon />
-          </button>
-          <button className="p-2 text-gray-500 hover:text-gray-300 rounded-md hover:bg-[#2a3142] transition-colors">
-            <GlobeIcon />
-          </button>
-          <button className="p-2 text-gray-500 hover:text-gray-300 rounded-md hover:bg-[#2a3142] transition-colors">
-            <ImageIcon />
-          </button>
-          <button className="p-2 text-gray-500 hover:text-gray-300 rounded-md hover:bg-[#2a3142] transition-colors">
-            <MicIcon />
-          </button>
+          <div className="flex items-center gap-1">
+            <button className="p-2 text-gray-500 hover:text-gray-300 rounded-md hover:bg-[#2a3142] transition-colors">
+              <AtIcon />
+            </button>
+            <button className="p-2 text-gray-500 hover:text-gray-300 rounded-md hover:bg-[#2a3142] transition-colors">
+              <GlobeIcon />
+            </button>
+            <button className="p-2 text-gray-500 hover:text-gray-300 rounded-md hover:bg-[#2a3142] transition-colors">
+              <ImageIcon />
+            </button>
+            <button className="p-2 text-gray-500 hover:text-gray-300 rounded-md hover:bg-[#2a3142] transition-colors">
+              <MicIcon />
+            </button>
+          </div>
         </div>
       </div>
     </div>
