@@ -52,6 +52,66 @@ export function App() {
   const sessionList = Object.values(sessions);
 
   useEffect(() => {
+    function handleGlobalKeyDown(e: KeyboardEvent) {
+      const isMod = e.metaKey || e.ctrlKey;
+
+      if (isMod && e.key === 'k') {
+        e.preventDefault();
+        if (activeSessionId) {
+          clearSession(activeSessionId);
+        }
+        return;
+      }
+
+      if (isMod && e.key === 't') {
+        e.preventDefault();
+        createSession();
+        return;
+      }
+
+      if (isMod && e.key === 'w') {
+        e.preventDefault();
+        if (activeSessionId) {
+          if (sessions[activeSessionId]?.isStreaming) {
+            window.agent.cancel(activeSessionId);
+          }
+          closeSession(activeSessionId);
+        }
+        return;
+      }
+
+      if (isMod && e.altKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+        e.preventDefault();
+        const sessionIds = Object.keys(sessions);
+        if (sessionIds.length < 2 || !activeSessionId) return;
+        const currentIndex = sessionIds.indexOf(activeSessionId);
+        const delta = e.key === 'ArrowLeft' ? -1 : 1;
+        const newIndex = (currentIndex + delta + sessionIds.length) % sessionIds.length;
+        switchSession(sessionIds[newIndex]);
+        return;
+      }
+
+      if (isMod && e.key >= '1' && e.key <= '9') {
+        e.preventDefault();
+        const sessionIds = Object.keys(sessions);
+        const index = parseInt(e.key, 10) - 1;
+        if (index < sessionIds.length) {
+          switchSession(sessionIds[index]);
+        }
+        return;
+      }
+
+      if (e.key === 'Escape' && activeSessionId && (activeSession?.isStreaming || activeSession?.busy)) {
+        e.preventDefault();
+        window.agent.cancel(activeSessionId);
+        return;
+      }
+    }
+    document.addEventListener('keydown', handleGlobalKeyDown);
+    return () => document.removeEventListener('keydown', handleGlobalKeyDown);
+  }, [activeSessionId, activeSession?.isStreaming, activeSession?.busy, sessions, clearSession, createSession, closeSession, switchSession]);
+
+  useEffect(() => {
     loadRecentProjects();
   }, [loadRecentProjects]);
 
