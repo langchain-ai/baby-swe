@@ -6,6 +6,10 @@ import { tavily } from '@tavily/core';
 
 const DEFAULT_TIMEOUT = 120_000;
 const MAX_OUTPUT_SIZE = 100 * 1024;
+const MAX_LINES = 1000;
+const MAX_GREP_MATCHES = 100;
+const MAX_MATCH_TEXT_LENGTH = 300;
+const MAX_GLOB_ENTRIES = 200;
 
 export class LocalSandboxBackend implements SandboxBackendProtocol {
   private fsBackend: FilesystemBackend;
@@ -74,24 +78,81 @@ export class LocalSandboxBackend implements SandboxBackendProtocol {
     });
   }
 
-  lsInfo(path: string) {
-    return this.fsBackend.lsInfo(path);
+  async lsInfo(path: string) {
+    const result = await this.fsBackend.lsInfo(path);
+    if (result.length > MAX_GLOB_ENTRIES) {
+      return result.slice(0, MAX_GLOB_ENTRIES);
+    }
+    return result;
   }
 
-  read(filePath: string, offset?: number, limit?: number) {
-    return this.fsBackend.read(filePath, offset, limit);
+  async read(filePath: string, offset?: number, limit?: number) {
+    const effectiveLimit = limit ?? MAX_LINES;
+    const result = await this.fsBackend.read(filePath, offset, effectiveLimit);
+    const lines = result.split('\n');
+    if (lines.length > MAX_LINES) {
+      return lines.slice(0, MAX_LINES).join('\n') + `\n\n[Content truncated: showing ${MAX_LINES} of ${lines.length} lines]`;
+    }
+    if (result.length > MAX_OUTPUT_SIZE) {
+      return result.slice(0, MAX_OUTPUT_SIZE) + '\n\n[Content truncated due to size limit]';
+    }
+    return result;
   }
 
   readRaw(filePath: string) {
     return this.fsBackend.readRaw(filePath);
   }
 
-  grepRaw(pattern: string, path?: string | null, glob?: string | null) {
-    return this.fsBackend.grepRaw(pattern, path ?? undefined, glob);
+  async grepRaw(pattern: string, path?: string | null, glob?: string | null): Promise<string> {
+    const result = await this.fsBackend.grepRaw(pattern, path ?? undefined, glob);
+
+    if (typeof result === 'string') {
+      if (result.length > MAX_OUTPUT_SIZE) {
+        return result.slice(0, MAX_OUTPUT_SIZE) + '\n\n[Results truncated due to size limit]';
+      }
+      return result;
+    }
+
+    if (result.length === 0) {
+      return `No matches found for pattern '${pattern}'`;
+    }
+
+    const totalMatches = result.length;
+    const truncatedMatches = result.slice(0, MAX_GREP_MATCHES);
+
+    const lines: string[] = [];
+    let currentFile: string | null = null;
+
+    for (const match of truncatedMatches) {
+      if (match.path !== currentFile) {
+        currentFile = match.path;
+        lines.push(`\n${currentFile}:`);
+      }
+      const text = match.text.length > MAX_MATCH_TEXT_LENGTH
+        ? match.text.slice(0, MAX_MATCH_TEXT_LENGTH) + '...'
+        : match.text;
+      lines.push(`  ${match.line}: ${text}`);
+    }
+
+    let output = lines.join('\n');
+
+    if (totalMatches > MAX_GREP_MATCHES) {
+      output += `\n\n[Results truncated: showing ${MAX_GREP_MATCHES} of ${totalMatches} matches. Refine your search pattern for more specific results.]`;
+    }
+
+    if (output.length > MAX_OUTPUT_SIZE) {
+      output = output.slice(0, MAX_OUTPUT_SIZE) + '\n\n[Results truncated due to size limit]';
+    }
+
+    return output;
   }
 
-  globInfo(pattern: string, path?: string) {
-    return this.fsBackend.globInfo(pattern, path);
+  async globInfo(pattern: string, path?: string) {
+    const result = await this.fsBackend.globInfo(pattern, path);
+    if (result.length > MAX_GLOB_ENTRIES) {
+      return result.slice(0, MAX_GLOB_ENTRIES);
+    }
+    return result;
   }
 
   write(filePath: string, content: string) {
