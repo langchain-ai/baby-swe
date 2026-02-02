@@ -9,11 +9,15 @@ import { execSync } from "child_process";
 import "dotenv/config";
 import type { ApprovalDecision, ApprovalResponse, ChatMessage, DiffData } from "./types";
 import { loadAgentMemory } from "./memory/agents";
+import { tool } from "@langchain/core/tools";
+import { z } from "zod";
+import { tavily } from "@tavily/core";
+import TurndownService from "turndown";
 
 const sessionControllers = new Map<string, AbortController>();
 const pendingApprovals = new Map<string, { resolve: (decision: ApprovalDecision) => void }>();
 
-const TOOLS_REQUIRING_APPROVAL = ['execute', 'write_file', 'edit_file'];
+const TOOLS_REQUIRING_APPROVAL = ['execute', 'write_file', 'edit_file', 'web_search'];
 
 const MAX_DIFF_LINES = 800;
 const BINARY_EXTENSIONS = new Set([
@@ -23,6 +27,113 @@ const BINARY_EXTENSIONS = new Set([
   '.mp3', '.mp4', '.wav', '.avi', '.mov', '.mkv',
   '.ttf', '.otf', '.woff', '.woff2', '.eot',
 ]);
+
+const MAX_OUTPUT_SIZE = 100 * 1024;
+
+const webSearchTool = tool(
+  async ({ query }: { query: string }) => {
+    const apiKey = process.env.TAVILY_API_KEY;
+    if (!apiKey) {
+      return JSON.stringify({ results: [], error: 'TAVILY_API_KEY not set in environment' });
+    }
+    try {
+      const client = tavily({ apiKey });
+      const response = await client.search(query, { maxResults: 5 });
+      return JSON.stringify({
+        results: response.results.map((r) => ({
+          title: r.title,
+          url: r.url,
+          content: r.content,
+        })),
+      });
+    } catch (err) {
+      return JSON.stringify({ results: [], error: `Web search failed: ${(err as Error).message}` });
+    }
+  },
+  {
+    name: "web_search",
+    description: "Search the web using Tavily API. Returns top 5 search results with title, URL, and content snippet.",
+    schema: z.object({
+      query: z.string().describe("The search query"),
+    }),
+  }
+);
+
+const fetchUrlTool = tool(
+  async ({ url }: { url: string }) => {
+    try {
+      const response = await fetch(url, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (compatible; BabySWE/1.0)',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        },
+        signal: AbortSignal.timeout(30_000),
+      });
+      if (!response.ok) {
+        return JSON.stringify({ content: '', error: `HTTP ${response.status}: ${response.statusText}` });
+      }
+      const contentType = response.headers.get('content-type') || '';
+      const text = await response.text();
+      if (contentType.includes('text/html')) {
+        const turndown = new TurndownService({ headingStyle: 'atx', codeBlockStyle: 'fenced' });
+        const markdown = turndown.turndown(text);
+        const truncated = markdown.length > MAX_OUTPUT_SIZE
+          ? markdown.slice(0, MAX_OUTPUT_SIZE) + '\n\n[Content truncated due to size limit]'
+          : markdown;
+        return JSON.stringify({ content: truncated });
+      }
+      const truncated = text.length > MAX_OUTPUT_SIZE
+        ? text.slice(0, MAX_OUTPUT_SIZE) + '\n\n[Content truncated due to size limit]'
+        : text;
+      return JSON.stringify({ content: truncated });
+    } catch (err) {
+      return JSON.stringify({ content: '', error: `Fetch failed: ${(err as Error).message}` });
+    }
+  },
+  {
+    name: "fetch_url",
+    description: "Fetch a URL and return its content. HTML pages are converted to Markdown.",
+    schema: z.object({
+      url: z.string().describe("The URL to fetch"),
+    }),
+  }
+);
+
+const httpRequestTool = tool(
+  async ({ method, url, headers, body }: { method: string; url: string; headers?: Record<string, string>; body?: string }) => {
+    try {
+      const response = await fetch(url, {
+        method: method.toUpperCase(),
+        headers: headers || {},
+        body: ['GET', 'HEAD'].includes(method.toUpperCase()) ? undefined : body,
+        signal: AbortSignal.timeout(30_000),
+      });
+      const responseHeaders: Record<string, string> = {};
+      response.headers.forEach((value, key) => {
+        responseHeaders[key] = value;
+      });
+      let responseBody = await response.text();
+      if (responseBody.length > MAX_OUTPUT_SIZE) {
+        responseBody = responseBody.slice(0, MAX_OUTPUT_SIZE) + '\n\n[Response truncated due to size limit]';
+      }
+      return JSON.stringify({ status: response.status, headers: responseHeaders, body: responseBody });
+    } catch (err) {
+      return JSON.stringify({ status: 0, headers: {}, body: '', error: `HTTP request failed: ${(err as Error).message}` });
+    }
+  },
+  {
+    name: "http_request",
+    description: "Make an HTTP request. Supports GET, POST, PUT, DELETE methods with custom headers and body.",
+    schema: z.object({
+      method: z.string().describe("HTTP method (GET, POST, PUT, DELETE)"),
+      url: z.string().describe("The URL to request"),
+      headers: z.record(z.string(), z.string()).optional().describe("Optional HTTP headers"),
+      body: z.string().optional().describe("Optional request body for POST/PUT"),
+    }),
+  }
+);
+
+const webTools = [webSearchTool, fetchUrlTool, httpRequestTool];
 
 function isBinaryFile(filePath: string): boolean {
   const ext = path.extname(filePath).toLowerCase();
@@ -264,6 +375,7 @@ No working directory has been selected. Ask the user to open a folder to enable 
   const config: Parameters<typeof createDeepAgent>[0] = {
     model,
     systemPrompt,
+    tools: webTools,
   };
 
   if (rootDir) {

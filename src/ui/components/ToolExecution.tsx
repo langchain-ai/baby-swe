@@ -149,22 +149,37 @@ function ShellExecution({ chunk, onApprove, onReject, onAutoApprove }: ToolExecu
   );
 }
 
+function getToolDisplayInfo(toolName: string, toolArgs: Record<string, unknown>): { title: string; detail: string } {
+  switch (toolName) {
+    case 'write_file':
+      return { title: 'Write file', detail: (toolArgs?.filePath as string) || (toolArgs?.path as string) || '' };
+    case 'edit_file':
+      return { title: 'Edit file', detail: (toolArgs?.filePath as string) || (toolArgs?.path as string) || '' };
+    case 'web_search':
+      return { title: 'Web search', detail: (toolArgs?.query as string) || '' };
+    case 'fetch_url':
+      return { title: 'Fetch URL', detail: (toolArgs?.url as string) || '' };
+    case 'http_request':
+      return { title: 'HTTP request', detail: `${(toolArgs?.method as string)?.toUpperCase() || 'GET'} ${(toolArgs?.url as string) || ''}` };
+    default:
+      return { title: toolName, detail: JSON.stringify(toolArgs) };
+  }
+}
+
 function GenericToolExecution({ chunk, onApprove, onReject, onAutoApprove }: ToolExecutionProps) {
   const { toolName, toolArgs, status, output, elapsedMs, approvalRequestId, diffData } = chunk;
 
   if (status === 'pending-approval' && approvalRequestId) {
-    const filePath = (toolArgs?.filePath as string) || (toolArgs?.path as string) || '';
     const isFileOperation = toolName === 'write_file' || toolName === 'edit_file';
+    const { title, detail } = getToolDisplayInfo(toolName, toolArgs || {});
 
     return (
       <div className="my-3 bg-[#0d1117] border border-[#30363d] rounded-lg overflow-hidden">
         <div className="flex items-center gap-2 px-3 py-2 bg-[#161b22] border-b border-[#30363d]">
-          <span className="text-gray-400 text-sm font-medium">
-            {toolName === 'write_file' ? 'Write file' : 'Edit file'}: {toolName}
-          </span>
+          <span className="text-gray-400 text-sm font-medium">{title}</span>
         </div>
         <div className="px-3 py-2">
-          <div className="text-sm text-gray-300 font-mono">{filePath}</div>
+          <div className="text-sm text-gray-300 font-mono break-all">{detail}</div>
           {isFileOperation && diffData && (
             <DiffView diffData={diffData} />
           )}
