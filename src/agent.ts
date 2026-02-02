@@ -17,7 +17,7 @@ import TurndownService from "turndown";
 const sessionControllers = new Map<string, AbortController>();
 const pendingApprovals = new Map<string, { resolve: (decision: ApprovalDecision) => void }>();
 
-const TOOLS_REQUIRING_APPROVAL = ['execute', 'write_file', 'edit_file', 'web_search'];
+const TOOLS_REQUIRING_APPROVAL = ['execute', 'write_file', 'edit_file', 'web_search', 'task'];
 
 const MAX_DIFF_LINES = 800;
 const BINARY_EXTENSIONS = new Set([
@@ -375,7 +375,7 @@ No working directory has been selected. Ask the user to open a folder to enable 
   const config: Parameters<typeof createDeepAgent>[0] = {
     model,
     systemPrompt,
-    tools: webTools,
+    tools: rootDir ? [] : webTools,
   };
 
   if (rootDir) {
@@ -403,7 +403,7 @@ export function setupAgentIPC(mainWindow: BrowserWindow, getFolder: () => string
       const agent = createAgent(folder || undefined);
       const result = await agent.invoke(
         { messages: [{ role: "user", content: userMessage }] },
-        { recursionLimit: 100 }
+        { recursionLimit: 10000 }
       );
 
       const lastMessage = result.messages[result.messages.length - 1];
@@ -433,7 +433,7 @@ export function setupAgentIPC(mainWindow: BrowserWindow, getFolder: () => string
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const stream = await streamAgent.streamEvents(
         { messages: messages as any },
-        { version: "v2", signal: controller.signal, recursionLimit: 100 }
+        { version: "v2", signal: controller.signal, recursionLimit: 10000, configurable: { rootDir: folder } }
       );
 
       for await (const event of stream) {

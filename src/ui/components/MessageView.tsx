@@ -1,7 +1,33 @@
 import { useRef, useEffect } from 'react';
 import { CodeBlock } from './CodeBlock';
 import { ToolExecution } from './ToolExecution';
-import type { Chunk, Message } from '../../types';
+import { SubagentGroup } from './SubagentGroup';
+import type { Chunk, Message, ToolExecutionChunk } from '../../types';
+
+type GroupedItem = Chunk | { type: 'subagent-group'; tasks: ToolExecutionChunk[] };
+
+function groupChunksForRender(chunks: Chunk[]): GroupedItem[] {
+  const result: GroupedItem[] = [];
+  let taskGroup: ToolExecutionChunk[] = [];
+
+  for (const chunk of chunks) {
+    if (chunk.kind === 'tool-execution' && chunk.toolName === 'task') {
+      taskGroup.push(chunk);
+    } else {
+      if (taskGroup.length > 0) {
+        result.push({ type: 'subagent-group', tasks: [...taskGroup] });
+        taskGroup = [];
+      }
+      result.push(chunk);
+    }
+  }
+
+  if (taskGroup.length > 0) {
+    result.push({ type: 'subagent-group', tasks: taskGroup });
+  }
+
+  return result;
+}
 
 interface ApprovalCallbacks {
   onApprove?: (approvalRequestId: string) => void;
@@ -54,6 +80,7 @@ function UserMessage({ message }: { message: Message }) {
 
 function AgentMessage({ message, isStreaming }: { message: Message; isStreaming?: boolean }) {
   const hasContent = message.chunks.length > 0;
+  const groupedItems = groupChunksForRender(message.chunks);
 
   return (
     <div className="mb-6">
@@ -62,9 +89,12 @@ function AgentMessage({ message, isStreaming }: { message: Message; isStreaming?
       </div>
       <div className="space-y-4">
         {hasContent ? (
-          message.chunks.map((chunk, i) => (
-            <ChunkRenderer key={i} chunk={chunk} />
-          ))
+          groupedItems.map((item, i) => {
+            if ('type' in item && item.type === 'subagent-group') {
+              return <SubagentGroup key={`subagent-group-${i}`} tasks={item.tasks} />;
+            }
+            return <ChunkRenderer key={i} chunk={item as Chunk} />;
+          })
         ) : isStreaming ? (
           <span className="text-gray-400">...</span>
         ) : null}
@@ -81,13 +111,25 @@ function MessageBubble({ message, isStreaming }: { message: Message; isStreaming
 }
 
 function StreamingContent({ content, toolChunks, ...callbacks }: { content: string; toolChunks: Chunk[] } & ApprovalCallbacks) {
+  const groupedItems = groupChunksForRender(toolChunks);
+
   return (
     <div className="mb-6">
       <div className="text-gray-500 text-sm mb-2">Thinking...</div>
       <div className="space-y-4">
-        {toolChunks.map((chunk, i) => (
-          <ChunkRenderer key={`tool-${i}`} chunk={chunk} {...callbacks} />
-        ))}
+        {groupedItems.map((item, i) => {
+          if ('type' in item && item.type === 'subagent-group') {
+            return (
+              <SubagentGroup
+                key={`subagent-group-${i}`}
+                tasks={item.tasks}
+                onApprove={callbacks.onApprove}
+                onReject={callbacks.onReject}
+              />
+            );
+          }
+          return <ChunkRenderer key={`tool-${i}`} chunk={item as Chunk} {...callbacks} />;
+        })}
         {content && (
           <span className="text-gray-200 whitespace-pre-wrap leading-relaxed">
             {content}
