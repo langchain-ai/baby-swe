@@ -10,6 +10,10 @@ const BUSY_TEXTS = [
   'analyzing...',
 ];
 
+const CONTEXT_LIMIT = 200000;
+const WARNING_THRESHOLD = 0.8;
+const CRITICAL_THRESHOLD = 0.95;
+
 function useBusyText() {
   const index = Math.floor(Math.random() * BUSY_TEXTS.length);
   return BUSY_TEXTS[index];
@@ -23,8 +27,15 @@ function formatTokens(n: number): string {
 }
 
 export function Footer() {
-  const { busy, tokenUsage, mode } = useStore();
+  const { tokenUsage, mode, sessions, activeSessionId } = useStore();
   const busyText = useBusyText();
+
+  const activeSession = activeSessionId ? sessions[activeSessionId] : null;
+  const busy = activeSession?.busy ?? false;
+
+  const usageRatio = tokenUsage.total / CONTEXT_LIMIT;
+  const isWarning = usageRatio >= WARNING_THRESHOLD;
+  const isCritical = usageRatio >= CRITICAL_THRESHOLD;
 
   return (
     <div className="flex items-center justify-between text-xs text-gray-500 px-2 py-1">
@@ -39,8 +50,10 @@ export function Footer() {
           <span className="text-gray-600">ready</span>
         )}
       </div>
-      <div>
-        tokens used: {formatTokens(tokenUsage.total)}
+      <div className={isCritical ? 'text-red-400' : isWarning ? 'text-yellow-400' : ''}>
+        tokens: {formatTokens(tokenUsage.total)}
+        {isCritical && ' (limit!)'}
+        {isWarning && !isCritical && ' (warning)'}
       </div>
       <div className="flex items-center gap-2">
         <span className="text-gray-600">mode:</span>

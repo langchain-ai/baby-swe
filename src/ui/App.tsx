@@ -1,6 +1,6 @@
 import { useCallback, useEffect } from 'react';
 import { useStore } from '../store';
-import { HeaderBar, MessageView, PromptBar, FolderSelectScreen, TabBar } from './components';
+import { HeaderBar, MessageView, PromptBar, FolderSelectScreen, TabBar, Footer } from './components';
 import { executeCommand, type CommandContext } from '../commands';
 import type { Message, ChatMessage } from '../types';
 
@@ -46,6 +46,7 @@ export function App() {
     setAutoApproveSession,
     finalizeStream,
     abortStream,
+    updateTokenUsage,
   } = useStore();
 
   const activeSession = activeSessionId ? sessions[activeSessionId] : null;
@@ -143,6 +144,9 @@ export function App() {
         case 'tool-status-update':
           updateToolStatus(event.sessionId, event.toolCallId, event.status);
           break;
+        case 'token-usage':
+          updateTokenUsage(event.inputTokens, event.outputTokens);
+          break;
         case 'done':
           finalizeStream(event.sessionId);
           break;
@@ -152,7 +156,7 @@ export function App() {
       }
     });
     return unsubscribe;
-  }, [appendStreamToken, addToolStart, updateToolEnd, updateToolStatus, finalizeStream, abortStream]);
+  }, [appendStreamToken, addToolStart, updateToolEnd, updateToolStatus, updateTokenUsage, finalizeStream, abortStream]);
 
   const handleOpenFolder = useCallback(async () => {
     await window.storage.openProject();
@@ -258,6 +262,7 @@ export function App() {
             <PromptBar onSubmit={handleSubmit} busy={activeSession?.busy ?? false} />
           </div>
         </div>
+        <Footer />
       </div>
     );
   }
@@ -284,6 +289,7 @@ export function App() {
           <PromptBar onSubmit={handleSubmit} busy={activeSession.busy} />
         </div>
       </div>
+      <Footer />
     </div>
   );
 }

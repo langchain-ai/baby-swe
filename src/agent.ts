@@ -463,6 +463,19 @@ export function setupAgentIPC(mainWindow: BrowserWindow, getFolder: () => string
           }
         }
 
+        if (event.event === "on_chat_model_end") {
+          const message = event.data?.output;
+          if (message?.usage_metadata) {
+            const { input_tokens, output_tokens } = message.usage_metadata;
+            mainWindow.webContents.send('agent:stream-event', {
+              type: 'token-usage',
+              sessionId,
+              inputTokens: input_tokens || 0,
+              outputTokens: output_tokens || 0,
+            });
+          }
+        }
+
         if (event.event === "on_tool_start") {
           const toolCallId = event.run_id;
           const toolName = event.name;

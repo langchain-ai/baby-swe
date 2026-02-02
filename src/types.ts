@@ -162,6 +162,13 @@ export interface ToolStatusUpdateEvent {
   status: ToolStatus;
 }
 
+export interface TokenUsageEvent {
+  type: 'token-usage';
+  sessionId: string;
+  inputTokens: number;
+  outputTokens: number;
+}
+
 export interface ApprovalRequest {
   id: string;
   sessionId: string;
@@ -190,4 +197,5 @@ export type StreamEvent =
   | ToolStartEvent
   | ToolEndEvent
   | ToolStatusUpdateEvent
+  | TokenUsageEvent
   | ApprovalRequestEvent;

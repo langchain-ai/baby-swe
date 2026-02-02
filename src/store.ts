@@ -54,6 +54,7 @@ interface AppState {
 
   setMode: (mode: Mode) => void;
   setModelConfig: (config: Partial<ModelConfig>) => void;
+  updateTokenUsage: (input: number, output: number) => void;
   toggleBlink: () => void;
   loadRecentProjects: () => Promise<void>;
   loadThreadsFromStorage: () => Promise<void>;
@@ -132,6 +133,7 @@ export const useStore = create<AppState>((set, get) => ({
             pendingApprovals: {},
           },
         },
+        tokenUsage: { input: 0, output: 0, total: 0 },
       };
     });
   },
@@ -491,6 +493,14 @@ export const useStore = create<AppState>((set, get) => ({
       return { modelConfig: newConfig };
     }),
   toggleBlink: () => set((state) => ({ blink: !state.blink })),
+  updateTokenUsage: (input, output) =>
+    set({
+      tokenUsage: {
+        input,
+        output,
+        total: input + output,
+      },
+    }),
 
   loadRecentProjects: async () => {
     const projects = await loadRecentProjects();
