@@ -1,6 +1,6 @@
 import { useCallback, useEffect } from 'react';
 import { useStore } from '../store';
-import { HeaderBar, MessageView, PromptBar, FolderSelectScreen, TabBar, Footer } from './components';
+import { HeaderBar, MessageView, PromptBar, FolderSelectScreen, Footer } from './components';
 import { executeCommand, type CommandContext } from '../commands';
 import type { Message, ChatMessage } from '../types';
 
@@ -57,7 +57,6 @@ export function App() {
   } = useStore();
 
   const activeSession = activeSessionId ? sessions[activeSessionId] : null;
-  const sessionList = Object.values(sessions);
 
   useEffect(() => {
     function handleGlobalKeyDown(e: KeyboardEvent) {
@@ -176,17 +175,6 @@ export function App() {
     await window.storage.openProject(path);
   }, []);
 
-  const handleNewSession = useCallback(() => {
-    createSession();
-  }, [createSession]);
-
-  const handleCloseSession = useCallback((id: string) => {
-    if (sessions[id]?.isStreaming) {
-      window.agent.cancel(id);
-    }
-    closeSession(id);
-  }, [sessions, closeSession]);
-
   const handleApprove = useCallback((approvalRequestId: string) => {
     window.agent.respondToApproval({ requestId: approvalRequestId, decision: 'approve' });
   }, []);
@@ -259,13 +247,6 @@ export function App() {
   if (!hasMessages) {
     return (
       <div className="flex flex-col h-screen bg-[#0a0f1a] text-gray-100">
-        <TabBar
-          sessions={sessionList}
-          activeSessionId={activeSessionId}
-          onSelect={switchSession}
-          onCreate={handleNewSession}
-          onClose={handleCloseSession}
-        />
         <HeaderBar />
         <div className="flex-1 flex flex-col items-center justify-center px-4">
           <div className="w-full max-w-2xl">
@@ -279,13 +260,6 @@ export function App() {
 
   return (
     <div className="flex flex-col h-screen bg-[#0a0f1a] text-gray-100">
-      <TabBar
-        sessions={sessionList}
-        activeSessionId={activeSessionId}
-        onSelect={switchSession}
-        onCreate={handleNewSession}
-        onClose={handleCloseSession}
-      />
       <HeaderBar />
       <MessageView
         messages={activeSession.messages}

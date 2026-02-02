@@ -85,11 +85,15 @@ function ChunkRenderer({
 }
 
 function UserMessage({ message }: { message: Message }) {
+  const text = message.chunks
+    .filter((c) => c.kind === 'text')
+    .map((c) => (c as { kind: 'text'; text: string }).text)
+    .join('');
+
   return (
-    <div className="bg-[#1a1f2e] border border-[#2a3142] rounded-xl p-4 mb-4">
-      {message.chunks.map((chunk, i) => (
-        <ChunkRenderer key={i} chunk={chunk} />
-      ))}
+    <div className="flex items-start gap-2 my-3 font-mono">
+      <span className="text-gray-400 select-none">❯</span>
+      <span className="text-gray-100 bg-gray-800/50 px-2 py-0.5 rounded">{text}</span>
     </div>
   );
 }
@@ -99,42 +103,57 @@ function AgentMessage({
   isStreaming,
   ...callbacks
 }: { message: Message; isStreaming?: boolean } & ApprovalCallbacks) {
-  const hasContent = message.chunks.length > 0;
   const groupedItems = groupChunksForRender(message.chunks);
 
-  return (
-    <div className="mb-6">
-      <div className="text-gray-500 text-sm mb-2">
-        {isStreaming ? 'Thinking...' : 'Thought for a moment'}
+  if (groupedItems.length === 0 && isStreaming) {
+    return (
+      <div className="flex items-start gap-2 my-2 font-mono">
+        <span className="text-cyan-400 select-none">●</span>
+        <span className="text-gray-400">...</span>
       </div>
-      <div className="space-y-4">
-        {hasContent ? (
-          groupedItems.map((item, i) => {
-            if ('type' in item && item.type === 'subagent-group') {
-              return (
-                <SubagentGroup
-                  key={`subagent-group-${i}`}
-                  tasks={item.tasks}
-                  onApprove={callbacks.onApprove}
-                  onReject={callbacks.onReject}
-                />
-              );
-            }
-            const isLastItem = i === groupedItems.length - 1;
-            const chunk = item as Chunk;
-            return (
+    );
+  }
+
+  return (
+    <div className="my-2 space-y-2">
+      {groupedItems.map((item, i) => {
+        if ('type' in item && item.type === 'subagent-group') {
+          return (
+            <SubagentGroup
+              key={`subagent-group-${i}`}
+              tasks={item.tasks}
+              onApprove={callbacks.onApprove}
+              onReject={callbacks.onReject}
+            />
+          );
+        }
+
+        const chunk = item as Chunk;
+        const isLastItem = i === groupedItems.length - 1;
+
+        if (chunk.kind === 'tool-execution') {
+          return (
+            <ChunkRenderer
+              key={i}
+              chunk={chunk}
+              {...callbacks}
+            />
+          );
+        }
+
+        return (
+          <div key={i} className="flex items-start gap-2 font-mono">
+            <span className="text-cyan-400 select-none">●</span>
+            <div className="flex-1">
               <ChunkRenderer
-                key={i}
                 chunk={chunk}
                 showCursor={isStreaming && isLastItem && chunk.kind === 'text'}
                 {...callbacks}
               />
-            );
-          })
-        ) : isStreaming ? (
-          <span className="text-gray-400">...</span>
-        ) : null}
-      </div>
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }

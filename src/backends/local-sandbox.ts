@@ -14,7 +14,7 @@ export class LocalSandboxBackend implements SandboxBackendProtocol {
 
   constructor(options: { rootDir: string }) {
     this.rootDir = options.rootDir;
-    this.fsBackend = new FilesystemBackend({ rootDir: options.rootDir, virtualMode: true });
+    this.fsBackend = new FilesystemBackend({ rootDir: options.rootDir });
     this.id = `local-sandbox-${Date.now()}`;
   }
 

@@ -1,23 +1,13 @@
+import { useState, useEffect } from 'react';
 import { useStore } from '../../store';
 
-const BUSY_TEXTS = [
-  'vibing...',
-  'pondering...',
-  'cooking...',
-  'crunching...',
-  'thinking...',
-  'processing...',
-  'analyzing...',
+const BUSY_ACTIONS = [
+  'Calculating',
+  'Processing',
+  'Thinking',
+  'Analyzing',
+  'Working',
 ];
-
-const CONTEXT_LIMIT = 200000;
-const WARNING_THRESHOLD = 0.8;
-const CRITICAL_THRESHOLD = 0.95;
-
-function useBusyText() {
-  const index = Math.floor(Math.random() * BUSY_TEXTS.length);
-  return BUSY_TEXTS[index];
-}
 
 function formatTokens(n: number): string {
   if (n >= 1000) {
@@ -26,40 +16,64 @@ function formatTokens(n: number): string {
   return String(n);
 }
 
+function formatDuration(startTime: number): string {
+  const elapsed = Date.now() - startTime;
+  const seconds = Math.floor(elapsed / 1000);
+  if (seconds < 60) {
+    return `${seconds}s`;
+  }
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = seconds % 60;
+  return `${minutes}m ${remainingSeconds}s`;
+}
+
 export function Footer() {
-  const { tokenUsage, mode, sessions, activeSessionId } = useStore();
-  const busyText = useBusyText();
+  const { tokenUsage, sessions, activeSessionId } = useStore();
+  const [busyAction] = useState(() => BUSY_ACTIONS[Math.floor(Math.random() * BUSY_ACTIONS.length)]);
+  const [startTime, setStartTime] = useState<number | null>(null);
+  const [, setTick] = useState(0);
 
   const activeSession = activeSessionId ? sessions[activeSessionId] : null;
   const busy = activeSession?.busy ?? false;
+  const streaming = activeSession?.isStreaming ?? false;
 
-  const usageRatio = tokenUsage.total / CONTEXT_LIMIT;
-  const isWarning = usageRatio >= WARNING_THRESHOLD;
-  const isCritical = usageRatio >= CRITICAL_THRESHOLD;
+  useEffect(() => {
+    if (busy && !startTime) {
+      setStartTime(Date.now());
+    } else if (!busy && startTime) {
+      setStartTime(null);
+    }
+  }, [busy, startTime]);
+
+  useEffect(() => {
+    if (!busy) return;
+    const interval = setInterval(() => setTick((t) => t + 1), 1000);
+    return () => clearInterval(interval);
+  }, [busy]);
+
+  if (!busy) {
+    return (
+      <div className="px-4 py-2 font-mono text-xs text-gray-600">
+        (ready)
+      </div>
+    );
+  }
+
+  const parts: string[] = [];
+  parts.push('esc to interrupt');
+  if (startTime) {
+    parts.push(formatDuration(startTime));
+  }
+  parts.push(`↓ ${formatTokens(tokenUsage.total)} tokens`);
+  if (streaming) {
+    parts.push('streaming');
+  }
 
   return (
-    <div className="flex items-center justify-between text-xs text-gray-500 px-2 py-1">
-      <div className="flex items-center gap-2">
-        {busy ? (
-          <>
-            <span className="animate-spin">⟳</span>
-            <span className="text-yellow-400">{busyText}</span>
-            <span className="text-gray-600">esc to interrupt</span>
-          </>
-        ) : (
-          <span className="text-gray-600">ready</span>
-        )}
-      </div>
-      <div className={isCritical ? 'text-red-400' : isWarning ? 'text-yellow-400' : ''}>
-        tokens: {formatTokens(tokenUsage.total)}
-        {isCritical && ' (limit!)'}
-        {isWarning && !isCritical && ' (warning)'}
-      </div>
-      <div className="flex items-center gap-2">
-        <span className="text-gray-600">mode:</span>
-        <span className="text-cyan-400">{mode}</span>
-        <span className="text-gray-700">v0.1.0</span>
-      </div>
+    <div className="px-4 py-2 font-mono text-xs text-gray-500">
+      <span className="text-yellow-400">*</span>
+      <span className="ml-1">{busyAction}...</span>
+      <span className="text-gray-600 ml-1">({parts.join(' · ')})</span>
     </div>
   );
 }

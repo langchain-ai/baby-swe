@@ -142,8 +142,8 @@ export function DiffView({ diffData }: DiffViewProps) {
 
   if (isBinary) {
     return (
-      <div className="mt-2 p-3 bg-[#161b22] border border-[#30363d] rounded-md">
-        <span className="text-gray-400 text-sm">Binary file - diff not available</span>
+      <div className="mt-2 text-gray-500 text-xs font-mono">
+        Binary file - diff not available
       </div>
     );
   }
@@ -174,104 +174,76 @@ export function DiffView({ diffData }: DiffViewProps) {
 
   if (hunkLines.length === 0) {
     return (
-      <div className="mt-2 p-3 bg-[#161b22] border border-[#30363d] rounded-md">
-        <span className="text-gray-400 text-sm">No changes</span>
+      <div className="mt-2 text-gray-500 text-xs font-mono">
+        No changes
       </div>
     );
   }
 
   return (
-    <div className="mt-2 bg-[#0d1117]/60 border border-[#30363d] rounded-md overflow-hidden">
-      <div className="flex items-center justify-between gap-2 px-3 py-2 bg-[#161b22] border-b border-[#30363d]">
-        <div className="flex items-center gap-2">
-          <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-          </svg>
-          <span className="text-sm font-medium text-gray-300">
-            {isNewFile ? filePath.split('/').pop() : filePath.split('/').pop()}
-          </span>
-          {isNewFile && (
-            <span className="text-xs text-gray-500">(new file)</span>
-          )}
-        </div>
-        <div className="flex items-center gap-2 text-sm">
-          <span className="text-green-400">+{stats.additions}</span>
-          <span className="text-red-400">-{stats.deletions}</span>
-        </div>
+    <div className="mt-2 font-mono text-xs">
+      <div className="flex items-center gap-2 text-gray-500 mb-1">
+        <span className="text-gray-400">{filePath.split('/').pop()}</span>
+        {isNewFile && <span>(new)</span>}
+        <span className="text-green-400">+{stats.additions}</span>
+        <span className="text-red-400">-{stats.deletions}</span>
       </div>
 
-      <div className="max-h-80 overflow-auto">
-        <table className="w-full border-collapse font-mono text-xs">
-          <tbody>
-            {displayLines.map((line, idx) => {
-              if (line.type === 'separator') {
-                return (
-                  <tr key={idx} className="bg-[#161b22]">
-                    <td colSpan={3} className="px-2 py-1 text-center text-gray-500">
-                      ···
-                    </td>
-                  </tr>
-                );
-              }
+      <div className="max-h-60 overflow-auto border-l border-gray-700 pl-2">
+        {displayLines.map((line, idx) => {
+          if (line.type === 'separator') {
+            return (
+              <div key={idx} className="text-gray-600 py-0.5">
+                ···
+              </div>
+            );
+          }
 
-              const isAdd = line.type === 'add';
-              const isRemove = line.type === 'remove';
+          const isAdd = line.type === 'add';
+          const isRemove = line.type === 'remove';
 
-              return (
-                <tr
-                  key={idx}
-                  className={
-                    isAdd ? 'bg-green-900/20' :
-                    isRemove ? 'bg-red-900/20' : ''
-                  }
-                >
-                  <td className="w-10 select-none border-r border-[#30363d]/50 px-2 text-right text-gray-600">
-                    {line.oldLineNum || ''}
-                  </td>
-                  <td className="w-10 select-none border-r border-[#30363d]/50 px-2 text-right text-gray-600">
-                    {line.newLineNum || ''}
-                  </td>
-                  <td className="whitespace-pre px-2">
-                    <span className={`mr-2 inline-block w-3 text-center ${
-                      isAdd ? 'text-green-400' :
-                      isRemove ? 'text-red-400' : 'text-gray-600'
-                    }`}>
-                      {isAdd ? '+' : isRemove ? '-' : ' '}
-                    </span>
-                    <span className={
-                      isAdd ? 'text-green-300' :
-                      isRemove ? 'text-red-300' : 'text-gray-400'
-                    }>
-                      {line.text}
-                    </span>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+          return (
+            <div
+              key={idx}
+              className={`whitespace-pre ${
+                isAdd ? 'bg-green-900/30' :
+                isRemove ? 'bg-red-900/30' : ''
+              }`}
+            >
+              <span className="text-gray-600 w-8 inline-block text-right pr-2">
+                {line.oldLineNum || line.newLineNum || ''}
+              </span>
+              <span className={`w-4 inline-block ${
+                isAdd ? 'text-green-400' :
+                isRemove ? 'text-red-400' : 'text-gray-600'
+              }`}>
+                {isAdd ? '+' : isRemove ? '-' : ' '}
+              </span>
+              <span className={
+                isAdd ? 'text-green-300' :
+                isRemove ? 'text-red-300' : 'text-gray-400'
+              }>
+                {line.text}
+              </span>
+            </div>
+          );
+        })}
       </div>
 
       {hasMoreLines && !expanded && (
         <button
           onClick={() => setExpanded(true)}
-          className="w-full px-3 py-2 text-xs text-cyan-400 hover:text-cyan-300 border-t border-[#30363d] bg-[#161b22] flex items-center justify-center gap-1"
+          className="mt-1 text-xs text-cyan-400 hover:text-cyan-300"
         >
-          <span>Show {hiddenCount} more lines</span>
-          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-          </svg>
+          +{hiddenCount} more lines
         </button>
       )}
       {expanded && hasMoreLines && (
         <button
           onClick={() => setExpanded(false)}
-          className="w-full px-3 py-2 text-xs text-cyan-400 hover:text-cyan-300 border-t border-[#30363d] bg-[#161b22] flex items-center justify-center gap-1"
+          className="mt-1 text-xs text-cyan-400 hover:text-cyan-300"
         >
-          <span>Show less</span>
-          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
-          </svg>
+          Show less
         </button>
       )}
     </div>

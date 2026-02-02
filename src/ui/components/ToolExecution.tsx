@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import type { ToolExecutionChunk } from '../../types';
 import { DiffView } from './DiffView';
 
@@ -11,423 +11,200 @@ interface ToolExecutionProps {
 
 const MAX_OUTPUT_LINES = 10;
 
-function extractCommandName(command: string): string {
-  const trimmed = command.trim();
-  const firstWord = trimmed.split(/\s+/)[0];
-  return firstWord || 'command';
+function formatElapsed(ms?: number): string {
+  if (!ms) return '';
+  if (ms < 1000) return `${ms}ms`;
+  return `${(ms / 1000).toFixed(1)}s`;
 }
 
-function ShellExecution({ chunk, onApprove, onReject, onAutoApprove }: ToolExecutionProps) {
-  const { toolArgs, status, output, elapsedMs, approvalRequestId } = chunk;
-  const command = (toolArgs?.command as string) || '';
-  const [expanded, setExpanded] = useState(false);
+function getToolDisplayName(toolName: string, toolArgs: Record<string, unknown>): string {
+  switch (toolName) {
+    case 'execute':
+      return `Bash(${(toolArgs?.command as string)?.slice(0, 50) || 'command'}${(toolArgs?.command as string)?.length > 50 ? '...' : ''})`;
+    case 'task':
+      return `${(toolArgs?.subagent_type as string) || 'Task'}(${(toolArgs?.description as string)?.slice(0, 40) || 'task'}${(toolArgs?.description as string)?.length > 40 ? '...' : ''})`;
+    case 'write_file':
+      return `Write(${(toolArgs?.filePath as string) || (toolArgs?.path as string) || 'file'})`;
+    case 'edit_file':
+      return `Edit(${(toolArgs?.filePath as string) || (toolArgs?.path as string) || 'file'})`;
+    case 'read_file':
+      return `Read(${(toolArgs?.path as string) || 'file'})`;
+    case 'web_search':
+      return `Search(${(toolArgs?.query as string)?.slice(0, 30) || 'query'}${(toolArgs?.query as string)?.length > 30 ? '...' : ''})`;
+    case 'fetch_url':
+      return `Fetch(${(toolArgs?.url as string)?.slice(0, 40) || 'url'})`;
+    case 'write_todos':
+      const todos = (toolArgs?.todos as Array<unknown>) || [];
+      return `TodoWrite(${todos.length} items)`;
+    default:
+      return `${toolName}(${JSON.stringify(toolArgs).slice(0, 30)}...)`;
+  }
+}
 
-  const lines = output?.split('\n') || [];
+function getToolSummary(toolName: string, toolArgs: Record<string, unknown>, output?: string, status?: string): string {
+  if (status === 'running') return 'Running...';
+  if (status === 'error') return output?.slice(0, 100) || 'Error';
+
+  switch (toolName) {
+    case 'execute': {
+      const lines = output?.split('\n').length || 0;
+      return lines > 0 ? `${lines} lines of output` : 'No output';
+    }
+    case 'task': {
+      try {
+        const parsed = JSON.parse(output || '{}');
+        return parsed.output?.slice(0, 100) || 'Task completed';
+      } catch {
+        return output?.slice(0, 100) || 'Task completed';
+      }
+    }
+    case 'read_file': {
+      const lines = output?.split('\n').length || 0;
+      return `Read ${lines} lines`;
+    }
+    case 'write_file':
+    case 'edit_file': {
+      return 'File updated';
+    }
+    case 'write_todos': {
+      const todos = (toolArgs?.todos as Array<{ status: string }>) || [];
+      const completed = todos.filter(t => t.status === 'completed').length;
+      return `${completed}/${todos.length} completed`;
+    }
+    default:
+      return output?.slice(0, 100) || 'Done';
+  }
+}
+
+function KeyboardApproval({
+  approvalRequestId,
+  toolName,
+  onApprove,
+  onReject,
+  onAutoApprove,
+}: {
+  approvalRequestId: string;
+  toolName: string;
+  onApprove?: (id: string) => void;
+  onReject?: (id: string) => void;
+  onAutoApprove?: (id: string) => void;
+}) {
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    containerRef.current?.focus();
+  }, []);
+
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === 'y' || e.key === 'Enter') {
+        e.preventDefault();
+        onApprove?.(approvalRequestId);
+      } else if (e.key === 'n') {
+        e.preventDefault();
+        onReject?.(approvalRequestId);
+      } else if (e.key === 'a') {
+        e.preventDefault();
+        onAutoApprove?.(approvalRequestId);
+      }
+    }
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [approvalRequestId, onApprove, onReject, onAutoApprove]);
+
+  const action = toolName === 'execute' ? 'Run command' : toolName === 'task' ? 'Delegate task' : 'Approve';
+
+  return (
+    <div ref={containerRef} tabIndex={0} className="outline-none">
+      <span className="text-yellow-400">{action}?</span>
+      <span className="text-gray-500 ml-2">[y]es / [n]o / [a]lways</span>
+    </div>
+  );
+}
+
+function ToolOutput({ output, expanded, onToggle }: { output: string; expanded: boolean; onToggle: () => void }) {
+  const lines = output.split('\n');
   const isLong = lines.length > MAX_OUTPUT_LINES;
   const displayedOutput = expanded ? output : lines.slice(0, MAX_OUTPUT_LINES).join('\n');
   const hiddenLines = lines.length - MAX_OUTPUT_LINES;
 
-  const formatElapsed = (ms?: number) => {
-    if (!ms) return '';
-    if (ms < 1000) return `${ms}ms`;
-    return `${(ms / 1000).toFixed(1)}s`;
-  };
-
-  if (status === 'pending-approval' && approvalRequestId) {
-    return (
-      <div className="my-3 bg-[#0d1117] border border-[#30363d] rounded-lg overflow-hidden">
-        <div className="flex items-center gap-2 px-3 py-2 bg-[#161b22] border-b border-[#30363d]">
-          <span className="text-gray-400 text-sm font-medium">Run command: execute</span>
-        </div>
-        <div className="px-3 py-2">
-          <div className="flex items-start gap-2 font-mono text-sm">
-            <span className="text-purple-400 select-none">$</span>
-            <span className="text-cyan-400 break-all">{command}</span>
-          </div>
-        </div>
-        <div className="flex items-center justify-between px-3 py-2 border-t border-[#30363d]">
-          <span className="text-gray-500 text-xs">Run in Sandbox</span>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => onReject?.(approvalRequestId)}
-              className="px-3 py-1 text-sm text-gray-400 hover:text-gray-200"
-            >
-              Skip
-            </button>
-            <button
-              onClick={() => onAutoApprove?.(approvalRequestId)}
-              className="px-3 py-1.5 text-sm text-gray-200 bg-[#21262d] hover:bg-[#30363d] rounded-md border border-[#30363d]"
-            >
-              Allowlist &apos;{extractCommandName(command)}&apos;
-            </button>
-            <button
-              onClick={() => onApprove?.(approvalRequestId)}
-              className="px-3 py-1.5 text-sm text-white bg-[#238636] hover:bg-[#2ea043] rounded-md"
-            >
-              Run
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  const statusDot = {
-    'pending-approval': 'bg-yellow-400 animate-pulse',
-    running: 'bg-yellow-400 animate-pulse',
-    success: 'bg-green-400',
-    error: 'bg-red-400',
-  }[status];
-
   return (
-    <div className="my-3 bg-[#0d1117] border border-[#30363d] rounded-lg overflow-hidden">
-      <div className="flex items-center gap-2 px-3 py-2 bg-[#161b22] border-b border-[#30363d]">
-        <span className={`w-2 h-2 rounded-full ${statusDot}`} />
-        <span className="text-gray-400 text-sm font-medium">Shell</span>
-        {elapsedMs && (
-          <span className="text-gray-500 text-xs">{formatElapsed(elapsedMs)}</span>
-        )}
-        {status === 'success' && (
-          <span className="ml-auto text-green-400 text-xs flex items-center gap-1">
-            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-            </svg>
-            Success
-          </span>
-        )}
-        {status === 'error' && (
-          <span className="ml-auto text-red-400 text-xs flex items-center gap-1">
-            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-            Error
-          </span>
-        )}
-      </div>
-      <div className="px-3 py-2">
-        <div className="flex items-start gap-2 font-mono text-sm">
-          <span className="text-purple-400 select-none">$</span>
-          <span className="text-gray-200 break-all">{command}</span>
-        </div>
-        {output && status !== 'running' && status !== 'pending-approval' && (
-          <div className="mt-2 pt-2 border-t border-[#30363d]">
-            <pre className="font-mono text-xs text-gray-400 whitespace-pre-wrap break-all overflow-x-auto">
-              {displayedOutput}
-            </pre>
-            {isLong && !expanded && (
-              <button
-                onClick={() => setExpanded(true)}
-                className="mt-2 text-xs text-cyan-400 hover:text-cyan-300 flex items-center gap-1"
-              >
-                <span>+{hiddenLines} more lines</span>
-                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                </svg>
-              </button>
-            )}
-            {expanded && isLong && (
-              <button
-                onClick={() => setExpanded(false)}
-                className="mt-2 text-xs text-cyan-400 hover:text-cyan-300 flex items-center gap-1"
-              >
-                <span>Show less</span>
-                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
-                </svg>
-              </button>
-            )}
-          </div>
-        )}
-        {status === 'running' && (
-          <div className="mt-2 text-xs text-gray-500 flex items-center gap-2">
-            <span className="animate-spin">⟳</span>
-            Running...
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function TaskExecution({ chunk, onApprove, onReject }: ToolExecutionProps) {
-  const { toolArgs, status, output, elapsedMs, approvalRequestId } = chunk;
-  const description = (toolArgs?.description as string) || '';
-  const subagentType = (toolArgs?.subagent_type as string) || 'general-purpose';
-  const truncatedDesc = description.length > 200 ? description.slice(0, 200) + '...' : description;
-  const [expanded, setExpanded] = useState(false);
-
-  const formatElapsed = (ms?: number) => {
-    if (!ms) return '';
-    if (ms < 1000) return `${ms}ms`;
-    return `${(ms / 1000).toFixed(1)}s`;
-  };
-
-  if (status === 'pending-approval' && approvalRequestId) {
-    return (
-      <div className="my-3 bg-[#0d1117] border border-[#30363d] rounded-lg overflow-hidden">
-        <div className="flex items-center gap-2 px-3 py-2 bg-[#161b22] border-b border-[#30363d]">
-          <span className="text-gray-400 text-sm font-medium">Delegate task to subagent</span>
-          <span className="text-xs text-cyan-400 bg-cyan-400/10 px-1.5 py-0.5 rounded">{subagentType}</span>
-        </div>
-        <div className="px-3 py-2">
-          <div className="text-sm text-gray-300 whitespace-pre-wrap">{description}</div>
-          <div className="mt-2 text-xs text-yellow-500/80 flex items-center gap-1">
-            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-            </svg>
-            Subagent will have full tool access (filesystem, shell)
-          </div>
-        </div>
-        <div className="flex items-center justify-end gap-2 px-3 py-2 border-t border-[#30363d]">
-          <button
-            onClick={() => onReject?.(approvalRequestId)}
-            className="px-3 py-1 text-sm text-gray-400 hover:text-gray-200"
-          >
-            Skip
-          </button>
-          <button
-            onClick={() => onApprove?.(approvalRequestId)}
-            className="px-3 py-1.5 text-sm text-white bg-[#238636] hover:bg-[#2ea043] rounded-md"
-          >
-            Delegate
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  const statusDot = {
-    'pending-approval': 'bg-yellow-400 animate-pulse',
-    running: 'bg-blue-400 animate-pulse',
-    success: 'bg-green-400',
-    error: 'bg-red-400',
-  }[status];
-
-  let parsedOutput = output;
-  try {
-    const parsed = JSON.parse(output || '{}');
-    parsedOutput = parsed.output || parsed.error || output;
-  } catch {
-    // Keep original output
-  }
-
-  const outputLines = parsedOutput?.split('\n') || [];
-  const isLong = outputLines.length > MAX_OUTPUT_LINES;
-  const displayedOutput = expanded ? parsedOutput : outputLines.slice(0, MAX_OUTPUT_LINES).join('\n');
-  const hiddenLines = outputLines.length - MAX_OUTPUT_LINES;
-
-  return (
-    <div className="my-3 bg-[#0d1117] border border-[#30363d] rounded-lg overflow-hidden">
-      <div className="flex items-center gap-2 px-3 py-2 bg-[#161b22] border-b border-[#30363d]">
-        <span className={`w-2 h-2 rounded-full ${statusDot}`} />
-        <span className="text-gray-400 text-sm font-medium">Subagent</span>
-        <span className="text-xs text-cyan-400 bg-cyan-400/10 px-1.5 py-0.5 rounded">{subagentType}</span>
-        {elapsedMs && (
-          <span className="text-gray-500 text-xs">{formatElapsed(elapsedMs)}</span>
-        )}
-        {status === 'success' && (
-          <span className="ml-auto text-green-400 text-xs flex items-center gap-1">
-            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-            </svg>
-            Done
-          </span>
-        )}
-        {status === 'error' && (
-          <span className="ml-auto text-red-400 text-xs flex items-center gap-1">
-            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-            Error
-          </span>
-        )}
-      </div>
-      <div className="px-3 py-2">
-        <div className="text-sm text-gray-400 mb-2">{truncatedDesc}</div>
-        {status === 'running' && (
-          <div className="text-xs text-gray-500 flex items-center gap-2">
-            <span className="animate-spin">⟳</span>
-            Executing...
-          </div>
-        )}
-        {parsedOutput && status !== 'running' && status !== 'pending-approval' && (
-          <div className="mt-2 pt-2 border-t border-[#30363d]">
-            <pre className="font-mono text-xs text-gray-300 whitespace-pre-wrap break-all overflow-x-auto">
-              {displayedOutput}
-            </pre>
-            {isLong && !expanded && (
-              <button
-                onClick={() => setExpanded(true)}
-                className="mt-2 text-xs text-cyan-400 hover:text-cyan-300 flex items-center gap-1"
-              >
-                <span>+{hiddenLines} more lines</span>
-                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                </svg>
-              </button>
-            )}
-            {expanded && isLong && (
-              <button
-                onClick={() => setExpanded(false)}
-                className="mt-2 text-xs text-cyan-400 hover:text-cyan-300 flex items-center gap-1"
-              >
-                <span>Show less</span>
-                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
-                </svg>
-              </button>
-            )}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function getToolDisplayInfo(toolName: string, toolArgs: Record<string, unknown>): { title: string; detail: string } {
-  switch (toolName) {
-    case 'write_file':
-      return { title: 'Write file', detail: (toolArgs?.filePath as string) || (toolArgs?.path as string) || '' };
-    case 'edit_file':
-      return { title: 'Edit file', detail: (toolArgs?.filePath as string) || (toolArgs?.path as string) || '' };
-    case 'web_search':
-      return { title: 'Web search', detail: (toolArgs?.query as string) || '' };
-    case 'fetch_url':
-      return { title: 'Fetch URL', detail: (toolArgs?.url as string) || '' };
-    case 'http_request':
-      return { title: 'HTTP request', detail: `${(toolArgs?.method as string)?.toUpperCase() || 'GET'} ${(toolArgs?.url as string) || ''}` };
-    case 'task':
-      return { title: 'Delegate task', detail: ((toolArgs?.description as string) || '').slice(0, 50) + '...' };
-    default:
-      return { title: toolName, detail: JSON.stringify(toolArgs) };
-  }
-}
-
-function GenericToolExecution({ chunk, onApprove, onReject, onAutoApprove }: ToolExecutionProps) {
-  const { toolName, toolArgs, status, output, elapsedMs, approvalRequestId, diffData } = chunk;
-
-  if (status === 'pending-approval' && approvalRequestId) {
-    const isFileOperation = toolName === 'write_file' || toolName === 'edit_file';
-    const { title, detail } = getToolDisplayInfo(toolName, toolArgs || {});
-
-    return (
-      <div className="my-3 bg-[#0d1117] border border-[#30363d] rounded-lg overflow-hidden">
-        <div className="flex items-center gap-2 px-3 py-2 bg-[#161b22] border-b border-[#30363d]">
-          <span className="text-gray-400 text-sm font-medium">{title}</span>
-        </div>
-        <div className="px-3 py-2">
-          <div className="text-sm text-gray-300 font-mono break-all">{detail}</div>
-          {isFileOperation && diffData && (
-            <DiffView diffData={diffData} />
-          )}
-        </div>
-        <div className="flex items-center justify-end gap-2 px-3 py-2 border-t border-[#30363d]">
-          <button
-            onClick={() => onReject?.(approvalRequestId)}
-            className="px-3 py-1 text-sm text-gray-400 hover:text-gray-200"
-          >
-            Skip
-          </button>
-          <button
-            onClick={() => onAutoApprove?.(approvalRequestId)}
-            className="px-3 py-1.5 text-sm text-gray-200 bg-[#21262d] hover:bg-[#30363d] rounded-md border border-[#30363d]"
-          >
-            Auto-approve
-          </button>
-          <button
-            onClick={() => onApprove?.(approvalRequestId)}
-            className="px-3 py-1.5 text-sm text-white bg-[#238636] hover:bg-[#2ea043] rounded-md"
-          >
-            Approve
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  const statusIcon = {
-    'pending-approval': <span className="animate-spin inline-block">⟳</span>,
-    running: <span className="animate-spin inline-block">⟳</span>,
-    success: <span className="text-cyan-400">✔</span>,
-    error: <span className="text-red-400">✖</span>,
-  }[status];
-
-  const statusColor = {
-    'pending-approval': 'text-yellow-400',
-    running: 'text-yellow-400',
-    success: 'text-cyan-400',
-    error: 'text-red-400',
-  }[status];
-
-  const formatElapsed = (ms?: number) => {
-    if (!ms) return '';
-    if (ms < 1000) return `${ms}ms`;
-    return `${(ms / 1000).toFixed(1)}s`;
-  };
-
-  return (
-    <div className="my-2">
-      <div className={`flex items-center gap-2 ${statusColor}`}>
-        {statusIcon}
-        <span className="text-gray-300">{toolName}</span>
-        {elapsedMs && (
-          <span className="text-gray-500 text-xs">{formatElapsed(elapsedMs)}</span>
-        )}
-      </div>
-      {output && status === 'success' && (
-        <div className="mt-2 ml-5 text-gray-400 text-sm border-l-2 border-[#2a3142] pl-3 max-h-40 overflow-y-auto">
-          <pre className="whitespace-pre-wrap break-all">{output}</pre>
-        </div>
+    <div className="mt-1">
+      <pre className="font-mono text-xs text-gray-400 whitespace-pre-wrap break-all overflow-x-auto">
+        {displayedOutput}
+      </pre>
+      {isLong && !expanded && (
+        <button
+          onClick={onToggle}
+          className="mt-1 text-xs text-cyan-400 hover:text-cyan-300"
+        >
+          +{hiddenLines} more lines (ctrl+o)
+        </button>
       )}
-      {output && status === 'error' && (
-        <div className="mt-2 ml-5 text-red-400 text-sm border border-red-900/50 rounded-lg p-3 bg-red-950/30">
-          {output}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function TodoExecution({ chunk }: { chunk: ToolExecutionChunk }) {
-  const { status, elapsedMs } = chunk;
-  const todos = (chunk.toolArgs?.todos as Array<{ content: string; status: string }>) || [];
-  const completed = todos.filter(t => t.status === 'completed').length;
-  const total = todos.length;
-
-  const formatElapsed = (ms?: number) => {
-    if (!ms) return '';
-    if (ms < 1000) return `${ms}ms`;
-    return `${(ms / 1000).toFixed(1)}s`;
-  };
-
-  const statusIcon = {
-    'pending-approval': <span className="animate-spin inline-block">⟳</span>,
-    running: <span className="animate-spin inline-block">⟳</span>,
-    success: <span className="text-cyan-400">✔</span>,
-    error: <span className="text-red-400">✖</span>,
-  }[status];
-
-  return (
-    <div className="my-2 flex items-center gap-2 text-gray-400">
-      {statusIcon}
-      <span className="text-gray-300">Updated task list</span>
-      <span className="text-gray-500 text-sm">({completed}/{total} completed)</span>
-      {elapsedMs && (
-        <span className="text-gray-500 text-xs">{formatElapsed(elapsedMs)}</span>
+      {expanded && isLong && (
+        <button
+          onClick={onToggle}
+          className="mt-1 text-xs text-cyan-400 hover:text-cyan-300"
+        >
+          Show less
+        </button>
       )}
     </div>
   );
 }
 
 export function ToolExecution({ chunk, onApprove, onReject, onAutoApprove }: ToolExecutionProps) {
-  if (chunk.toolName === 'execute') {
-    return <ShellExecution chunk={chunk} onApprove={onApprove} onReject={onReject} onAutoApprove={onAutoApprove} />;
-  }
-  if (chunk.toolName === 'task') {
-    return <TaskExecution chunk={chunk} onApprove={onApprove} onReject={onReject} onAutoApprove={onAutoApprove} />;
-  }
-  if (chunk.toolName === 'write_todos') {
-    return <TodoExecution chunk={chunk} />;
-  }
-  return <GenericToolExecution chunk={chunk} onApprove={onApprove} onReject={onReject} onAutoApprove={onAutoApprove} />;
+  const { toolName, toolArgs, status, output, elapsedMs, approvalRequestId, diffData } = chunk;
+  const [expanded, setExpanded] = useState(false);
+
+  const displayName = getToolDisplayName(toolName, toolArgs || {});
+
+  const statusIcon = {
+    'pending-approval': <span className="text-yellow-400 animate-pulse">●</span>,
+    running: <span className="text-yellow-400 animate-pulse">●</span>,
+    success: <span className="text-cyan-400">●</span>,
+    error: <span className="text-red-400">●</span>,
+  }[status];
+
+  const isFileOp = toolName === 'write_file' || toolName === 'edit_file';
+  const showDiff = isFileOp && diffData && status === 'pending-approval';
+  const showOutput = output && status !== 'running' && status !== 'pending-approval' && !isFileOp;
+  const summary = getToolSummary(toolName, toolArgs || {}, output, status);
+
+  return (
+    <div className="my-2 font-mono text-sm">
+      <div className="flex items-center gap-2">
+        {statusIcon}
+        <span className="text-gray-200">{displayName}</span>
+        {elapsedMs && status !== 'running' && (
+          <span className="text-gray-600 text-xs">{formatElapsed(elapsedMs)}</span>
+        )}
+      </div>
+
+      <div className="ml-3 border-l border-gray-700 pl-3 mt-1">
+        {status === 'pending-approval' && approvalRequestId ? (
+          <>
+            {showDiff && <DiffView diffData={diffData} />}
+            <KeyboardApproval
+              approvalRequestId={approvalRequestId}
+              toolName={toolName}
+              onApprove={onApprove}
+              onReject={onReject}
+              onAutoApprove={onAutoApprove}
+            />
+          </>
+        ) : status === 'running' ? (
+          <span className="text-gray-500 text-xs">Running...</span>
+        ) : (
+          <>
+            <span className="text-gray-500 text-xs">{summary}</span>
+            {showOutput && (
+              <ToolOutput output={output} expanded={expanded} onToggle={() => setExpanded(!expanded)} />
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
 }
