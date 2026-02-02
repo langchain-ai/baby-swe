@@ -49,7 +49,14 @@ declare global {
 
 export type Author = 'user' | 'agent' | 'system' | 'tool';
 
-export type ChunkKind = 'text' | 'code' | 'error' | 'list' | 'tool-execution';
+export type ChunkKind = 'text' | 'code' | 'error' | 'list' | 'tool-execution' | 'todo';
+
+export type TodoStatus = 'pending' | 'in_progress' | 'completed';
+
+export interface TodoItem {
+  content: string;
+  status: TodoStatus;
+}
 
 export type ToolStatus = 'pending-approval' | 'running' | 'success' | 'error';
 
@@ -96,7 +103,12 @@ export interface ListChunk {
   lines: string[];
 }
 
-export type Chunk = TextChunk | CodeChunk | ErrorChunk | ListChunk | ToolExecutionChunk;
+export interface TodoChunk {
+  kind: 'todo';
+  todos: TodoItem[];
+}
+
+export type Chunk = TextChunk | CodeChunk | ErrorChunk | ListChunk | ToolExecutionChunk | TodoChunk;
 
 export interface Message {
   id: string;
@@ -134,6 +146,7 @@ export interface Session {
   updatedAt: number;
   autoApproveSession: boolean;
   pendingApprovals: Record<string, ApprovalRequest>;
+  todos: TodoItem[];
 }
 
 export interface ToolStartEvent {
@@ -190,6 +203,12 @@ export interface ApprovalRequestEvent {
   request: ApprovalRequest;
 }
 
+export interface TodoUpdateEvent {
+  type: 'todo-update';
+  sessionId: string;
+  todos: TodoItem[];
+}
+
 export type StreamEvent =
   | { type: 'token'; sessionId: string; token: string }
   | { type: 'done'; sessionId: string }
@@ -198,4 +217,5 @@ export type StreamEvent =
   | ToolEndEvent
   | ToolStatusUpdateEvent
   | TokenUsageEvent
-  | ApprovalRequestEvent;
+  | ApprovalRequestEvent
+  | TodoUpdateEvent;

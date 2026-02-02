@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { v4 as uuidv4 } from 'uuid';
-import type { Message, Chunk, Mode, ModelConfig, ToolStatus, Thread, Session, Project, ApprovalRequest, DiffData } from './types';
+import type { Message, Chunk, Mode, ModelConfig, ToolStatus, Thread, Session, Project, ApprovalRequest, DiffData, TodoItem } from './types';
 import { loadSettings, saveSettings, loadRecentProjects, loadThreads, saveThread, deleteThread as deleteThreadFromStorage } from './persistence';
 
 function generateTitle(messages: Message[]): string {
@@ -51,6 +51,7 @@ interface AppState {
   addPendingApproval: (sessionId: string, request: ApprovalRequest) => void;
   removePendingApproval: (sessionId: string, requestId: string) => void;
   updateToolStatus: (sessionId: string, toolCallId: string, status: ToolStatus) => void;
+  updateTodos: (sessionId: string, todos: TodoItem[]) => void;
 
   setMode: (mode: Mode) => void;
   setModelConfig: (config: Partial<ModelConfig>) => void;
@@ -94,6 +95,7 @@ export const useStore = create<AppState>((set, get) => ({
       updatedAt: Date.now(),
       autoApproveSession: false,
       pendingApprovals: {},
+      todos: [],
     };
     set((state) => ({
       sessions: { ...state.sessions, [id]: session },
@@ -131,6 +133,7 @@ export const useStore = create<AppState>((set, get) => ({
             updatedAt: Date.now(),
             autoApproveSession: false,
             pendingApprovals: {},
+            todos: [],
           },
         },
         tokenUsage: { input: 0, output: 0, total: 0 },
@@ -480,6 +483,19 @@ export const useStore = create<AppState>((set, get) => ({
         sessions: {
           ...state.sessions,
           [sessionId]: { ...session, messages: newMessages },
+        },
+      };
+    });
+  },
+
+  updateTodos: (sessionId, todos) => {
+    set((state) => {
+      const session = state.sessions[sessionId];
+      if (!session) return state;
+      return {
+        sessions: {
+          ...state.sessions,
+          [sessionId]: { ...session, todos },
         },
       };
     });

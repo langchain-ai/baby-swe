@@ -2,7 +2,8 @@ import { useRef, useEffect } from 'react';
 import { CodeBlock } from './CodeBlock';
 import { ToolExecution } from './ToolExecution';
 import { SubagentGroup } from './SubagentGroup';
-import type { Chunk, Message, ToolExecutionChunk } from '../../types';
+import { TodoList } from './TodoList';
+import type { Chunk, Message, ToolExecutionChunk, TodoItem } from '../../types';
 
 type GroupedItem = Chunk | { type: 'subagent-group'; tasks: ToolExecutionChunk[] };
 
@@ -38,6 +39,7 @@ interface ApprovalCallbacks {
 interface MessageViewProps extends ApprovalCallbacks {
   messages: Message[];
   streamingContent: string | null;
+  todos?: TodoItem[];
 }
 
 function ChunkRenderer({ chunk, ...callbacks }: { chunk: Chunk } & ApprovalCallbacks) {
@@ -144,7 +146,7 @@ function StreamingContent({ content, toolChunks, ...callbacks }: { content: stri
   );
 }
 
-export function MessageView({ messages, streamingContent, onApprove, onReject, onAutoApprove }: MessageViewProps) {
+export function MessageView({ messages, streamingContent, todos, onApprove, onReject, onAutoApprove }: MessageViewProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const isStreaming = streamingContent !== null;
 
@@ -152,7 +154,7 @@ export function MessageView({ messages, streamingContent, onApprove, onReject, o
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [messages, streamingContent]);
+  }, [messages, streamingContent, todos]);
 
   const displayMessages = isStreaming ? messages.slice(0, -1) : messages;
   const streamingMessage = isStreaming ? messages[messages.length - 1] : null;
@@ -161,6 +163,7 @@ export function MessageView({ messages, streamingContent, onApprove, onReject, o
   return (
     <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4">
       <div className="max-w-4xl mx-auto">
+        {todos && todos.length > 0 && <TodoList todos={todos} />}
         {displayMessages.map((message) => (
           <MessageBubble key={message.id} message={message} />
         ))}

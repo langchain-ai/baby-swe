@@ -47,6 +47,7 @@ export function App() {
     finalizeStream,
     abortStream,
     updateTokenUsage,
+    updateTodos,
   } = useStore();
 
   const activeSession = activeSessionId ? sessions[activeSessionId] : null;
@@ -147,6 +148,9 @@ export function App() {
         case 'token-usage':
           updateTokenUsage(event.inputTokens, event.outputTokens);
           break;
+        case 'todo-update':
+          updateTodos(event.sessionId, event.todos);
+          break;
         case 'done':
           finalizeStream(event.sessionId);
           break;
@@ -156,7 +160,7 @@ export function App() {
       }
     });
     return unsubscribe;
-  }, [appendStreamToken, addToolStart, updateToolEnd, updateToolStatus, updateTokenUsage, finalizeStream, abortStream]);
+  }, [appendStreamToken, addToolStart, updateToolEnd, updateToolStatus, updateTokenUsage, updateTodos, finalizeStream, abortStream]);
 
   const handleOpenFolder = useCallback(async () => {
     await window.storage.openProject();
@@ -280,6 +284,7 @@ export function App() {
       <MessageView
         messages={activeSession.messages}
         streamingContent={activeSession.streamingContent}
+        todos={activeSession.todos}
         onApprove={handleApprove}
         onReject={handleReject}
         onAutoApprove={handleAutoApprove}

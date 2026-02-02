@@ -388,12 +388,46 @@ function GenericToolExecution({ chunk, onApprove, onReject, onAutoApprove }: Too
   );
 }
 
+function TodoExecution({ chunk }: { chunk: ToolExecutionChunk }) {
+  const { status, elapsedMs } = chunk;
+  const todos = (chunk.toolArgs?.todos as Array<{ content: string; status: string }>) || [];
+  const completed = todos.filter(t => t.status === 'completed').length;
+  const total = todos.length;
+
+  const formatElapsed = (ms?: number) => {
+    if (!ms) return '';
+    if (ms < 1000) return `${ms}ms`;
+    return `${(ms / 1000).toFixed(1)}s`;
+  };
+
+  const statusIcon = {
+    'pending-approval': <span className="animate-spin inline-block">⟳</span>,
+    running: <span className="animate-spin inline-block">⟳</span>,
+    success: <span className="text-cyan-400">✔</span>,
+    error: <span className="text-red-400">✖</span>,
+  }[status];
+
+  return (
+    <div className="my-2 flex items-center gap-2 text-gray-400">
+      {statusIcon}
+      <span className="text-gray-300">Updated task list</span>
+      <span className="text-gray-500 text-sm">({completed}/{total} completed)</span>
+      {elapsedMs && (
+        <span className="text-gray-500 text-xs">{formatElapsed(elapsedMs)}</span>
+      )}
+    </div>
+  );
+}
+
 export function ToolExecution({ chunk, onApprove, onReject, onAutoApprove }: ToolExecutionProps) {
   if (chunk.toolName === 'execute') {
     return <ShellExecution chunk={chunk} onApprove={onApprove} onReject={onReject} onAutoApprove={onAutoApprove} />;
   }
   if (chunk.toolName === 'task') {
     return <TaskExecution chunk={chunk} onApprove={onApprove} onReject={onReject} onAutoApprove={onAutoApprove} />;
+  }
+  if (chunk.toolName === 'write_todos') {
+    return <TodoExecution chunk={chunk} />;
   }
   return <GenericToolExecution chunk={chunk} onApprove={onApprove} onReject={onReject} onAutoApprove={onAutoApprove} />;
 }
