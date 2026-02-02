@@ -42,6 +42,8 @@ interface AppState {
 
   startStreaming: (sessionId: string) => string;
   appendStreamToken: (sessionId: string, token: string) => void;
+  addToolStart: (sessionId: string, toolCallId: string, toolName: string, toolArgs: Record<string, unknown>) => void;
+  updateToolEnd: (sessionId: string, toolCallId: string, output: string, error: string | undefined, elapsedMs: number) => void;
   finalizeStream: (sessionId: string) => void;
   abortStream: (sessionId: string, error?: string) => void;
 
@@ -277,6 +279,60 @@ export const useStore = create<AppState>((set, get) => ({
     });
   },
 
+  addToolStart: (sessionId, toolCallId, toolName, toolArgs) => {
+    set((state) => {
+      const session = state.sessions[sessionId];
+      if (!session || !session.streamingMessageId) return state;
+
+      const toolChunk: Chunk = {
+        kind: 'tool-execution',
+        toolCallId,
+        toolName,
+        toolArgs,
+        status: 'running',
+      };
+
+      const newMessages = session.messages.map((msg) => {
+        if (msg.id !== session.streamingMessageId) return msg;
+        return { ...msg, chunks: [...msg.chunks, toolChunk] };
+      });
+
+      return {
+        sessions: {
+          ...state.sessions,
+          [sessionId]: { ...session, messages: newMessages },
+        },
+      };
+    });
+  },
+
+  updateToolEnd: (sessionId, toolCallId, output, error, elapsedMs) => {
+    set((state) => {
+      const session = state.sessions[sessionId];
+      if (!session) return state;
+
+      const newMessages = session.messages.map((msg) => ({
+        ...msg,
+        chunks: msg.chunks.map((chunk) => {
+          if (chunk.kind !== 'tool-execution' || chunk.toolCallId !== toolCallId) return chunk;
+          return {
+            ...chunk,
+            status: error ? 'error' : 'success',
+            output,
+            elapsedMs,
+          } as Chunk;
+        }),
+      }));
+
+      return {
+        sessions: {
+          ...state.sessions,
+          [sessionId]: { ...session, messages: newMessages },
+        },
+      };
+    });
+  },
+
   finalizeStream: (sessionId) => {
     const { currentProject } = get();
     set((state) => {
@@ -284,11 +340,14 @@ export const useStore = create<AppState>((set, get) => ({
       if (!session || !session.streamingMessageId) return state;
 
       const content = session.streamingContent || '';
-      const chunks = parseContentToChunks(content);
+      const textChunks = parseContentToChunks(content);
 
-      const newMessages = session.messages.map((msg) =>
-        msg.id === session.streamingMessageId ? { ...msg, chunks } : msg
-      );
+      const newMessages = session.messages.map((msg) => {
+        if (msg.id !== session.streamingMessageId) return msg;
+        // Preserve tool execution chunks and add text chunks
+        const toolChunks = msg.chunks.filter(c => c.kind === 'tool-execution');
+        return { ...msg, chunks: [...toolChunks, ...textChunks] };
+      });
 
       const updatedSession: Session = {
         ...session,

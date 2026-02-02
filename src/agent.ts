@@ -1,4 +1,5 @@
-import { createDeepAgent, FilesystemBackend } from "deepagents";
+import { createDeepAgent } from "deepagents";
+import { LocalSandboxBackend } from "./backends/local-sandbox";
 import { ChatAnthropic } from "@langchain/anthropic";
 import { ipcMain, BrowserWindow } from "electron";
 import "dotenv/config";
@@ -18,8 +19,12 @@ You help users with coding tasks, debugging, and software development questions.
 Be concise and helpful.
 
 Your current working directory is: ${rootDir}
-You have full access to the filesystem within this directory. Use the available file tools (ls, read_file, write_file, edit_file, glob, grep) to explore and modify the codebase.
-When the user asks about code or files, start by exploring the directory structure to understand the project.`
+You have full access to the filesystem within this directory. Use the available tools to explore and modify the codebase:
+- File tools: ls, read_file, write_file, edit_file, glob, grep
+- Shell execution: execute (run shell commands in the project directory)
+
+When the user asks about code or files, start by exploring the directory structure to understand the project.
+When running commands with execute, prefer non-interactive commands and handle errors gracefully.`
     : `You are baby-swe, a helpful software engineering assistant.
 You help users with coding tasks, debugging, and software development questions.
 Be concise and helpful.
@@ -32,7 +37,7 @@ No working directory has been selected. Ask the user to open a folder to enable 
   };
 
   if (rootDir) {
-    config.backend = () => new FilesystemBackend({ rootDir });
+    config.backend = () => new LocalSandboxBackend({ rootDir });
   }
 
   return createDeepAgent(config);
@@ -75,6 +80,8 @@ export function setupAgentIPC(mainWindow: BrowserWindow, getFolder: () => string
     const controller = new AbortController();
     sessionControllers.set(sessionId, controller);
 
+    const toolTimers = new Map<string, number>();
+
     try {
       const folder = getFolder();
       const streamAgent = createAgent(folder || undefined);
@@ -111,6 +118,69 @@ export function setupAgentIPC(mainWindow: BrowserWindow, getFolder: () => string
               });
             }
           }
+        }
+
+        if (event.event === "on_tool_start") {
+          const toolCallId = event.run_id;
+          const toolName = event.name;
+          let toolArgs = event.data?.input || {};
+
+          // Parse JSON-stringified input if needed
+          if (toolArgs.input && typeof toolArgs.input === 'string') {
+            try {
+              toolArgs = JSON.parse(toolArgs.input);
+            } catch {
+              // Keep original if parsing fails
+            }
+          }
+
+          toolTimers.set(toolCallId, Date.now());
+
+          mainWindow.webContents.send('agent:stream-event', {
+            type: 'tool-start',
+            sessionId,
+            toolCallId,
+            toolName,
+            toolArgs,
+          });
+        }
+
+        if (event.event === "on_tool_end") {
+          const toolCallId = event.run_id;
+          const startTime = toolTimers.get(toolCallId) || Date.now();
+          const elapsedMs = Date.now() - startTime;
+          toolTimers.delete(toolCallId);
+
+          const output = event.data?.output;
+          let outputStr = '';
+          let errorStr: string | undefined;
+
+          if (typeof output === 'string') {
+            outputStr = output;
+          } else if (output && typeof output === 'object') {
+            // Handle LangChain ToolMessage object
+            if (output.kwargs?.content) {
+              outputStr = String(output.kwargs.content);
+            } else if (output.content) {
+              outputStr = String(output.content);
+            } else if ('output' in output) {
+              outputStr = String(output.output);
+            } else if ('error' in output) {
+              errorStr = String(output.error);
+              outputStr = errorStr;
+            } else {
+              outputStr = JSON.stringify(output, null, 2);
+            }
+          }
+
+          mainWindow.webContents.send('agent:stream-event', {
+            type: 'tool-end',
+            sessionId,
+            toolCallId,
+            output: outputStr,
+            error: errorStr,
+            elapsedMs,
+          });
         }
       }
 

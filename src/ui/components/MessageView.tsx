@@ -67,15 +67,23 @@ function MessageBubble({ message, isStreaming }: { message: Message; isStreaming
   return <AgentMessage message={message} isStreaming={isStreaming} />;
 }
 
-function StreamingContent({ content }: { content: string }) {
+function StreamingContent({ content, toolChunks }: { content: string; toolChunks: Chunk[] }) {
   return (
     <div className="mb-6">
       <div className="text-gray-500 text-sm mb-2">Thinking...</div>
       <div className="space-y-4">
-        <span className="text-gray-200 whitespace-pre-wrap leading-relaxed">
-          {content}
-          <span className="inline-block w-2 h-4 bg-cyan-500 ml-0.5 animate-pulse" />
-        </span>
+        {toolChunks.map((chunk, i) => (
+          <ChunkRenderer key={`tool-${i}`} chunk={chunk} />
+        ))}
+        {content && (
+          <span className="text-gray-200 whitespace-pre-wrap leading-relaxed">
+            {content}
+            <span className="inline-block w-2 h-4 bg-cyan-500 ml-0.5 animate-pulse" />
+          </span>
+        )}
+        {!content && toolChunks.length === 0 && (
+          <span className="text-gray-400">...</span>
+        )}
       </div>
     </div>
   );
@@ -92,6 +100,8 @@ export function MessageView({ messages, streamingContent }: MessageViewProps) {
   }, [messages, streamingContent]);
 
   const displayMessages = isStreaming ? messages.slice(0, -1) : messages;
+  const streamingMessage = isStreaming ? messages[messages.length - 1] : null;
+  const toolChunks = streamingMessage?.chunks.filter(c => c.kind === 'tool-execution') || [];
 
   return (
     <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4">
@@ -99,8 +109,8 @@ export function MessageView({ messages, streamingContent }: MessageViewProps) {
         {displayMessages.map((message) => (
           <MessageBubble key={message.id} message={message} />
         ))}
-        {isStreaming && streamingContent !== null && (
-          <StreamingContent content={streamingContent} />
+        {isStreaming && (
+          <StreamingContent content={streamingContent || ''} toolChunks={toolChunks} />
         )}
       </div>
     </div>

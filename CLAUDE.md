@@ -19,17 +19,39 @@ src/
 ├── renderer.tsx      # React entry point
 ├── store.ts          # Zustand global state
 ├── types.ts          # TypeScript types
-├── agent.ts          # DeepAgents configuration
+├── agent.ts          # DeepAgents configuration + streaming
+├── backends/
+│   └── local-sandbox.ts  # Shell execution backend
+├── commands/
+│   ├── index.ts      # Command exports
+│   ├── registry.ts   # Command registration and parsing
+│   ├── clear.ts      # /clear command
+│   ├── help.ts       # /help command
+│   ├── new.ts        # /new command
+│   └── tokens.ts     # /tokens command
 └── ui/
     ├── App.tsx       # Main app component
-    └── components/   # UI components
+    └── components/
+        ├── ToolExecution.tsx     # Tool execution UI (shell-specific)
+        ├── CommandAutocomplete.tsx
+        ├── FileAutocomplete.tsx
+        └── ...
 ```
 
 ## Key Components
 
-- **App.tsx** - Handles user input, invokes agent, renders messages
-- **agent.ts** - Creates DeepAgent with Anthropic model and tools
-- **store.ts** - Manages messages, token usage, model config
+- **App.tsx** - Handles user input, invokes agent, renders messages, processes stream events
+- **agent.ts** - Creates DeepAgent with Anthropic model and tools, streams tool events to renderer
+- **store.ts** - Manages messages, token usage, model config, tool execution state
+- **LocalSandboxBackend** - Wraps FilesystemBackend with shell execution capability
+
+## Tool Execution Streaming
+
+Tool executions are streamed in real-time to the UI:
+1. `on_tool_start` event → `addToolStart()` creates a tool-execution chunk
+2. `on_tool_end` event → `updateToolEnd()` updates the chunk with output
+3. `MessageView` renders tool chunks during streaming via `StreamingContent`
+4. `finalizeStream()` preserves tool chunks when stream completes
 
 ## Running
 
@@ -46,3 +68,5 @@ Requires `.env` with `ANTHROPIC_API_KEY`
 
 - Always run `bun run build` after making changes to verify TypeScript compiles without errors
 - Watch for circular dependencies when creating new modules
+- Tool events flow: main process → IPC → renderer → store → UI components
+- When adding new tools that need visual feedback, handle both `on_tool_start` and `on_tool_end` events in agent.ts

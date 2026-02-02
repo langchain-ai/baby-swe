@@ -116,7 +116,26 @@ export interface Session {
   updatedAt: number;
 }
 
+export interface ToolStartEvent {
+  type: 'tool-start';
+  sessionId: string;
+  toolCallId: string;
+  toolName: string;
+  toolArgs: Record<string, unknown>;
+}
+
+export interface ToolEndEvent {
+  type: 'tool-end';
+  sessionId: string;
+  toolCallId: string;
+  output: string;
+  error?: string;
+  elapsedMs: number;
+}
+
 export type StreamEvent =
   | { type: 'token'; sessionId: string; token: string }
   | { type: 'done'; sessionId: string }
-  | { type: 'error'; sessionId: string; error: string };
+  | { type: 'error'; sessionId: string; error: string }
+  | ToolStartEvent
+  | ToolEndEvent;

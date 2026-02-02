@@ -20,6 +20,8 @@ export function App() {
     addMessageToSession,
     startStreaming,
     appendStreamToken,
+    addToolStart,
+    updateToolEnd,
     finalizeStream,
     abortStream,
   } = useStore();
@@ -50,6 +52,12 @@ export function App() {
         case 'token':
           appendStreamToken(event.sessionId, event.token);
           break;
+        case 'tool-start':
+          addToolStart(event.sessionId, event.toolCallId, event.toolName, event.toolArgs);
+          break;
+        case 'tool-end':
+          updateToolEnd(event.sessionId, event.toolCallId, event.output, event.error, event.elapsedMs);
+          break;
         case 'done':
           finalizeStream(event.sessionId);
           break;
@@ -59,7 +67,7 @@ export function App() {
       }
     });
     return unsubscribe;
-  }, [appendStreamToken, finalizeStream, abortStream]);
+  }, [appendStreamToken, addToolStart, updateToolEnd, finalizeStream, abortStream]);
 
   const handleOpenFolder = useCallback(async () => {
     await window.storage.openProject();
