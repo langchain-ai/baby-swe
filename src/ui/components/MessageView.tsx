@@ -88,7 +88,7 @@ interface MessageViewProps extends ApprovalCallbacks {
 }
 
 function StreamingCursor() {
-  return <span className="inline-block w-2 h-4 bg-cyan-500 ml-0.5 align-baseline animate-pulse" />;
+  return <span className="inline-block w-1.5 h-3 bg-cyan-500 ml-0.5 animate-pulse" />;
 }
 
 function ChunkRenderer({
@@ -99,7 +99,7 @@ function ChunkRenderer({
   switch (chunk.kind) {
     case 'text':
       return (
-        <div className="text-gray-200 leading-relaxed">
+        <div className="text-gray-200">
           <Markdown content={chunk.text} />
           {showCursor && <StreamingCursor />}
         </div>
@@ -110,11 +110,11 @@ function ChunkRenderer({
       return <span className="text-red-400">{chunk.text}</span>;
     case 'list':
       return (
-        <ul className="list-disc list-inside text-gray-300 ml-4 space-y-1">
+        <div className="text-gray-300 ml-2">
           {chunk.lines.map((line, i) => (
-            <li key={i}>{line}</li>
+            <div key={i}>- {line}</div>
           ))}
-        </ul>
+        </div>
       );
     case 'tool-execution':
       return (
@@ -135,7 +135,7 @@ function UserMessage({ message }: { message: Message }) {
     .join('');
 
   return (
-    <div className="flex items-start gap-2 my-3 font-mono">
+    <div className="flex items-start gap-2 my-3">
       <span className="text-gray-400 select-none">❯</span>
       <span className="text-gray-100 bg-gray-800/50 px-2 py-0.5 rounded">{text}</span>
     </div>
@@ -151,15 +151,15 @@ function AgentMessage({
 
   if (groupedItems.length === 0 && isStreaming) {
     return (
-      <div className="flex items-start gap-2 my-1 font-mono">
+      <div className="flex items-start gap-2 my-1">
         <span className="text-cyan-400 select-none">●</span>
-        <span className="text-gray-400 text-sm">...</span>
+        <span className="text-gray-400">...</span>
       </div>
     );
   }
 
   return (
-    <div className="my-1 space-y-1">
+    <div className="my-1">
       {groupedItems.map((item, i) => {
         if ('type' in item && item.type === 'subagent-group') {
           return (
@@ -189,7 +189,7 @@ function AgentMessage({
         const isLastItem = i === groupedItems.length - 1;
 
         return (
-          <div key={i} className="flex items-start gap-2 font-mono">
+          <div key={i} className="flex items-start gap-2">
             <span className="text-cyan-400 select-none">●</span>
             <div className="flex-1">
               <ChunkRenderer
@@ -226,7 +226,7 @@ export function MessageView({ messages, isStreaming, todos, onApprove, onReject,
   );
 
   return (
-    <div ref={setScrollRef} className="flex-1 overflow-y-auto px-4 py-4">
+    <div ref={setScrollRef} className="flex-1 overflow-y-auto px-4 py-4 text-xs leading-5">
       <div className="max-w-4xl mx-auto">
         {todos && todos.length > 0 && <TodoList todos={todos} />}
         {messages.map((message, index) => (
