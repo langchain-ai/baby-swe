@@ -8,6 +8,7 @@ import * as path from "path";
 import { execSync } from "child_process";
 import "dotenv/config";
 import type { ApprovalDecision, ApprovalResponse, ChatMessage, DiffData } from "./types";
+import { loadAgentMemory } from "./memory/agents";
 
 const sessionControllers = new Map<string, AbortController>();
 const pendingApprovals = new Map<string, { resolve: (decision: ApprovalDecision) => void }>();
@@ -230,6 +231,7 @@ function createAgent(rootDir?: string) {
 
   if (rootDir) {
     const localContext = getLocalContext(rootDir);
+    const agentMemory = loadAgentMemory(rootDir);
 
     systemPrompt = `You are baby-swe, a helpful software engineering assistant.
 You help users with coding tasks, debugging, and software development questions.
@@ -247,7 +249,10 @@ When the user asks about code or files, start by exploring the directory structu
 When running commands with execute, prefer non-interactive commands and handle errors gracefully.${localContext ? `
 
 ## Project Context
-${localContext}` : ''}`;
+${localContext}` : ''}${agentMemory ? `
+
+## Agent Memory
+${agentMemory}` : ''}`;
   } else {
     systemPrompt = `You are baby-swe, a helpful software engineering assistant.
 You help users with coding tasks, debugging, and software development questions.

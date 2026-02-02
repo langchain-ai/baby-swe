@@ -190,12 +190,23 @@ export function App() {
 
   const handleSubmit = useCallback(
     async (query: string) => {
+      const sendAgentPrompt = (prompt: string) => {
+        const sessionId = activeSessionId || createSession();
+        const existingMessages = sessions[sessionId]?.messages || [];
+        const chatHistory = messagesToChatMessages(existingMessages);
+        chatHistory.push({ role: 'user', content: prompt });
+        addMessageToSession(sessionId, 'user', [{ kind: 'text', text: prompt }]);
+        startStreaming(sessionId);
+        window.agent.stream(sessionId, chatHistory);
+      };
+
       const commandCtx: CommandContext = {
         sessionId: activeSessionId,
         createSession,
         clearSession,
         addSystemMessage: (sessionId, chunks) => addMessageToSession(sessionId, 'system', chunks),
         tokenUsage,
+        sendAgentPrompt,
       };
 
       if (executeCommand(query, commandCtx)) {
@@ -216,7 +227,7 @@ export function App() {
         window.agent.stream(activeSessionId, chatHistory);
       }
     },
-    [activeSessionId, createSession, clearSession, addMessageToSession, startStreaming, tokenUsage]
+    [activeSessionId, createSession, clearSession, addMessageToSession, startStreaming, tokenUsage, sessions]
   );
 
   if (!currentProject) {

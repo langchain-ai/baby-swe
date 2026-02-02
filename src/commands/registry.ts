@@ -8,6 +8,7 @@ export interface CommandContext {
   clearSession: (sessionId: string) => void;
   addSystemMessage: (sessionId: string, chunks: Chunk[]) => void;
   tokenUsage: { input: number; output: number; total: number };
+  sendAgentPrompt?: (prompt: string) => void;
 }
 
 export interface Command {

@@ -7,6 +7,7 @@ export {
   type CommandCategory,
 } from './registry';
 import { registerCommand, getAllCommands } from './registry';
+import './remember';
 
 registerCommand({
   name: 'clear',
