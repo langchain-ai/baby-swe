@@ -2,6 +2,26 @@ import { useCallback, useEffect } from 'react';
 import { useStore } from '../store';
 import { HeaderBar, MessageView, PromptBar, FolderSelectScreen, TabBar } from './components';
 import { executeCommand, type CommandContext } from '../commands';
+import type { Message, ChatMessage } from '../types';
+
+function messagesToChatMessages(messages: Message[]): ChatMessage[] {
+  const chatMessages: ChatMessage[] = [];
+  for (const msg of messages) {
+    if (msg.author === 'user' || msg.author === 'agent') {
+      const textContent = msg.chunks
+        .filter((c) => c.kind === 'text')
+        .map((c) => (c as { text: string }).text)
+        .join('\n');
+      if (textContent) {
+        chatMessages.push({
+          role: msg.author === 'user' ? 'user' : 'assistant',
+          content: textContent,
+        });
+      }
+    }
+  }
+  return chatMessages;
+}
 
 export function App() {
   const {
@@ -126,11 +146,14 @@ export function App() {
         const newId = createSession();
         addMessageToSession(newId, 'user', [{ kind: 'text', text: query }]);
         startStreaming(newId);
-        window.agent.stream(newId, query);
+        window.agent.stream(newId, [{ role: 'user', content: query }]);
       } else {
+        const existingMessages = sessions[activeSessionId]?.messages || [];
+        const chatHistory = messagesToChatMessages(existingMessages);
+        chatHistory.push({ role: 'user', content: query });
         addMessageToSession(activeSessionId, 'user', [{ kind: 'text', text: query }]);
         startStreaming(activeSessionId);
-        window.agent.stream(activeSessionId, query);
+        window.agent.stream(activeSessionId, chatHistory);
       }
     },
     [activeSessionId, createSession, clearSession, addMessageToSession, startStreaming, tokenUsage]

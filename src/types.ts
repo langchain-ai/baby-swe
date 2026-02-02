@@ -6,6 +6,11 @@ export interface Project {
   lastOpenedAt: number;
 }
 
+export interface ChatMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
 export interface GlobalSettings {
   version: number;
   modelConfig: ModelConfig;
@@ -20,7 +25,7 @@ declare global {
     };
     agent: {
       invoke: (message: string) => Promise<{ content: string }>;
-      stream: (sessionId: string, message: string) => void;
+      stream: (sessionId: string, messages: ChatMessage[]) => void;
       cancel: (sessionId: string) => void;
       onStreamEvent: (callback: (event: StreamEvent) => void) => () => void;
       respondToApproval: (response: ApprovalResponse) => void;

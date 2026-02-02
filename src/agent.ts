@@ -4,7 +4,7 @@ import { ChatAnthropic } from "@langchain/anthropic";
 import { ipcMain, BrowserWindow } from "electron";
 import { v4 as uuidv4 } from "uuid";
 import "dotenv/config";
-import type { ApprovalDecision, ApprovalResponse } from "./types";
+import type { ApprovalDecision, ApprovalResponse, ChatMessage } from "./types";
 
 const sessionControllers = new Map<string, AbortController>();
 const pendingApprovals = new Map<string, { resolve: (decision: ApprovalDecision) => void }>();
@@ -81,7 +81,7 @@ export function setupAgentIPC(mainWindow: BrowserWindow, getFolder: () => string
     }
   });
 
-  ipcMain.on("agent:stream", async (_event, sessionId: string, userMessage: string) => {
+  ipcMain.on("agent:stream", async (_event, sessionId: string, messages: ChatMessage[]) => {
     const controller = new AbortController();
     sessionControllers.set(sessionId, controller);
 
@@ -91,10 +91,11 @@ export function setupAgentIPC(mainWindow: BrowserWindow, getFolder: () => string
       const folder = getFolder();
       const streamAgent = createAgent(folder || undefined);
 
-      console.log(`[agent:stream] Starting stream for session ${sessionId}, folder: ${folder}`);
+      console.log(`[agent:stream] Starting stream for session ${sessionId}, folder: ${folder}, messages: ${messages.length}`);
 
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const stream = await streamAgent.streamEvents(
-        { messages: [{ role: "user", content: userMessage }] },
+        { messages: messages as any },
         { version: "v2", signal: controller.signal, recursionLimit: 100 }
       );
 
