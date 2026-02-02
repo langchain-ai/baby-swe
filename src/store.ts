@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { v4 as uuidv4 } from 'uuid';
-import type { Message, Chunk, Mode, ModelConfig, ToolStatus, Thread, Session, Project } from './types';
+import type { Message, Chunk, Mode, ModelConfig, ToolStatus, Thread, Session, Project, ApprovalRequest } from './types';
 import { loadSettings, saveSettings, loadRecentProjects, loadThreads, saveThread, deleteThread as deleteThreadFromStorage } from './persistence';
 
 function generateTitle(messages: Message[]): string {
@@ -42,10 +42,15 @@ interface AppState {
 
   startStreaming: (sessionId: string) => string;
   appendStreamToken: (sessionId: string, token: string) => void;
-  addToolStart: (sessionId: string, toolCallId: string, toolName: string, toolArgs: Record<string, unknown>) => void;
+  addToolStart: (sessionId: string, toolCallId: string, toolName: string, toolArgs: Record<string, unknown>, approvalRequestId?: string) => void;
   updateToolEnd: (sessionId: string, toolCallId: string, output: string, error: string | undefined, elapsedMs: number) => void;
   finalizeStream: (sessionId: string) => void;
   abortStream: (sessionId: string, error?: string) => void;
+
+  setAutoApproveSession: (sessionId: string, value: boolean) => void;
+  addPendingApproval: (sessionId: string, request: ApprovalRequest) => void;
+  removePendingApproval: (sessionId: string, requestId: string) => void;
+  updateToolStatus: (sessionId: string, toolCallId: string, status: ToolStatus) => void;
 
   setMode: (mode: Mode) => void;
   setModelConfig: (config: Partial<ModelConfig>) => void;
@@ -86,6 +91,8 @@ export const useStore = create<AppState>((set, get) => ({
       busy: false,
       createdAt: Date.now(),
       updatedAt: Date.now(),
+      autoApproveSession: false,
+      pendingApprovals: {},
     };
     set((state) => ({
       sessions: { ...state.sessions, [id]: session },
@@ -121,6 +128,8 @@ export const useStore = create<AppState>((set, get) => ({
             isStreaming: false,
             busy: false,
             updatedAt: Date.now(),
+            autoApproveSession: false,
+            pendingApprovals: {},
           },
         },
       };
@@ -279,7 +288,7 @@ export const useStore = create<AppState>((set, get) => ({
     });
   },
 
-  addToolStart: (sessionId, toolCallId, toolName, toolArgs) => {
+  addToolStart: (sessionId, toolCallId, toolName, toolArgs, approvalRequestId) => {
     set((state) => {
       const session = state.sessions[sessionId];
       if (!session || !session.streamingMessageId) return state;
@@ -289,7 +298,8 @@ export const useStore = create<AppState>((set, get) => ({
         toolCallId,
         toolName,
         toolArgs,
-        status: 'running',
+        status: approvalRequestId ? 'pending-approval' : 'running',
+        approvalRequestId,
       };
 
       const newMessages = session.messages.map((msg) => {
@@ -403,6 +413,71 @@ export const useStore = create<AppState>((set, get) => ({
 
       return {
         sessions: { ...state.sessions, [sessionId]: updatedSession },
+      };
+    });
+  },
+
+  setAutoApproveSession: (sessionId, value) => {
+    set((state) => {
+      const session = state.sessions[sessionId];
+      if (!session) return state;
+      return {
+        sessions: {
+          ...state.sessions,
+          [sessionId]: { ...session, autoApproveSession: value },
+        },
+      };
+    });
+  },
+
+  addPendingApproval: (sessionId, request) => {
+    set((state) => {
+      const session = state.sessions[sessionId];
+      if (!session) return state;
+      return {
+        sessions: {
+          ...state.sessions,
+          [sessionId]: {
+            ...session,
+            pendingApprovals: { ...session.pendingApprovals, [request.id]: request },
+          },
+        },
+      };
+    });
+  },
+
+  removePendingApproval: (sessionId, requestId) => {
+    set((state) => {
+      const session = state.sessions[sessionId];
+      if (!session) return state;
+      const { [requestId]: _, ...remaining } = session.pendingApprovals;
+      return {
+        sessions: {
+          ...state.sessions,
+          [sessionId]: { ...session, pendingApprovals: remaining },
+        },
+      };
+    });
+  },
+
+  updateToolStatus: (sessionId, toolCallId, status) => {
+    set((state) => {
+      const session = state.sessions[sessionId];
+      if (!session) return state;
+
+      const newMessages = session.messages.map((msg) => ({
+        ...msg,
+        chunks: msg.chunks.map((chunk) => {
+          if (chunk.kind !== 'tool-execution' || chunk.toolCallId !== toolCallId) return chunk;
+          return { ...chunk, status };
+        }),
+      }));
+
+      return {
+        sessions: {
+          ...state.sessions,
+          [sessionId]: { ...session, messages: newMessages },
+        },
       };
     });
   },

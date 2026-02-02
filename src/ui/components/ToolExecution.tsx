@@ -3,12 +3,21 @@ import type { ToolExecutionChunk } from '../../types';
 
 interface ToolExecutionProps {
   chunk: ToolExecutionChunk;
+  onApprove?: (approvalRequestId: string) => void;
+  onReject?: (approvalRequestId: string) => void;
+  onAutoApprove?: (approvalRequestId: string) => void;
 }
 
 const MAX_OUTPUT_LINES = 10;
 
-function ShellExecution({ chunk }: ToolExecutionProps) {
-  const { toolArgs, status, output, elapsedMs } = chunk;
+function extractCommandName(command: string): string {
+  const trimmed = command.trim();
+  const firstWord = trimmed.split(/\s+/)[0];
+  return firstWord || 'command';
+}
+
+function ShellExecution({ chunk, onApprove, onReject, onAutoApprove }: ToolExecutionProps) {
+  const { toolArgs, status, output, elapsedMs, approvalRequestId } = chunk;
   const command = (toolArgs?.command as string) || '';
   const [expanded, setExpanded] = useState(false);
 
@@ -17,17 +26,57 @@ function ShellExecution({ chunk }: ToolExecutionProps) {
   const displayedOutput = expanded ? output : lines.slice(0, MAX_OUTPUT_LINES).join('\n');
   const hiddenLines = lines.length - MAX_OUTPUT_LINES;
 
-  const statusDot = {
-    running: 'bg-yellow-400 animate-pulse',
-    success: 'bg-green-400',
-    error: 'bg-red-400',
-  }[status];
-
   const formatElapsed = (ms?: number) => {
     if (!ms) return '';
     if (ms < 1000) return `${ms}ms`;
     return `${(ms / 1000).toFixed(1)}s`;
   };
+
+  if (status === 'pending-approval' && approvalRequestId) {
+    return (
+      <div className="my-3 bg-[#0d1117] border border-[#30363d] rounded-lg overflow-hidden">
+        <div className="flex items-center gap-2 px-3 py-2 bg-[#161b22] border-b border-[#30363d]">
+          <span className="text-gray-400 text-sm font-medium">Run command: execute</span>
+        </div>
+        <div className="px-3 py-2">
+          <div className="flex items-start gap-2 font-mono text-sm">
+            <span className="text-purple-400 select-none">$</span>
+            <span className="text-cyan-400 break-all">{command}</span>
+          </div>
+        </div>
+        <div className="flex items-center justify-between px-3 py-2 border-t border-[#30363d]">
+          <span className="text-gray-500 text-xs">Run in Sandbox</span>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => onReject?.(approvalRequestId)}
+              className="px-3 py-1 text-sm text-gray-400 hover:text-gray-200"
+            >
+              Skip
+            </button>
+            <button
+              onClick={() => onAutoApprove?.(approvalRequestId)}
+              className="px-3 py-1.5 text-sm text-gray-200 bg-[#21262d] hover:bg-[#30363d] rounded-md border border-[#30363d]"
+            >
+              Allowlist &apos;{extractCommandName(command)}&apos;
+            </button>
+            <button
+              onClick={() => onApprove?.(approvalRequestId)}
+              className="px-3 py-1.5 text-sm text-white bg-[#238636] hover:bg-[#2ea043] rounded-md"
+            >
+              Run
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const statusDot = {
+    'pending-approval': 'bg-yellow-400 animate-pulse',
+    running: 'bg-yellow-400 animate-pulse',
+    success: 'bg-green-400',
+    error: 'bg-red-400',
+  }[status];
 
   return (
     <div className="my-3 bg-[#0d1117] border border-[#30363d] rounded-lg overflow-hidden">
@@ -59,7 +108,7 @@ function ShellExecution({ chunk }: ToolExecutionProps) {
           <span className="text-purple-400 select-none">$</span>
           <span className="text-gray-200 break-all">{command}</span>
         </div>
-        {output && status !== 'running' && (
+        {output && status !== 'running' && status !== 'pending-approval' && (
           <div className="mt-2 pt-2 border-t border-[#30363d]">
             <pre className="font-mono text-xs text-gray-400 whitespace-pre-wrap break-all overflow-x-auto">
               {displayedOutput}
@@ -99,16 +148,54 @@ function ShellExecution({ chunk }: ToolExecutionProps) {
   );
 }
 
-function GenericToolExecution({ chunk }: ToolExecutionProps) {
-  const { toolName, status, output, elapsedMs } = chunk;
+function GenericToolExecution({ chunk, onApprove, onReject, onAutoApprove }: ToolExecutionProps) {
+  const { toolName, toolArgs, status, output, elapsedMs, approvalRequestId } = chunk;
+
+  if (status === 'pending-approval' && approvalRequestId) {
+    const filePath = (toolArgs?.filePath as string) || (toolArgs?.path as string) || '';
+    return (
+      <div className="my-3 bg-[#0d1117] border border-[#30363d] rounded-lg overflow-hidden">
+        <div className="flex items-center gap-2 px-3 py-2 bg-[#161b22] border-b border-[#30363d]">
+          <span className="text-gray-400 text-sm font-medium">
+            {toolName === 'write_file' ? 'Write file' : 'Edit file'}: {toolName}
+          </span>
+        </div>
+        <div className="px-3 py-2">
+          <div className="text-sm text-gray-300 font-mono">{filePath}</div>
+        </div>
+        <div className="flex items-center justify-end gap-2 px-3 py-2 border-t border-[#30363d]">
+          <button
+            onClick={() => onReject?.(approvalRequestId)}
+            className="px-3 py-1 text-sm text-gray-400 hover:text-gray-200"
+          >
+            Skip
+          </button>
+          <button
+            onClick={() => onAutoApprove?.(approvalRequestId)}
+            className="px-3 py-1.5 text-sm text-gray-200 bg-[#21262d] hover:bg-[#30363d] rounded-md border border-[#30363d]"
+          >
+            Auto-approve
+          </button>
+          <button
+            onClick={() => onApprove?.(approvalRequestId)}
+            className="px-3 py-1.5 text-sm text-white bg-[#238636] hover:bg-[#2ea043] rounded-md"
+          >
+            Approve
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   const statusIcon = {
+    'pending-approval': <span className="animate-spin inline-block">⟳</span>,
     running: <span className="animate-spin inline-block">⟳</span>,
     success: <span className="text-cyan-400">✔</span>,
     error: <span className="text-red-400">✖</span>,
   }[status];
 
   const statusColor = {
+    'pending-approval': 'text-yellow-400',
     running: 'text-yellow-400',
     success: 'text-cyan-400',
     error: 'text-red-400',
@@ -143,9 +230,9 @@ function GenericToolExecution({ chunk }: ToolExecutionProps) {
   );
 }
 
-export function ToolExecution({ chunk }: ToolExecutionProps) {
+export function ToolExecution({ chunk, onApprove, onReject, onAutoApprove }: ToolExecutionProps) {
   if (chunk.toolName === 'execute') {
-    return <ShellExecution chunk={chunk} />;
+    return <ShellExecution chunk={chunk} onApprove={onApprove} onReject={onReject} onAutoApprove={onAutoApprove} />;
   }
-  return <GenericToolExecution chunk={chunk} />;
+  return <GenericToolExecution chunk={chunk} onApprove={onApprove} onReject={onReject} onAutoApprove={onAutoApprove} />;
 }

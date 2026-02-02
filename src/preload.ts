@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import type { StreamEvent } from './types';
+import type { StreamEvent, ApprovalResponse } from './types';
 
 contextBridge.exposeInMainWorld('versions', {
   node: () => process.versions.node,
@@ -21,6 +21,9 @@ contextBridge.exposeInMainWorld('agent', {
     };
     ipcRenderer.on('agent:stream-event', handler);
     return () => ipcRenderer.removeListener('agent:stream-event', handler);
+  },
+  respondToApproval: (response: ApprovalResponse) => {
+    ipcRenderer.send('agent:approval-response', response);
   },
 });
 

@@ -22,6 +22,8 @@ export function App() {
     appendStreamToken,
     addToolStart,
     updateToolEnd,
+    updateToolStatus,
+    setAutoApproveSession,
     finalizeStream,
     abortStream,
   } = useStore();
@@ -53,10 +55,13 @@ export function App() {
           appendStreamToken(event.sessionId, event.token);
           break;
         case 'tool-start':
-          addToolStart(event.sessionId, event.toolCallId, event.toolName, event.toolArgs);
+          addToolStart(event.sessionId, event.toolCallId, event.toolName, event.toolArgs, event.approvalRequestId);
           break;
         case 'tool-end':
           updateToolEnd(event.sessionId, event.toolCallId, event.output, event.error, event.elapsedMs);
+          break;
+        case 'tool-status-update':
+          updateToolStatus(event.sessionId, event.toolCallId, event.status);
           break;
         case 'done':
           finalizeStream(event.sessionId);
@@ -67,7 +72,7 @@ export function App() {
       }
     });
     return unsubscribe;
-  }, [appendStreamToken, addToolStart, updateToolEnd, finalizeStream, abortStream]);
+  }, [appendStreamToken, addToolStart, updateToolEnd, updateToolStatus, finalizeStream, abortStream]);
 
   const handleOpenFolder = useCallback(async () => {
     await window.storage.openProject();
@@ -87,6 +92,21 @@ export function App() {
     }
     closeSession(id);
   }, [sessions, closeSession]);
+
+  const handleApprove = useCallback((approvalRequestId: string) => {
+    window.agent.respondToApproval({ requestId: approvalRequestId, decision: 'approve' });
+  }, []);
+
+  const handleReject = useCallback((approvalRequestId: string) => {
+    window.agent.respondToApproval({ requestId: approvalRequestId, decision: 'reject' });
+  }, []);
+
+  const handleAutoApprove = useCallback((approvalRequestId: string) => {
+    if (activeSessionId) {
+      setAutoApproveSession(activeSessionId, true);
+    }
+    window.agent.respondToApproval({ requestId: approvalRequestId, decision: 'auto-approve' });
+  }, [activeSessionId, setAutoApproveSession]);
 
   const handleSubmit = useCallback(
     async (query: string) => {
@@ -161,6 +181,9 @@ export function App() {
       <MessageView
         messages={activeSession.messages}
         streamingContent={activeSession.streamingContent}
+        onApprove={handleApprove}
+        onReject={handleReject}
+        onAutoApprove={handleAutoApprove}
       />
       <div className="px-4 pb-4">
         <div className="max-w-4xl mx-auto">

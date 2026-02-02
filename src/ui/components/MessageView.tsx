@@ -3,12 +3,18 @@ import { CodeBlock } from './CodeBlock';
 import { ToolExecution } from './ToolExecution';
 import type { Chunk, Message } from '../../types';
 
-interface MessageViewProps {
+interface ApprovalCallbacks {
+  onApprove?: (approvalRequestId: string) => void;
+  onReject?: (approvalRequestId: string) => void;
+  onAutoApprove?: (approvalRequestId: string) => void;
+}
+
+interface MessageViewProps extends ApprovalCallbacks {
   messages: Message[];
   streamingContent: string | null;
 }
 
-function ChunkRenderer({ chunk }: { chunk: Chunk }) {
+function ChunkRenderer({ chunk, ...callbacks }: { chunk: Chunk } & ApprovalCallbacks) {
   switch (chunk.kind) {
     case 'text':
       return <span className="text-gray-200 whitespace-pre-wrap leading-relaxed">{chunk.text}</span>;
@@ -25,7 +31,14 @@ function ChunkRenderer({ chunk }: { chunk: Chunk }) {
         </ul>
       );
     case 'tool-execution':
-      return <ToolExecution chunk={chunk} />;
+      return (
+        <ToolExecution
+          chunk={chunk}
+          onApprove={callbacks.onApprove}
+          onReject={callbacks.onReject}
+          onAutoApprove={callbacks.onAutoApprove}
+        />
+      );
   }
 }
 
@@ -67,13 +80,13 @@ function MessageBubble({ message, isStreaming }: { message: Message; isStreaming
   return <AgentMessage message={message} isStreaming={isStreaming} />;
 }
 
-function StreamingContent({ content, toolChunks }: { content: string; toolChunks: Chunk[] }) {
+function StreamingContent({ content, toolChunks, ...callbacks }: { content: string; toolChunks: Chunk[] } & ApprovalCallbacks) {
   return (
     <div className="mb-6">
       <div className="text-gray-500 text-sm mb-2">Thinking...</div>
       <div className="space-y-4">
         {toolChunks.map((chunk, i) => (
-          <ChunkRenderer key={`tool-${i}`} chunk={chunk} />
+          <ChunkRenderer key={`tool-${i}`} chunk={chunk} {...callbacks} />
         ))}
         {content && (
           <span className="text-gray-200 whitespace-pre-wrap leading-relaxed">
@@ -89,7 +102,7 @@ function StreamingContent({ content, toolChunks }: { content: string; toolChunks
   );
 }
 
-export function MessageView({ messages, streamingContent }: MessageViewProps) {
+export function MessageView({ messages, streamingContent, onApprove, onReject, onAutoApprove }: MessageViewProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const isStreaming = streamingContent !== null;
 
@@ -110,7 +123,13 @@ export function MessageView({ messages, streamingContent }: MessageViewProps) {
           <MessageBubble key={message.id} message={message} />
         ))}
         {isStreaming && (
-          <StreamingContent content={streamingContent || ''} toolChunks={toolChunks} />
+          <StreamingContent
+            content={streamingContent || ''}
+            toolChunks={toolChunks}
+            onApprove={onApprove}
+            onReject={onReject}
+            onAutoApprove={onAutoApprove}
+          />
         )}
       </div>
     </div>

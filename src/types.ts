@@ -23,6 +23,7 @@ declare global {
       stream: (sessionId: string, message: string) => void;
       cancel: (sessionId: string) => void;
       onStreamEvent: (callback: (event: StreamEvent) => void) => () => void;
+      respondToApproval: (response: ApprovalResponse) => void;
     };
     storage: {
       getSettings: () => Promise<GlobalSettings>;
@@ -45,7 +46,7 @@ export type Author = 'user' | 'agent' | 'system' | 'tool';
 
 export type ChunkKind = 'text' | 'code' | 'error' | 'list' | 'tool-execution';
 
-export type ToolStatus = 'running' | 'success' | 'error';
+export type ToolStatus = 'pending-approval' | 'running' | 'success' | 'error';
 
 export interface ToolExecutionChunk {
   kind: 'tool-execution';
@@ -55,6 +56,7 @@ export interface ToolExecutionChunk {
   status: ToolStatus;
   output?: string;
   elapsedMs?: number;
+  approvalRequestId?: string;
 }
 
 export interface TextChunk {
@@ -114,6 +116,8 @@ export interface Session {
   busy: boolean;
   createdAt: number;
   updatedAt: number;
+  autoApproveSession: boolean;
+  pendingApprovals: Record<string, ApprovalRequest>;
 }
 
 export interface ToolStartEvent {
@@ -122,6 +126,7 @@ export interface ToolStartEvent {
   toolCallId: string;
   toolName: string;
   toolArgs: Record<string, unknown>;
+  approvalRequestId?: string;
 }
 
 export interface ToolEndEvent {
@@ -133,9 +138,39 @@ export interface ToolEndEvent {
   elapsedMs: number;
 }
 
+export interface ToolStatusUpdateEvent {
+  type: 'tool-status-update';
+  sessionId: string;
+  toolCallId: string;
+  status: ToolStatus;
+}
+
+export interface ApprovalRequest {
+  id: string;
+  sessionId: string;
+  toolCallId: string;
+  toolName: string;
+  toolArgs: Record<string, unknown>;
+}
+
+export type ApprovalDecision = 'approve' | 'reject' | 'auto-approve';
+
+export interface ApprovalResponse {
+  requestId: string;
+  decision: ApprovalDecision;
+}
+
+export interface ApprovalRequestEvent {
+  type: 'approval-request';
+  sessionId: string;
+  request: ApprovalRequest;
+}
+
 export type StreamEvent =
   | { type: 'token'; sessionId: string; token: string }
   | { type: 'done'; sessionId: string }
   | { type: 'error'; sessionId: string; error: string }
   | ToolStartEvent
-  | ToolEndEvent;
+  | ToolEndEvent
+  | ToolStatusUpdateEvent
+  | ApprovalRequestEvent;

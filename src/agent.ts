@@ -2,9 +2,14 @@ import { createDeepAgent } from "deepagents";
 import { LocalSandboxBackend } from "./backends/local-sandbox";
 import { ChatAnthropic } from "@langchain/anthropic";
 import { ipcMain, BrowserWindow } from "electron";
+import { v4 as uuidv4 } from "uuid";
 import "dotenv/config";
+import type { ApprovalDecision, ApprovalResponse } from "./types";
 
 const sessionControllers = new Map<string, AbortController>();
+const pendingApprovals = new Map<string, { resolve: (decision: ApprovalDecision) => void }>();
+
+const TOOLS_REQUIRING_APPROVAL = ['execute', 'write_file', 'edit_file'];
 
 function createAgent(rootDir?: string) {
   const model = new ChatAnthropic({
@@ -125,7 +130,6 @@ export function setupAgentIPC(mainWindow: BrowserWindow, getFolder: () => string
           const toolName = event.name;
           let toolArgs = event.data?.input || {};
 
-          // Parse JSON-stringified input if needed
           if (toolArgs.input && typeof toolArgs.input === 'string') {
             try {
               toolArgs = JSON.parse(toolArgs.input);
@@ -136,13 +140,43 @@ export function setupAgentIPC(mainWindow: BrowserWindow, getFolder: () => string
 
           toolTimers.set(toolCallId, Date.now());
 
+          const requiresApproval = TOOLS_REQUIRING_APPROVAL.includes(toolName);
+          const approvalRequestId = requiresApproval ? uuidv4() : undefined;
+
           mainWindow.webContents.send('agent:stream-event', {
             type: 'tool-start',
             sessionId,
             toolCallId,
             toolName,
             toolArgs,
+            approvalRequestId,
           });
+
+          if (requiresApproval && approvalRequestId) {
+            const decision = await new Promise<ApprovalDecision>((resolve) => {
+              pendingApprovals.set(approvalRequestId, { resolve });
+            });
+
+            if (decision === 'reject') {
+              controller.abort();
+              mainWindow.webContents.send('agent:stream-event', {
+                type: 'tool-end',
+                sessionId,
+                toolCallId,
+                output: 'Tool execution rejected by user',
+                error: 'rejected',
+                elapsedMs: 0,
+              });
+              break;
+            }
+
+            mainWindow.webContents.send('agent:stream-event', {
+              type: 'tool-status-update',
+              sessionId,
+              toolCallId,
+              status: 'running',
+            });
+          }
         }
 
         if (event.event === "on_tool_end") {
@@ -210,6 +244,14 @@ export function setupAgentIPC(mainWindow: BrowserWindow, getFolder: () => string
     if (controller) {
       controller.abort();
       sessionControllers.delete(sessionId);
+    }
+  });
+
+  ipcMain.on("agent:approval-response", (_event, response: ApprovalResponse) => {
+    const pending = pendingApprovals.get(response.requestId);
+    if (pending) {
+      pending.resolve(response.decision);
+      pendingApprovals.delete(response.requestId);
     }
   });
 }
