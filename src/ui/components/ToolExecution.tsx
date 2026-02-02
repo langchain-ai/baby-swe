@@ -18,26 +18,34 @@ function formatElapsed(ms?: number): string {
 }
 
 function getToolDisplayName(toolName: string, toolArgs: Record<string, unknown>): string {
+  const getShortPath = (path: string) => path?.split('/').pop() || path || 'file';
+
   switch (toolName) {
-    case 'execute':
-      return `Bash(${(toolArgs?.command as string)?.slice(0, 50) || 'command'}${(toolArgs?.command as string)?.length > 50 ? '...' : ''})`;
+    case 'execute': {
+      const cmd = (toolArgs?.command as string) || '';
+      return `Bash(${cmd.slice(0, 40)}${cmd.length > 40 ? '...' : ''})`;
+    }
     case 'task':
-      return `${(toolArgs?.subagent_type as string) || 'Task'}(${(toolArgs?.description as string)?.slice(0, 40) || 'task'}${(toolArgs?.description as string)?.length > 40 ? '...' : ''})`;
+      return `${(toolArgs?.subagent_type as string) || 'Task'}(${(toolArgs?.description as string)?.slice(0, 30) || 'task'}${(toolArgs?.description as string)?.length > 30 ? '...' : ''})`;
     case 'write_file':
-      return `Write(${(toolArgs?.filePath as string) || (toolArgs?.path as string) || 'file'})`;
+      return `Write(${getShortPath((toolArgs?.filePath as string) || (toolArgs?.path as string))})`;
     case 'edit_file':
-      return `Edit(${(toolArgs?.filePath as string) || (toolArgs?.path as string) || 'file'})`;
+      return `Edit(${getShortPath((toolArgs?.filePath as string) || (toolArgs?.path as string))})`;
     case 'read_file':
-      return `Read(${(toolArgs?.path as string) || 'file'})`;
+      return `Read(${getShortPath(toolArgs?.path as string)})`;
+    case 'glob':
+    case 'search':
+      return `Search(${((toolArgs?.pattern as string) || '').slice(0, 25)})`;
+    case 'grep':
+      return `Grep(${((toolArgs?.pattern as string) || '').slice(0, 25)})`;
     case 'web_search':
-      return `Search(${(toolArgs?.query as string)?.slice(0, 30) || 'query'}${(toolArgs?.query as string)?.length > 30 ? '...' : ''})`;
+      return `WebSearch(${((toolArgs?.query as string) || '').slice(0, 25)})`;
     case 'fetch_url':
-      return `Fetch(${(toolArgs?.url as string)?.slice(0, 40) || 'url'})`;
+      return `Fetch(${((toolArgs?.url as string) || '').slice(0, 30)})`;
     case 'write_todos':
-      const todos = (toolArgs?.todos as Array<unknown>) || [];
-      return `TodoWrite(${todos.length} items)`;
+      return `TodoWrite(${((toolArgs?.todos as Array<unknown>) || []).length} items)`;
     default:
-      return `${toolName}(${JSON.stringify(toolArgs).slice(0, 30)}...)`;
+      return toolName;
   }
 }
 
@@ -173,16 +181,16 @@ export function ToolExecution({ chunk, onApprove, onReject, onAutoApprove }: Too
   const summary = getToolSummary(toolName, toolArgs || {}, output, status);
 
   return (
-    <div className="my-2 font-mono text-sm">
+    <div className="my-1 font-mono text-xs">
       <div className="flex items-center gap-2">
         {statusIcon}
-        <span className="text-gray-200">{displayName}</span>
+        <span className="text-gray-300">{displayName}</span>
         {elapsedMs && status !== 'running' && (
-          <span className="text-gray-600 text-xs">{formatElapsed(elapsedMs)}</span>
+          <span className="text-gray-600">{formatElapsed(elapsedMs)}</span>
         )}
       </div>
 
-      <div className="ml-3 border-l border-gray-700 pl-3 mt-1">
+      <div className="ml-3 border-l border-gray-700 pl-3 mt-0.5">
         {status === 'pending-approval' && approvalRequestId ? (
           <>
             {showDiff && <DiffView diffData={diffData} />}
@@ -195,10 +203,10 @@ export function ToolExecution({ chunk, onApprove, onReject, onAutoApprove }: Too
             />
           </>
         ) : status === 'running' ? (
-          <span className="text-gray-500 text-xs">Running...</span>
+          <span className="text-gray-500">Running...</span>
         ) : (
           <>
-            <span className="text-gray-500 text-xs">{summary}</span>
+            <span className="text-gray-500">{summary}</span>
             {showOutput && (
               <ToolOutput output={output} expanded={expanded} onToggle={() => setExpanded(!expanded)} />
             )}

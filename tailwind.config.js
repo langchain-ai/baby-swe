@@ -8,6 +8,9 @@ module.exports = {
           950: '#0a0a0f',
         },
       },
+      fontFamily: {
+        mono: ['JetBrains Mono', 'ui-monospace', 'SFMono-Regular', 'SF Mono', 'Menlo', 'Consolas', 'monospace'],
+      },
     },
   },
   plugins: [],

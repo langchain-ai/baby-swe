@@ -3,31 +3,75 @@ import { CodeBlock } from './CodeBlock';
 import { Markdown } from './Markdown';
 import { ToolExecution } from './ToolExecution';
 import { SubagentGroup } from './SubagentGroup';
+import { ToolGroup } from './ToolGroup';
 import { TodoList } from './TodoList';
 import type { Chunk, Message, ToolExecutionChunk, TodoItem } from '../../types';
 
-type GroupedItem = Chunk | { type: 'subagent-group'; tasks: ToolExecutionChunk[] };
+type ToolGroupType = 'exploring' | 'writing' | 'executing' | 'subagent' | 'other';
+
+type GroupedItem =
+  | Chunk
+  | { type: 'subagent-group'; tasks: ToolExecutionChunk[] }
+  | { type: 'tool-group'; groupType: ToolGroupType; tools: ToolExecutionChunk[] };
+
+function getToolGroupType(toolName: string): ToolGroupType {
+  switch (toolName) {
+    case 'read_file':
+    case 'glob':
+    case 'search':
+    case 'grep':
+    case 'list_dir':
+      return 'exploring';
+    case 'write_file':
+    case 'edit_file':
+      return 'writing';
+    case 'execute':
+      return 'executing';
+    case 'task':
+      return 'subagent';
+    default:
+      return 'other';
+  }
+}
 
 function groupChunksForRender(chunks: Chunk[]): GroupedItem[] {
   const result: GroupedItem[] = [];
-  let taskGroup: ToolExecutionChunk[] = [];
+  let currentToolGroup: ToolExecutionChunk[] = [];
+  let currentGroupType: ToolGroupType | null = null;
+
+  const flushToolGroup = () => {
+    if (currentToolGroup.length > 0 && currentGroupType) {
+      if (currentGroupType === 'subagent') {
+        result.push({ type: 'subagent-group', tasks: [...currentToolGroup] });
+      } else {
+        result.push({ type: 'tool-group', groupType: currentGroupType, tools: [...currentToolGroup] });
+      }
+      currentToolGroup = [];
+      currentGroupType = null;
+    }
+  };
 
   for (const chunk of chunks) {
-    if (chunk.kind === 'tool-execution' && chunk.toolName === 'task') {
-      taskGroup.push(chunk);
-    } else {
-      if (taskGroup.length > 0) {
-        result.push({ type: 'subagent-group', tasks: [...taskGroup] });
-        taskGroup = [];
+    if (chunk.kind === 'tool-execution') {
+      const groupType = getToolGroupType(chunk.toolName);
+
+      if (currentGroupType === null) {
+        currentGroupType = groupType;
+        currentToolGroup.push(chunk);
+      } else if (currentGroupType === groupType) {
+        currentToolGroup.push(chunk);
+      } else {
+        flushToolGroup();
+        currentGroupType = groupType;
+        currentToolGroup.push(chunk);
       }
+    } else {
+      flushToolGroup();
       result.push(chunk);
     }
   }
 
-  if (taskGroup.length > 0) {
-    result.push({ type: 'subagent-group', tasks: taskGroup });
-  }
-
+  flushToolGroup();
   return result;
 }
 
@@ -107,15 +151,15 @@ function AgentMessage({
 
   if (groupedItems.length === 0 && isStreaming) {
     return (
-      <div className="flex items-start gap-2 my-2 font-mono">
+      <div className="flex items-start gap-2 my-1 font-mono">
         <span className="text-cyan-400 select-none">●</span>
-        <span className="text-gray-400">...</span>
+        <span className="text-gray-400 text-sm">...</span>
       </div>
     );
   }
 
   return (
-    <div className="my-2 space-y-2">
+    <div className="my-1 space-y-1">
       {groupedItems.map((item, i) => {
         if ('type' in item && item.type === 'subagent-group') {
           return (
@@ -128,18 +172,21 @@ function AgentMessage({
           );
         }
 
-        const chunk = item as Chunk;
-        const isLastItem = i === groupedItems.length - 1;
-
-        if (chunk.kind === 'tool-execution') {
+        if ('type' in item && item.type === 'tool-group') {
           return (
-            <ChunkRenderer
-              key={i}
-              chunk={chunk}
-              {...callbacks}
+            <ToolGroup
+              key={`tool-group-${i}`}
+              groupType={item.groupType as 'exploring' | 'writing' | 'executing' | 'other'}
+              tools={item.tools}
+              onApprove={callbacks.onApprove}
+              onReject={callbacks.onReject}
+              onAutoApprove={callbacks.onAutoApprove}
             />
           );
         }
+
+        const chunk = item as Chunk;
+        const isLastItem = i === groupedItems.length - 1;
 
         return (
           <div key={i} className="flex items-start gap-2 font-mono">
