@@ -9,9 +9,15 @@ function messagesToChatMessages(messages: Message[]): ChatMessage[] {
   for (const msg of messages) {
     if (msg.author === 'user' || msg.author === 'agent') {
       const textContent = msg.chunks
-        .filter((c) => c.kind === 'text')
-        .map((c) => (c as { text: string }).text)
-        .join('\n');
+        .map((c) => {
+          if (c.kind === 'text') return c.text;
+          if (c.kind === 'code') {
+            const language = c.language ? c.language : '';
+            return `\n\`\`\`${language}\n${c.text}\n\`\`\`\n`;
+          }
+          return '';
+        })
+        .join('');
       if (textContent) {
         chatMessages.push({
           role: msg.author === 'user' ? 'user' : 'assistant',
@@ -283,7 +289,7 @@ export function App() {
       <HeaderBar />
       <MessageView
         messages={activeSession.messages}
-        streamingContent={activeSession.streamingContent}
+        isStreaming={activeSession.isStreaming}
         todos={activeSession.todos}
         onApprove={handleApprove}
         onReject={handleReject}

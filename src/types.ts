@@ -138,7 +138,6 @@ export interface Session {
   id: string;
   title: string;
   messages: Message[];
-  streamingContent: string | null;
   streamingMessageId: string | null;
   isStreaming: boolean;
   busy: boolean;

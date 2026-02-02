@@ -1,5 +1,6 @@
-import { useRef, useEffect } from 'react';
+import { useCallback } from 'react';
 import { CodeBlock } from './CodeBlock';
+import { Markdown } from './Markdown';
 import { ToolExecution } from './ToolExecution';
 import { SubagentGroup } from './SubagentGroup';
 import { TodoList } from './TodoList';
@@ -38,14 +39,27 @@ interface ApprovalCallbacks {
 
 interface MessageViewProps extends ApprovalCallbacks {
   messages: Message[];
-  streamingContent: string | null;
+  isStreaming: boolean;
   todos?: TodoItem[];
 }
 
-function ChunkRenderer({ chunk, ...callbacks }: { chunk: Chunk } & ApprovalCallbacks) {
+function StreamingCursor() {
+  return <span className="inline-block w-2 h-4 bg-cyan-500 ml-0.5 align-baseline animate-pulse" />;
+}
+
+function ChunkRenderer({
+  chunk,
+  showCursor,
+  ...callbacks
+}: { chunk: Chunk; showCursor?: boolean } & ApprovalCallbacks) {
   switch (chunk.kind) {
     case 'text':
-      return <span className="text-gray-200 whitespace-pre-wrap leading-relaxed">{chunk.text}</span>;
+      return (
+        <div className="text-gray-200 leading-relaxed">
+          <Markdown content={chunk.text} />
+          {showCursor && <StreamingCursor />}
+        </div>
+      );
     case 'code':
       return <CodeBlock text={chunk.text} language={chunk.language} />;
     case 'error':
@@ -80,7 +94,11 @@ function UserMessage({ message }: { message: Message }) {
   );
 }
 
-function AgentMessage({ message, isStreaming }: { message: Message; isStreaming?: boolean }) {
+function AgentMessage({
+  message,
+  isStreaming,
+  ...callbacks
+}: { message: Message; isStreaming?: boolean } & ApprovalCallbacks) {
   const hasContent = message.chunks.length > 0;
   const groupedItems = groupChunksForRender(message.chunks);
 
@@ -93,9 +111,25 @@ function AgentMessage({ message, isStreaming }: { message: Message; isStreaming?
         {hasContent ? (
           groupedItems.map((item, i) => {
             if ('type' in item && item.type === 'subagent-group') {
-              return <SubagentGroup key={`subagent-group-${i}`} tasks={item.tasks} />;
+              return (
+                <SubagentGroup
+                  key={`subagent-group-${i}`}
+                  tasks={item.tasks}
+                  onApprove={callbacks.onApprove}
+                  onReject={callbacks.onReject}
+                />
+              );
             }
-            return <ChunkRenderer key={i} chunk={item as Chunk} />;
+            const isLastItem = i === groupedItems.length - 1;
+            const chunk = item as Chunk;
+            return (
+              <ChunkRenderer
+                key={i}
+                chunk={chunk}
+                showCursor={isStreaming && isLastItem && chunk.kind === 'text'}
+                {...callbacks}
+              />
+            );
           })
         ) : isStreaming ? (
           <span className="text-gray-400">...</span>
@@ -105,77 +139,40 @@ function AgentMessage({ message, isStreaming }: { message: Message; isStreaming?
   );
 }
 
-function MessageBubble({ message, isStreaming }: { message: Message; isStreaming?: boolean }) {
+function MessageBubble({
+  message,
+  isStreaming,
+  ...callbacks
+}: { message: Message; isStreaming?: boolean } & ApprovalCallbacks) {
   if (message.author === 'user') {
     return <UserMessage message={message} />;
   }
-  return <AgentMessage message={message} isStreaming={isStreaming} />;
+  return <AgentMessage message={message} isStreaming={isStreaming} {...callbacks} />;
 }
 
-function StreamingContent({ content, toolChunks, ...callbacks }: { content: string; toolChunks: Chunk[] } & ApprovalCallbacks) {
-  const groupedItems = groupChunksForRender(toolChunks);
-
-  return (
-    <div className="mb-6">
-      <div className="text-gray-500 text-sm mb-2">Thinking...</div>
-      <div className="space-y-4">
-        {groupedItems.map((item, i) => {
-          if ('type' in item && item.type === 'subagent-group') {
-            return (
-              <SubagentGroup
-                key={`subagent-group-${i}`}
-                tasks={item.tasks}
-                onApprove={callbacks.onApprove}
-                onReject={callbacks.onReject}
-              />
-            );
-          }
-          return <ChunkRenderer key={`tool-${i}`} chunk={item as Chunk} {...callbacks} />;
-        })}
-        {content && (
-          <span className="text-gray-200 whitespace-pre-wrap leading-relaxed">
-            {content}
-            <span className="inline-block w-2 h-4 bg-cyan-500 ml-0.5 animate-pulse" />
-          </span>
-        )}
-        {!content && toolChunks.length === 0 && (
-          <span className="text-gray-400">...</span>
-        )}
-      </div>
-    </div>
+export function MessageView({ messages, isStreaming, todos, onApprove, onReject, onAutoApprove }: MessageViewProps) {
+  const setScrollRef = useCallback(
+    (node: HTMLDivElement | null) => {
+      if (!node) return;
+      node.scrollTop = node.scrollHeight;
+    },
+    [messages, isStreaming, todos]
   );
-}
-
-export function MessageView({ messages, streamingContent, todos, onApprove, onReject, onAutoApprove }: MessageViewProps) {
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const isStreaming = streamingContent !== null;
-
-  useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    }
-  }, [messages, streamingContent, todos]);
-
-  const displayMessages = isStreaming ? messages.slice(0, -1) : messages;
-  const streamingMessage = isStreaming ? messages[messages.length - 1] : null;
-  const toolChunks = streamingMessage?.chunks.filter(c => c.kind === 'tool-execution') || [];
 
   return (
-    <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4">
+    <div ref={setScrollRef} className="flex-1 overflow-y-auto px-4 py-4">
       <div className="max-w-4xl mx-auto">
         {todos && todos.length > 0 && <TodoList todos={todos} />}
-        {displayMessages.map((message) => (
-          <MessageBubble key={message.id} message={message} />
-        ))}
-        {isStreaming && (
-          <StreamingContent
-            content={streamingContent || ''}
-            toolChunks={toolChunks}
+        {messages.map((message, index) => (
+          <MessageBubble
+            key={message.id}
+            message={message}
+            isStreaming={isStreaming && index === messages.length - 1}
             onApprove={onApprove}
             onReject={onReject}
             onAutoApprove={onAutoApprove}
           />
-        )}
+        ))}
       </div>
     </div>
   );

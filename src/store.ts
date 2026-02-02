@@ -87,7 +87,6 @@ export const useStore = create<AppState>((set, get) => ({
       id,
       title: 'New Chat',
       messages: [],
-      streamingContent: null,
       streamingMessageId: null,
       isStreaming: false,
       busy: false,
@@ -126,7 +125,6 @@ export const useStore = create<AppState>((set, get) => ({
             ...session,
             messages: [],
             title: 'New Chat',
-            streamingContent: null,
             streamingMessageId: null,
             isStreaming: false,
             busy: false,
@@ -264,7 +262,6 @@ export const useStore = create<AppState>((set, get) => ({
           [sessionId]: {
             ...session,
             messages: [...session.messages, placeholderMessage],
-            streamingContent: '',
             streamingMessageId: messageId,
             isStreaming: true,
             busy: true,
@@ -279,15 +276,27 @@ export const useStore = create<AppState>((set, get) => ({
   appendStreamToken: (sessionId, token) => {
     set((state) => {
       const session = state.sessions[sessionId];
-      if (!session || !session.isStreaming) return state;
+      if (!session || !session.streamingMessageId) return state;
+
+      const newMessages = session.messages.map((msg) => {
+        if (msg.id !== session.streamingMessageId) return msg;
+        const updatedChunks = [...msg.chunks];
+        const lastChunk = updatedChunks[updatedChunks.length - 1];
+        if (lastChunk?.kind === 'text') {
+          updatedChunks[updatedChunks.length - 1] = {
+            ...lastChunk,
+            text: lastChunk.text + token,
+          };
+        } else {
+          updatedChunks.push({ kind: 'text', text: token });
+        }
+        return { ...msg, chunks: updatedChunks };
+      });
 
       return {
         sessions: {
           ...state.sessions,
-          [sessionId]: {
-            ...session,
-            streamingContent: (session.streamingContent || '') + token,
-          },
+          [sessionId]: { ...session, messages: newMessages },
         },
       };
     });
@@ -354,21 +363,11 @@ export const useStore = create<AppState>((set, get) => ({
     set((state) => {
       const session = state.sessions[sessionId];
       if (!session || !session.streamingMessageId) return state;
-
-      const content = session.streamingContent || '';
-      const textChunks = parseContentToChunks(content);
-
-      const newMessages = session.messages.map((msg) => {
-        if (msg.id !== session.streamingMessageId) return msg;
-        // Preserve tool execution chunks and add text chunks
-        const toolChunks = msg.chunks.filter(c => c.kind === 'tool-execution');
-        return { ...msg, chunks: [...toolChunks, ...textChunks] };
-      });
+      const newMessages = session.messages;
 
       const updatedSession: Session = {
         ...session,
         messages: newMessages,
-        streamingContent: null,
         streamingMessageId: null,
         isStreaming: false,
         busy: false,
@@ -395,22 +394,17 @@ export const useStore = create<AppState>((set, get) => ({
 
       let newMessages = session.messages;
       if (session.streamingMessageId) {
-        const content = session.streamingContent || '';
-        const chunks: Chunk[] = content
-          ? parseContentToChunks(content)
-          : [];
         if (error) {
-          chunks.push({ kind: 'error', text: error });
+          newMessages = session.messages.map((msg) => {
+            if (msg.id !== session.streamingMessageId) return msg;
+            return { ...msg, chunks: [...msg.chunks, { kind: 'error', text: error }] };
+          });
         }
-        newMessages = session.messages.map((msg) =>
-          msg.id === session.streamingMessageId ? { ...msg, chunks } : msg
-        );
       }
 
       const updatedSession: Session = {
         ...session,
         messages: newMessages,
-        streamingContent: null,
         streamingMessageId: null,
         isStreaming: false,
         busy: false,
@@ -628,37 +622,3 @@ function syncSessionToThreads(threads: Thread[], session: Session, projectId?: s
   return [thread, ...threads];
 }
 
-function parseContentToChunks(content: string): Chunk[] {
-  const chunks: Chunk[] = [];
-  const codeBlockRegex = /```(\w+)?\n([\s\S]*?)```/g;
-  let lastIndex = 0;
-  let match;
-
-  while ((match = codeBlockRegex.exec(content)) !== null) {
-    if (match.index > lastIndex) {
-      const textBefore = content.slice(lastIndex, match.index).trim();
-      if (textBefore) {
-        chunks.push({ kind: 'text', text: textBefore });
-      }
-    }
-    chunks.push({
-      kind: 'code',
-      language: match[1] || undefined,
-      text: match[2].trim(),
-    });
-    lastIndex = match.index + match[0].length;
-  }
-
-  if (lastIndex < content.length) {
-    const remaining = content.slice(lastIndex).trim();
-    if (remaining) {
-      chunks.push({ kind: 'text', text: remaining });
-    }
-  }
-
-  if (chunks.length === 0 && content) {
-    chunks.push({ kind: 'text', text: content });
-  }
-
-  return chunks;
-}
