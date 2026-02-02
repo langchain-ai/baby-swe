@@ -13,6 +13,7 @@ import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 import { tavily } from "@tavily/core";
 import TurndownService from "turndown";
+import { loadSettings } from "./storage";
 
 const sessionControllers = new Map<string, AbortController>();
 const pendingApprovals = new Map<string, { resolve: (decision: ApprovalDecision) => void }>();
@@ -507,7 +508,8 @@ export function setupAgentIPC(mainWindow: BrowserWindow, getFolder: () => string
 
           toolTimers.set(toolCallId, Date.now());
 
-          const requiresApproval = TOOLS_REQUIRING_APPROVAL.includes(toolName);
+          const settings = loadSettings();
+          const requiresApproval = TOOLS_REQUIRING_APPROVAL.includes(toolName) && !settings.yoloMode;
           const approvalRequestId = requiresApproval ? uuidv4() : undefined;
 
           const folder = getFolder();

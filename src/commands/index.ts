@@ -78,3 +78,21 @@ registerCommand({
     ctx.createSession();
   },
 });
+
+registerCommand({
+  name: 'yolo',
+  description: 'Toggle YOLO mode (bypass all tool approvals)',
+  category: 'Actions',
+  execute: async (ctx) => {
+    const settings = await window.storage.getSettings();
+    const newYoloMode = !settings.yoloMode;
+    await window.storage.saveSettings({ ...settings, yoloMode: newYoloMode });
+
+    const statusText = newYoloMode
+      ? '**YOLO mode enabled** - All tool executions will be auto-approved'
+      : '**YOLO mode disabled** - Tool executions will require approval';
+
+    const sessionId = ctx.sessionId || ctx.createSession();
+    ctx.addSystemMessage(sessionId, [{ kind: 'text', text: statusText }]);
+  },
+});

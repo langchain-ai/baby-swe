@@ -14,6 +14,7 @@ export interface ChatMessage {
 export interface GlobalSettings {
   version: number;
   modelConfig: ModelConfig;
+  yoloMode?: boolean;
 }
 
 declare global {
