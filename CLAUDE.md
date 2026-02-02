@@ -10,6 +10,11 @@ A terminal-style AI coding assistant built with Electron and React.
 - **DeepAgents** - LangChain agent framework (`src/agent.ts`)
 - **Anthropic Claude** - LLM provider
 
+## Docs:
+Deepagents JS: https://docs.langchain.com/oss/javascript/deepagents/overview
+Langgraph JS: https://docs.langchain.com/oss/javascript/langgraph/overview
+LangChain JS: https://docs.langchain.com/oss/javascript/langchain/overview
+
 ## Project Structure
 
 ```

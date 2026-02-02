@@ -75,7 +75,7 @@ export function App() {
           appendStreamToken(event.sessionId, event.token);
           break;
         case 'tool-start':
-          addToolStart(event.sessionId, event.toolCallId, event.toolName, event.toolArgs, event.approvalRequestId);
+          addToolStart(event.sessionId, event.toolCallId, event.toolName, event.toolArgs, event.approvalRequestId, event.diffData);
           break;
         case 'tool-end':
           updateToolEnd(event.sessionId, event.toolCallId, event.output, event.error, event.elapsedMs);

@@ -53,6 +53,16 @@ export type ChunkKind = 'text' | 'code' | 'error' | 'list' | 'tool-execution';
 
 export type ToolStatus = 'pending-approval' | 'running' | 'success' | 'error';
 
+export interface DiffData {
+  originalContent: string | null;
+  newContent: string;
+  filePath: string;
+  isNewFile: boolean;
+  isBinary: boolean;
+  isTruncated: boolean;
+  totalLines: number;
+}
+
 export interface ToolExecutionChunk {
   kind: 'tool-execution';
   toolCallId: string;
@@ -62,6 +72,7 @@ export interface ToolExecutionChunk {
   output?: string;
   elapsedMs?: number;
   approvalRequestId?: string;
+  diffData?: DiffData;
 }
 
 export interface TextChunk {
@@ -132,6 +143,7 @@ export interface ToolStartEvent {
   toolName: string;
   toolArgs: Record<string, unknown>;
   approvalRequestId?: string;
+  diffData?: DiffData;
 }
 
 export interface ToolEndEvent {

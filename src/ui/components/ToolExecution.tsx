@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { ToolExecutionChunk } from '../../types';
+import { DiffView } from './DiffView';
 
 interface ToolExecutionProps {
   chunk: ToolExecutionChunk;
@@ -149,10 +150,12 @@ function ShellExecution({ chunk, onApprove, onReject, onAutoApprove }: ToolExecu
 }
 
 function GenericToolExecution({ chunk, onApprove, onReject, onAutoApprove }: ToolExecutionProps) {
-  const { toolName, toolArgs, status, output, elapsedMs, approvalRequestId } = chunk;
+  const { toolName, toolArgs, status, output, elapsedMs, approvalRequestId, diffData } = chunk;
 
   if (status === 'pending-approval' && approvalRequestId) {
     const filePath = (toolArgs?.filePath as string) || (toolArgs?.path as string) || '';
+    const isFileOperation = toolName === 'write_file' || toolName === 'edit_file';
+
     return (
       <div className="my-3 bg-[#0d1117] border border-[#30363d] rounded-lg overflow-hidden">
         <div className="flex items-center gap-2 px-3 py-2 bg-[#161b22] border-b border-[#30363d]">
@@ -162,6 +165,9 @@ function GenericToolExecution({ chunk, onApprove, onReject, onAutoApprove }: Too
         </div>
         <div className="px-3 py-2">
           <div className="text-sm text-gray-300 font-mono">{filePath}</div>
+          {isFileOperation && diffData && (
+            <DiffView diffData={diffData} />
+          )}
         </div>
         <div className="flex items-center justify-end gap-2 px-3 py-2 border-t border-[#30363d]">
           <button

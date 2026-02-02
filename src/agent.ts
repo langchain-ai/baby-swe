@@ -3,13 +3,107 @@ import { LocalSandboxBackend } from "./backends/local-sandbox";
 import { ChatAnthropic } from "@langchain/anthropic";
 import { ipcMain, BrowserWindow } from "electron";
 import { v4 as uuidv4 } from "uuid";
+import * as fs from "fs";
+import * as path from "path";
 import "dotenv/config";
-import type { ApprovalDecision, ApprovalResponse, ChatMessage } from "./types";
+import type { ApprovalDecision, ApprovalResponse, ChatMessage, DiffData } from "./types";
 
 const sessionControllers = new Map<string, AbortController>();
 const pendingApprovals = new Map<string, { resolve: (decision: ApprovalDecision) => void }>();
 
 const TOOLS_REQUIRING_APPROVAL = ['execute', 'write_file', 'edit_file'];
+
+const MAX_DIFF_LINES = 800;
+const BINARY_EXTENSIONS = new Set([
+  '.png', '.jpg', '.jpeg', '.gif', '.ico', '.webp', '.bmp', '.svg',
+  '.pdf', '.zip', '.tar', '.gz', '.7z', '.rar',
+  '.exe', '.dll', '.so', '.dylib', '.bin',
+  '.mp3', '.mp4', '.wav', '.avi', '.mov', '.mkv',
+  '.ttf', '.otf', '.woff', '.woff2', '.eot',
+]);
+
+function isBinaryFile(filePath: string): boolean {
+  const ext = path.extname(filePath).toLowerCase();
+  return BINARY_EXTENSIONS.has(ext);
+}
+
+function computeDiffData(
+  toolName: string,
+  toolArgs: Record<string, unknown>,
+  rootDir: string
+): DiffData | undefined {
+  if (toolName !== 'edit_file' && toolName !== 'write_file') {
+    return undefined;
+  }
+
+  const filePath = (toolArgs.filePath as string) || (toolArgs.file_path as string) || (toolArgs.path as string) || '';
+  if (!filePath) return undefined;
+
+  const absolutePath = path.isAbsolute(filePath)
+    ? filePath
+    : path.join(rootDir, filePath);
+
+  if (isBinaryFile(absolutePath)) {
+    return {
+      originalContent: null,
+      newContent: '',
+      filePath,
+      isNewFile: false,
+      isBinary: true,
+      isTruncated: false,
+      totalLines: 0,
+    };
+  }
+
+  let originalContent: string | null = null;
+  let isNewFile = false;
+
+  try {
+    originalContent = fs.readFileSync(absolutePath, 'utf-8');
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+      isNewFile = true;
+    } else {
+      return {
+        originalContent: null,
+        newContent: '',
+        filePath,
+        isNewFile: false,
+        isBinary: true,
+        isTruncated: false,
+        totalLines: 0,
+      };
+    }
+  }
+
+  let newContent: string;
+
+  if (toolName === 'write_file') {
+    newContent = (toolArgs.content as string) || '';
+  } else {
+    const oldString = (toolArgs.oldString as string) || (toolArgs.old_string as string) || '';
+    const newString = (toolArgs.newString as string) || (toolArgs.new_string as string) || '';
+
+    if (isNewFile) {
+      newContent = newString;
+    } else {
+      newContent = originalContent!.replace(oldString, newString);
+    }
+  }
+
+  const totalLines = newContent.split('\n').length;
+  const isTruncated = totalLines > MAX_DIFF_LINES;
+
+  return {
+    originalContent: isNewFile ? null : originalContent,
+    newContent,
+    filePath,
+    isNewFile,
+    isBinary: false,
+    isTruncated,
+    totalLines,
+  };
+}
 
 function createAgent(rootDir?: string) {
   const model = new ChatAnthropic({
@@ -27,6 +121,9 @@ Your current working directory is: ${rootDir}
 You have full access to the filesystem within this directory. Use the available tools to explore and modify the codebase:
 - File tools: ls, read_file, write_file, edit_file, glob, grep
 - Shell execution: execute (run shell commands in the project directory)
+
+IMPORTANT: When the user mentions files using the @path/to/file syntax, the @ symbol is just a mention marker.
+The actual file path is everything after the @ symbol (without the @). For example, @src/index.ts refers to the file src/index.ts.
 
 When the user asks about code or files, start by exploring the directory structure to understand the project.
 When running commands with execute, prefer non-interactive commands and handle errors gracefully.`
@@ -144,6 +241,12 @@ export function setupAgentIPC(mainWindow: BrowserWindow, getFolder: () => string
           const requiresApproval = TOOLS_REQUIRING_APPROVAL.includes(toolName);
           const approvalRequestId = requiresApproval ? uuidv4() : undefined;
 
+          const folder = getFolder();
+          let diffData: DiffData | undefined;
+          if (folder && (toolName === 'edit_file' || toolName === 'write_file')) {
+            diffData = computeDiffData(toolName, toolArgs, folder);
+          }
+
           mainWindow.webContents.send('agent:stream-event', {
             type: 'tool-start',
             sessionId,
@@ -151,6 +254,7 @@ export function setupAgentIPC(mainWindow: BrowserWindow, getFolder: () => string
             toolName,
             toolArgs,
             approvalRequestId,
+            diffData,
           });
 
           if (requiresApproval && approvalRequestId) {
@@ -159,16 +263,20 @@ export function setupAgentIPC(mainWindow: BrowserWindow, getFolder: () => string
             });
 
             if (decision === 'reject') {
-              controller.abort();
               mainWindow.webContents.send('agent:stream-event', {
                 type: 'tool-end',
                 sessionId,
                 toolCallId,
-                output: 'Tool execution rejected by user',
-                error: 'rejected',
+                output: 'Tool execution skipped by user',
+                error: 'skipped',
                 elapsedMs: 0,
               });
-              break;
+              mainWindow.webContents.send('agent:stream-event', {
+                type: 'done',
+                sessionId,
+              });
+              controller.abort();
+              return;
             }
 
             mainWindow.webContents.send('agent:stream-event', {

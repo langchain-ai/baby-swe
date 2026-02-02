@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { v4 as uuidv4 } from 'uuid';
-import type { Message, Chunk, Mode, ModelConfig, ToolStatus, Thread, Session, Project, ApprovalRequest } from './types';
+import type { Message, Chunk, Mode, ModelConfig, ToolStatus, Thread, Session, Project, ApprovalRequest, DiffData } from './types';
 import { loadSettings, saveSettings, loadRecentProjects, loadThreads, saveThread, deleteThread as deleteThreadFromStorage } from './persistence';
 
 function generateTitle(messages: Message[]): string {
@@ -42,7 +42,7 @@ interface AppState {
 
   startStreaming: (sessionId: string) => string;
   appendStreamToken: (sessionId: string, token: string) => void;
-  addToolStart: (sessionId: string, toolCallId: string, toolName: string, toolArgs: Record<string, unknown>, approvalRequestId?: string) => void;
+  addToolStart: (sessionId: string, toolCallId: string, toolName: string, toolArgs: Record<string, unknown>, approvalRequestId?: string, diffData?: DiffData) => void;
   updateToolEnd: (sessionId: string, toolCallId: string, output: string, error: string | undefined, elapsedMs: number) => void;
   finalizeStream: (sessionId: string) => void;
   abortStream: (sessionId: string, error?: string) => void;
@@ -288,7 +288,7 @@ export const useStore = create<AppState>((set, get) => ({
     });
   },
 
-  addToolStart: (sessionId, toolCallId, toolName, toolArgs, approvalRequestId) => {
+  addToolStart: (sessionId, toolCallId, toolName, toolArgs, approvalRequestId, diffData) => {
     set((state) => {
       const session = state.sessions[sessionId];
       if (!session || !session.streamingMessageId) return state;
@@ -300,6 +300,7 @@ export const useStore = create<AppState>((set, get) => ({
         toolArgs,
         status: approvalRequestId ? 'pending-approval' : 'running',
         approvalRequestId,
+        diffData,
       };
 
       const newMessages = session.messages.map((msg) => {
