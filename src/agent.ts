@@ -134,23 +134,7 @@ const httpRequestTool = tool(
   }
 );
 
-const writeTodosTool = tool(
-  async ({ todos }: { todos: Array<{ content: string; status: 'pending' | 'in_progress' | 'completed' }> }) => {
-    return JSON.stringify({ success: true, todoCount: todos.length });
-  },
-  {
-    name: "write_todos",
-    description: "Create or update a todo list to track tasks. Use this to plan and track progress on multi-step tasks.",
-    schema: z.object({
-      todos: z.array(z.object({
-        content: z.string().describe("The task description"),
-        status: z.enum(['pending', 'in_progress', 'completed']).describe("The task status"),
-      })).describe("Array of todo items"),
-    }),
-  }
-);
-
-const webTools = [webSearchTool, fetchUrlTool, httpRequestTool, writeTodosTool];
+const webTools = [webSearchTool, fetchUrlTool, httpRequestTool];
 
 function isBinaryFile(filePath: string): boolean {
   const ext = path.extname(filePath).toLowerCase();
