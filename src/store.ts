@@ -62,6 +62,7 @@ interface AppState {
   removePendingApproval: (sessionId: string, requestId: string) => void;
   updateToolStatus: (sessionId: string, toolCallId: string, status: ToolStatus) => void;
   updateTodos: (sessionId: string, todos: TodoItem[]) => void;
+  setSessionMode: (sessionId: string, mode: Mode) => void;
 
   setMode: (mode: Mode) => void;
   setModelConfig: (config: Partial<ModelConfig>) => void;
@@ -138,6 +139,7 @@ export const useStore = create<AppState>((set, get) => ({
       autoApproveSession: false,
       pendingApprovals: {},
       todos: [],
+      mode: 'agent',
     };
 
     const tile: Tile = {
@@ -291,6 +293,7 @@ export const useStore = create<AppState>((set, get) => ({
       autoApproveSession: false,
       pendingApprovals: {},
       todos: [],
+      mode: 'agent',
     };
     set((state) => {
       const tile = state.tiles[tileId];
@@ -631,6 +634,19 @@ export const useStore = create<AppState>((set, get) => ({
         sessions: {
           ...state.sessions,
           [sessionId]: { ...session, todos },
+        },
+      };
+    });
+  },
+
+  setSessionMode: (sessionId, mode) => {
+    set((state) => {
+      const session = state.sessions[sessionId];
+      if (!session) return state;
+      return {
+        sessions: {
+          ...state.sessions,
+          [sessionId]: { ...session, mode },
         },
       };
     });

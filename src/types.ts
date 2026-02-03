@@ -192,6 +192,7 @@ export interface Session {
   autoApproveSession: boolean;
   pendingApprovals: Record<string, ApprovalRequest>;
   todos: TodoItem[];
+  mode: Mode;
 }
 
 export interface ToolStartEvent {

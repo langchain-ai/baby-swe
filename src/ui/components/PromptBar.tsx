@@ -8,11 +8,15 @@ interface PromptBarProps {
   onSubmit: (query: string) => void;
   busy: boolean;
   projectPath?: string;
+  sessionId: string;
+  isFocused: boolean;
 }
 
-export function PromptBar({ onSubmit, busy, projectPath }: PromptBarProps) {
+export function PromptBar({ onSubmit, busy, projectPath, sessionId, isFocused }: PromptBarProps) {
   const [query, setQuery] = useState('');
-  const { mode, setMode } = useStore();
+  const { sessions, setSessionMode } = useStore();
+  const session = sessions[sessionId];
+  const mode = session?.mode ?? 'agent';
   const inputRef = useRef<HTMLInputElement>(null);
   const [commandSelectedIndex, setCommandSelectedIndex] = useState(0);
   const [fileSelectedIndex, setFileSelectedIndex] = useState(0);
@@ -57,14 +61,15 @@ export function PromptBar({ onSubmit, busy, projectPath }: PromptBarProps) {
 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
+      if (!isFocused) return;
       if (e.shiftKey && e.key === 'Tab') {
         e.preventDefault();
-        setMode(mode === 'agent' ? 'plan' : 'agent');
+        setSessionMode(sessionId, mode === 'agent' ? 'plan' : 'agent');
       }
     }
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [mode, setMode]);
+  }, [mode, setSessionMode, sessionId, isFocused]);
 
   const handleCommandSelect = (command: Command) => {
     setQuery(`/${command.name} `);

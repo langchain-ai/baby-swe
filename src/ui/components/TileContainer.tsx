@@ -156,6 +156,8 @@ export function TileContainer({ tileId, isFocused, onFocus }: TileContainerProps
               onSubmit={handleSubmit}
               busy={session?.busy ?? false}
               projectPath={tile.project.path}
+              sessionId={tile.sessionId}
+              isFocused={isFocused}
             />
           </div>
         </div>
@@ -184,6 +186,8 @@ export function TileContainer({ tileId, isFocused, onFocus }: TileContainerProps
           onSubmit={handleSubmit}
           busy={session.busy}
           projectPath={tile.project.path}
+          sessionId={tile.sessionId}
+          isFocused={isFocused}
         />
       </div>
     </div>
