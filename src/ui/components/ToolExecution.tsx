@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import type { ToolExecutionChunk } from '../../types';
 import { DiffView } from './DiffView';
 
@@ -9,8 +9,6 @@ interface ToolExecutionProps {
   onAutoApprove?: (approvalRequestId: string) => void;
 }
 
-const MAX_OUTPUT_LINES = 10;
-
 function formatElapsed(ms?: number): string {
   if (!ms) return '';
   if (ms < 1000) return `${ms}ms`;
@@ -18,30 +16,56 @@ function formatElapsed(ms?: number): string {
 }
 
 function getToolDisplayName(toolName: string, toolArgs: Record<string, unknown>): string {
-  const getShortPath = (path: string) => path?.split('/').pop() || path || 'file';
+  const truncatePath = (path: string, maxLen = 50) => {
+    if (!path) return 'file';
+    if (path.length <= maxLen) return path;
+    const parts = path.split('/');
+    if (parts.length <= 2) return path.slice(-maxLen);
+    return '...' + path.slice(-(maxLen - 3));
+  };
 
   switch (toolName) {
     case 'execute': {
       const cmd = (toolArgs?.command as string) || '';
-      return `Bash(${cmd.slice(0, 40)}${cmd.length > 40 ? '...' : ''})`;
+      const truncated = cmd.length > 50 ? cmd.slice(0, 50) + '...' : cmd;
+      return `Bash(${truncated})`;
     }
-    case 'task':
-      return `${(toolArgs?.subagent_type as string) || 'Task'}(${(toolArgs?.description as string)?.slice(0, 30) || 'task'}${(toolArgs?.description as string)?.length > 30 ? '...' : ''})`;
-    case 'write_file':
-      return `Write(${getShortPath((toolArgs?.filePath as string) || (toolArgs?.path as string))})`;
-    case 'edit_file':
-      return `Edit(${getShortPath((toolArgs?.filePath as string) || (toolArgs?.path as string))})`;
-    case 'read_file':
-      return `Read(${getShortPath(toolArgs?.path as string)})`;
+    case 'task': {
+      const type = (toolArgs?.subagent_type as string) || 'Task';
+      const desc = (toolArgs?.description as string) || 'task';
+      const truncatedDesc = desc.length > 40 ? desc.slice(0, 40) + '...' : desc;
+      return `${type}(${truncatedDesc})`;
+    }
+    case 'write_file': {
+      const path = (toolArgs?.filePath as string) || (toolArgs?.path as string) || '';
+      return `Write(${truncatePath(path)})`;
+    }
+    case 'edit_file': {
+      const path = (toolArgs?.filePath as string) || (toolArgs?.path as string) || '';
+      return `Update(${truncatePath(path)})`;
+    }
+    case 'read_file': {
+      const path = (toolArgs?.path as string) || '';
+      return `Read(${truncatePath(path)})`;
+    }
     case 'glob':
-    case 'search':
-      return `Search(${((toolArgs?.pattern as string) || '').slice(0, 25)})`;
-    case 'grep':
-      return `Grep(${((toolArgs?.pattern as string) || '').slice(0, 25)})`;
-    case 'web_search':
-      return `WebSearch(${((toolArgs?.query as string) || '').slice(0, 25)})`;
-    case 'fetch_url':
-      return `Fetch(${((toolArgs?.url as string) || '').slice(0, 30)})`;
+    case 'search': {
+      const pattern = (toolArgs?.pattern as string) || '';
+      return `Search(pattern: "${pattern}")`;
+    }
+    case 'grep': {
+      const pattern = (toolArgs?.pattern as string) || '';
+      const truncated = pattern.length > 30 ? pattern.slice(0, 30) + '...' : pattern;
+      return `Search(pattern: "${truncated}")`;
+    }
+    case 'web_search': {
+      const query = (toolArgs?.query as string) || '';
+      return `WebSearch(${query.slice(0, 30)}${query.length > 30 ? '...' : ''})`;
+    }
+    case 'fetch_url': {
+      const url = (toolArgs?.url as string) || '';
+      return `Fetch(${url.slice(0, 40)}${url.length > 40 ? '...' : ''})`;
+    }
     case 'write_todos':
       return `TodoWrite(${((toolArgs?.todos as Array<unknown>) || []).length} items)`;
     default:
@@ -51,19 +75,20 @@ function getToolDisplayName(toolName: string, toolArgs: Record<string, unknown>)
 
 function getToolSummary(toolName: string, toolArgs: Record<string, unknown>, output?: string, status?: string): string {
   if (status === 'running') return 'Running...';
-  if (status === 'error') return output?.slice(0, 100) || 'Error';
+  if (status === 'error') return output?.slice(0, 80) || 'Error';
 
   switch (toolName) {
     case 'execute': {
-      const lines = output?.split('\n').length || 0;
-      return lines > 0 ? `${lines} lines of output` : 'No output';
+      const lines = output?.split('\n').filter(l => l.trim()).length || 0;
+      return lines > 0 ? `${lines} lines` : 'No output';
     }
     case 'task': {
       try {
         const parsed = JSON.parse(output || '{}');
-        return parsed.output?.slice(0, 100) || 'Task completed';
+        const result = parsed.output || parsed.error || 'Completed';
+        return result.split('\n')[0].slice(0, 60) + (result.length > 60 ? '...' : '');
       } catch {
-        return output?.slice(0, 100) || 'Task completed';
+        return 'Completed';
       }
     }
     case 'read_file': {
@@ -74,13 +99,22 @@ function getToolSummary(toolName: string, toolArgs: Record<string, unknown>, out
     case 'edit_file': {
       return 'File updated';
     }
+    case 'glob':
+    case 'search': {
+      const files = output?.split('\n').filter(l => l.trim()).length || 0;
+      return `Found ${files} files`;
+    }
+    case 'grep': {
+      const matches = output?.split('\n').filter(l => l.trim()).length || 0;
+      return `Found ${matches} matches`;
+    }
     case 'write_todos': {
       const todos = (toolArgs?.todos as Array<{ status: string }>) || [];
       const completed = todos.filter(t => t.status === 'completed').length;
       return `${completed}/${todos.length} completed`;
     }
     default:
-      return output?.slice(0, 100) || 'Done';
+      return output?.slice(0, 60) || 'Done';
   }
 }
 
@@ -131,40 +165,8 @@ function KeyboardApproval({
   );
 }
 
-function ToolOutput({ output, expanded, onToggle }: { output: string; expanded: boolean; onToggle: () => void }) {
-  const lines = output.split('\n');
-  const isLong = lines.length > MAX_OUTPUT_LINES;
-  const displayedOutput = expanded ? output : lines.slice(0, MAX_OUTPUT_LINES).join('\n');
-  const hiddenLines = lines.length - MAX_OUTPUT_LINES;
-
-  return (
-    <div className="mt-1">
-      <pre className="font-mono text-xs text-gray-400 whitespace-pre-wrap break-all overflow-x-auto">
-        {displayedOutput}
-      </pre>
-      {isLong && !expanded && (
-        <button
-          onClick={onToggle}
-          className="mt-1 text-xs text-[#87CEEB] hover:text-[#a8d8ea]"
-        >
-          +{hiddenLines} more lines (ctrl+o)
-        </button>
-      )}
-      {expanded && isLong && (
-        <button
-          onClick={onToggle}
-          className="mt-1 text-xs text-[#87CEEB] hover:text-[#a8d8ea]"
-        >
-          Show less
-        </button>
-      )}
-    </div>
-  );
-}
-
 export function ToolExecution({ chunk, onApprove, onReject, onAutoApprove }: ToolExecutionProps) {
   const { toolName, toolArgs, status, output, elapsedMs, approvalRequestId, diffData } = chunk;
-  const [expanded, setExpanded] = useState(false);
 
   const displayName = getToolDisplayName(toolName, toolArgs || {});
 
@@ -177,8 +179,9 @@ export function ToolExecution({ chunk, onApprove, onReject, onAutoApprove }: Too
 
   const isFileOp = toolName === 'write_file' || toolName === 'edit_file';
   const showDiff = isFileOp && diffData && status === 'pending-approval';
-  const showOutput = output && status !== 'running' && status !== 'pending-approval' && !isFileOp;
   const summary = getToolSummary(toolName, toolArgs || {}, output, status);
+
+  const hasContent = status === 'pending-approval' || status === 'running' || summary;
 
   return (
     <div className="my-1 font-mono text-sm">
@@ -190,29 +193,29 @@ export function ToolExecution({ chunk, onApprove, onReject, onAutoApprove }: Too
         )}
       </div>
 
-      <div className="ml-3 border-l border-gray-700 pl-3 mt-1">
-        {status === 'pending-approval' && approvalRequestId ? (
-          <>
-            {showDiff && <DiffView diffData={diffData} />}
-            <KeyboardApproval
-              approvalRequestId={approvalRequestId}
-              toolName={toolName}
-              onApprove={onApprove}
-              onReject={onReject}
-              onAutoApprove={onAutoApprove}
-            />
-          </>
-        ) : status === 'running' ? (
-          <span className="text-gray-500">Running...</span>
-        ) : (
-          <>
-            <span className="text-gray-500">{summary}</span>
-            {showOutput && (
-              <ToolOutput output={output} expanded={expanded} onToggle={() => setExpanded(!expanded)} />
+      {hasContent && (
+        <div className="flex">
+          <span className="text-gray-600 select-none">└ </span>
+          <div className="flex-1">
+            {status === 'pending-approval' && approvalRequestId ? (
+              <>
+                {showDiff && <DiffView diffData={diffData} />}
+                <KeyboardApproval
+                  approvalRequestId={approvalRequestId}
+                  toolName={toolName}
+                  onApprove={onApprove}
+                  onReject={onReject}
+                  onAutoApprove={onAutoApprove}
+                />
+              </>
+            ) : status === 'running' ? (
+              <span className="text-gray-500">Running...</span>
+            ) : (
+              <span className="text-gray-500">{summary}</span>
             )}
-          </>
-        )}
-      </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

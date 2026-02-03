@@ -2,34 +2,33 @@ import { useCallback } from 'react';
 import { CodeBlock } from './CodeBlock';
 import { Markdown } from './Markdown';
 import { ToolExecution } from './ToolExecution';
-import { SubagentGroup } from './SubagentGroup';
 import { ToolGroup } from './ToolGroup';
 import { TodoList } from './TodoList';
 import { HeaderBar } from './HeaderBar';
 import type { Chunk, Message, ToolExecutionChunk, TodoItem } from '../../types';
 
-type ToolGroupType = 'exploring' | 'writing' | 'executing' | 'subagent' | 'other';
+type ToolGroupType = 'read' | 'search' | 'write' | 'execute' | 'explore' | 'other';
 
 type GroupedItem =
   | Chunk
-  | { type: 'subagent-group'; tasks: ToolExecutionChunk[] }
   | { type: 'tool-group'; groupType: ToolGroupType; tools: ToolExecutionChunk[] };
 
 function getToolGroupType(toolName: string): ToolGroupType {
   switch (toolName) {
     case 'read_file':
+      return 'read';
     case 'glob':
     case 'search':
     case 'grep':
     case 'list_dir':
-      return 'exploring';
+      return 'search';
     case 'write_file':
     case 'edit_file':
-      return 'writing';
+      return 'write';
     case 'execute':
-      return 'executing';
+      return 'execute';
     case 'task':
-      return 'subagent';
+      return 'explore';
     default:
       return 'other';
   }
@@ -42,11 +41,7 @@ function groupChunksForRender(chunks: Chunk[]): GroupedItem[] {
 
   const flushToolGroup = () => {
     if (currentToolGroup.length > 0 && currentGroupType) {
-      if (currentGroupType === 'subagent') {
-        result.push({ type: 'subagent-group', tasks: [...currentToolGroup] });
-      } else {
-        result.push({ type: 'tool-group', groupType: currentGroupType, tools: [...currentToolGroup] });
-      }
+      result.push({ type: 'tool-group', groupType: currentGroupType, tools: [...currentToolGroup] });
       currentToolGroup = [];
       currentGroupType = null;
     }
@@ -158,22 +153,11 @@ function AgentMessage({
   return (
     <div className="my-2 space-y-1">
       {groupedItems.map((item, i) => {
-        if ('type' in item && item.type === 'subagent-group') {
-          return (
-            <SubagentGroup
-              key={`subagent-group-${i}`}
-              tasks={item.tasks}
-              onApprove={callbacks.onApprove}
-              onReject={callbacks.onReject}
-            />
-          );
-        }
-
         if ('type' in item && item.type === 'tool-group') {
           return (
             <ToolGroup
               key={`tool-group-${i}`}
-              groupType={item.groupType as 'exploring' | 'writing' | 'executing' | 'other'}
+              groupType={item.groupType}
               tools={item.tools}
               onApprove={callbacks.onApprove}
               onReject={callbacks.onReject}

@@ -52,8 +52,10 @@ function SubagentItem({
     error: <span className="text-red-400">●</span>,
   }[task.status];
 
+  const hasContent = task.status === 'pending-approval' || task.status === 'running' || (task.status === 'success' && task.output);
+
   return (
-    <div className="my-1 font-mono text-sm">
+    <div className="font-mono text-sm">
       <div className="flex items-center gap-2">
         {statusIcon}
         <span className="text-[#87CEEB]">{subagentType}</span>
@@ -63,32 +65,35 @@ function SubagentItem({
         )}
       </div>
 
-      {task.status === 'pending-approval' && task.approvalRequestId && (
-        <div className="ml-3 border-l border-gray-700 pl-3 mt-1">
-          <span className="text-yellow-400">Delegate?</span>
-          <span className="text-gray-500 ml-2">[y]es / [n]o</span>
-        </div>
-      )}
+      {hasContent && (
+        <div className="flex">
+          <span className="text-gray-600 select-none">└ </span>
+          <div className="flex-1">
+            {task.status === 'pending-approval' && task.approvalRequestId && (
+              <>
+                <span className="text-yellow-400">Delegate?</span>
+                <span className="text-gray-500 ml-2">[y]es / [n]o</span>
+              </>
+            )}
 
-      {task.status === 'running' && (
-        <div className="ml-3 border-l border-gray-700 pl-3 mt-1">
-          <span className="text-gray-500 text-xs">Running...</span>
-        </div>
-      )}
+            {task.status === 'running' && (
+              <span className="text-gray-500 text-xs">Running...</span>
+            )}
 
-      {task.status === 'success' && task.output && (
-        <div className="ml-3 border-l border-gray-700 pl-3 mt-1">
-          <span className="text-gray-500 text-xs">
-            {(() => {
-              try {
-                const parsed = JSON.parse(task.output);
-                const output = parsed.output || parsed.error || task.output;
-                return output.split('\n')[0].slice(0, 60) + (output.length > 60 ? '...' : '');
-              } catch {
-                return task.output.split('\n')[0].slice(0, 60);
-              }
-            })()}
-          </span>
+            {task.status === 'success' && task.output && (
+              <span className="text-gray-500 text-xs">
+                {(() => {
+                  try {
+                    const parsed = JSON.parse(task.output);
+                    const output = parsed.output || parsed.error || task.output;
+                    return output.split('\n')[0].slice(0, 60) + (output.length > 60 ? '...' : '');
+                  } catch {
+                    return task.output.split('\n')[0].slice(0, 60);
+                  }
+                })()}
+              </span>
+            )}
+          </div>
         </div>
       )}
     </div>
@@ -124,15 +129,19 @@ export function SubagentGroup({ tasks, onApprove, onReject }: SubagentGroupProps
       </div>
 
       {expanded && (
-        <div className="ml-3 border-l border-gray-700 pl-3 mt-1 space-y-1">
+        <div className="ml-2 space-y-1">
           {tasks.map((task, index) => (
-            <SubagentItem
-              key={task.toolCallId}
-              task={task}
-              onApprove={onApprove}
-              onReject={onReject}
-              isActive={index === firstPendingIndex}
-            />
+            <div key={task.toolCallId} className="flex">
+              <span className="text-gray-600 select-none">{index === tasks.length - 1 ? '└ ' : '├ '}</span>
+              <div className="flex-1">
+                <SubagentItem
+                  task={task}
+                  onApprove={onApprove}
+                  onReject={onReject}
+                  isActive={index === firstPendingIndex}
+                />
+              </div>
+            </div>
           ))}
         </div>
       )}
