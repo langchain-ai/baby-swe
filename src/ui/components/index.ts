@@ -6,3 +6,4 @@ export { Footer } from './Footer';
 export { TileContainer } from './TileContainer';
 export { TilingLayout } from './TilingLayout';
 export { SplitResizer } from './SplitResizer';
+export { TerminalTile } from './TerminalTile';

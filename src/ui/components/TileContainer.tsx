@@ -4,6 +4,7 @@ import { HeaderBar } from './HeaderBar';
 import { MessageView } from './MessageView';
 import { PromptBar } from './PromptBar';
 import { Logo } from './Logo';
+import { TerminalTile } from './TerminalTile';
 import type { Message, ChatMessage, Project } from '../../types';
 
 function messagesToChatMessages(messages: Message[]): ChatMessage[] {
@@ -107,6 +108,17 @@ export function TileContainer({ tileId, isFocused, onFocus }: TileContainerProps
       <div className="flex-1 flex items-center justify-center bg-[#1a2332] text-gray-500">
         Tile not found
       </div>
+    );
+  }
+
+  if (tile.type === 'terminal') {
+    return (
+      <TerminalTile
+        tileId={tileId}
+        cwd={tile.project?.path}
+        isFocused={isFocused}
+        onFocus={onFocus}
+      />
     );
   }
 

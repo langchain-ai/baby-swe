@@ -49,3 +49,15 @@ contextBridge.exposeInMainWorld('tile', {
 contextBridge.exposeInMainWorld('fs', {
   listFiles: (projectPath?: string) => ipcRenderer.invoke('fs:listFiles', projectPath),
 });
+
+contextBridge.exposeInMainWorld('terminal', {
+  create: (id: string, cwd?: string) => ipcRenderer.send('terminal:create', id, cwd),
+  write: (id: string, data: string) => ipcRenderer.send('terminal:write', id, data),
+  resize: (id: string, cols: number, rows: number) => ipcRenderer.send('terminal:resize', id, cols, rows),
+  destroy: (id: string) => ipcRenderer.send('terminal:destroy', id),
+  onData: (callback: (id: string, data: string) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, id: string, data: string) => callback(id, data);
+    ipcRenderer.on('terminal:data', handler);
+    return () => ipcRenderer.removeListener('terminal:data', handler);
+  },
+});

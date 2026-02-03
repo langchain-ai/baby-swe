@@ -70,9 +70,15 @@ export function App() {
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
     const isMod = e.metaKey || e.ctrlKey;
 
+    if (isMod && e.shiftKey && e.key === 't') {
+      e.preventDefault();
+      createTile('auto', 'terminal');
+      return;
+    }
+
     if (isMod && e.key === 't') {
       e.preventDefault();
-      createTile('auto');
+      createTile('auto', 'agent');
       return;
     }
 

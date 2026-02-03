@@ -2,9 +2,12 @@ import { app, BrowserWindow, Menu, dialog, ipcMain } from 'electron';
 import * as path from 'path';
 import { execSync } from 'child_process';
 import * as fs from 'fs';
+import * as pty from 'node-pty';
 import { setupAgentIPC } from './agent';
 import * as storage from './storage';
 import type { Project } from './types';
+
+const terminals = new Map<string, pty.IPty>();
 
 const MAX_FALLBACK_FILES = 1000;
 const FALLBACK_PATTERNS = ['*', '*/*', '*/*/*', '*/*/*/*'];
@@ -126,6 +129,51 @@ function createMenu(): void {
   Menu.setApplicationMenu(menu);
 }
 
+function setupTerminalIPC(): void {
+  ipcMain.on('terminal:create', (_event, id: string, cwd?: string) => {
+    const shell = process.platform === 'win32' ? 'powershell.exe' : process.env.SHELL || '/bin/zsh';
+    const term = pty.spawn(shell, [], {
+      name: 'xterm-256color',
+      cols: 80,
+      rows: 24,
+      cwd: cwd || process.env.HOME || '/',
+      env: process.env as Record<string, string>,
+    });
+
+    terminals.set(id, term);
+
+    term.onData((data) => {
+      mainWindow?.webContents.send('terminal:data', id, data);
+    });
+
+    term.onExit(() => {
+      terminals.delete(id);
+    });
+  });
+
+  ipcMain.on('terminal:write', (_event, id: string, data: string) => {
+    const term = terminals.get(id);
+    if (term) {
+      term.write(data);
+    }
+  });
+
+  ipcMain.on('terminal:resize', (_event, id: string, cols: number, rows: number) => {
+    const term = terminals.get(id);
+    if (term) {
+      term.resize(cols, rows);
+    }
+  });
+
+  ipcMain.on('terminal:destroy', (_event, id: string) => {
+    const term = terminals.get(id);
+    if (term) {
+      term.kill();
+      terminals.delete(id);
+    }
+  });
+}
+
 function setupStorageIPC(): void {
   ipcMain.handle('storage:getSettings', () => storage.loadSettings());
 
@@ -183,6 +231,7 @@ app.whenReady().then(() => {
   storage.initStorage();
   createMenu();
   setupStorageIPC();
+  setupTerminalIPC();
   createWindow();
   setupAgentIPC(mainWindow!, (tileId: string) => tileProjects.get(tileId)?.path || null);
 

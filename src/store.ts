@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { v4 as uuidv4 } from 'uuid';
-import type { Message, Chunk, Mode, ModelConfig, ToolStatus, Thread, Session, Project, ApprovalRequest, DiffData, TodoItem, Tile, LayoutNode, SplitDirection } from './types';
+import type { Message, Chunk, Mode, ModelConfig, ToolStatus, Thread, Session, Project, ApprovalRequest, DiffData, TodoItem, Tile, LayoutNode, SplitDirection, TileType } from './types';
 import { loadSettings, saveSettings, loadRecentProjects } from './persistence';
 import { createInitialLayout, splitTile, removeTile, getTileIds, getSmartDirection, findAdjacentTile, getTileDimensions } from './layout-utils';
 
@@ -31,7 +31,7 @@ interface AppState {
   layout: LayoutNode;
   focusedTileId: string | null;
 
-  createTile: (direction?: SplitDirection | 'auto') => string;
+  createTile: (direction?: SplitDirection | 'auto', type?: TileType) => string;
   closeTile: (tileId: string) => void;
   focusTile: (tileId: string) => void;
   setTileProject: (tileId: string, project: Project | null) => void;
@@ -88,6 +88,7 @@ const createInitialTile = (): { tile: Tile; session: Session; layout: LayoutNode
 
   const tile: Tile = {
     id: tileId,
+    type: 'agent',
     sessionId,
     project: null,
   };
@@ -115,7 +116,7 @@ export const useStore = create<AppState>((set, get) => ({
   layout: initial.layout,
   focusedTileId: initial.tile.id,
 
-  createTile: (direction) => {
+  createTile: (direction, type = 'agent') => {
     const { focusedTileId, layout, tiles } = get();
     const tileId = uuidv4();
     const sessionId = uuidv4();
@@ -137,6 +138,7 @@ export const useStore = create<AppState>((set, get) => ({
 
     const tile: Tile = {
       id: tileId,
+      type,
       sessionId,
       project: focusedTileId ? tiles[focusedTileId]?.project || null : null,
     };

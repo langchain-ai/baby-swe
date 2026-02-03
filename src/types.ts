@@ -6,8 +6,11 @@ export interface Project {
   lastOpenedAt: number;
 }
 
+export type TileType = 'agent' | 'terminal';
+
 export interface Tile {
   id: string;
+  type: TileType;
   sessionId: string;
   project: Project | null;
 }
@@ -66,6 +69,13 @@ declare global {
     };
     fs: {
       listFiles: (projectPath?: string) => Promise<string[]>;
+    };
+    terminal: {
+      create: (id: string, cwd?: string) => void;
+      write: (id: string, data: string) => void;
+      resize: (id: string, cols: number, rows: number) => void;
+      destroy: (id: string) => void;
+      onData: (callback: (id: string, data: string) => void) => () => void;
     };
   }
 }
