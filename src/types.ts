@@ -32,6 +32,13 @@ export interface TileNode {
 
 export type LayoutNode = SplitNode | TileNode;
 
+export interface Workspace {
+  id: number;
+  tiles: Record<string, Tile>;
+  layout: LayoutNode | null;
+  focusedTileId: string | null;
+}
+
 export interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;

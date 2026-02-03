@@ -8,7 +8,8 @@ interface TilingLayoutProps {
 }
 
 export function TilingLayout({ node }: TilingLayoutProps) {
-  const { focusedTileId, focusTile } = useStore();
+  const { workspaces, activeWorkspaceIndex, focusTile } = useStore();
+  const focusedTileId = workspaces[activeWorkspaceIndex].focusedTileId;
 
   if (node.type === 'tile') {
     return (

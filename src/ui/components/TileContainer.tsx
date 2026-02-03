@@ -42,7 +42,8 @@ export function TileContainer({ tileId, isFocused, onFocus }: TileContainerProps
   const containerRef = useRef<HTMLDivElement>(null);
 
   const {
-    tiles,
+    workspaces,
+    activeWorkspaceIndex,
     sessions,
     recentProjects,
     loadRecentProjects,
@@ -53,6 +54,7 @@ export function TileContainer({ tileId, isFocused, onFocus }: TileContainerProps
     setAutoApproveSession,
   } = useStore();
 
+  const tiles = workspaces[activeWorkspaceIndex].tiles;
   const tile = tiles[tileId];
   const session = tile ? sessions[tile.sessionId] : null;
 

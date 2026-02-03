@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { v4 as uuidv4 } from 'uuid';
-import type { Message, Chunk, Mode, ModelConfig, ToolStatus, Thread, Session, Project, ApprovalRequest, DiffData, TodoItem, Tile, LayoutNode, SplitDirection, TileType } from './types';
+import type { Message, Chunk, Mode, ModelConfig, ToolStatus, Thread, Session, Project, ApprovalRequest, DiffData, TodoItem, Tile, LayoutNode, SplitDirection, TileType, Workspace } from './types';
 import { loadSettings, saveSettings, loadRecentProjects } from './persistence';
 import { createInitialLayout, splitTile, removeTile, getTileIds, getSmartDirection, findAdjacentTile, getTileDimensions } from './layout-utils';
 
@@ -27,9 +27,12 @@ interface AppState {
   blink: boolean;
   recentProjects: Project[];
 
-  tiles: Record<string, Tile>;
-  layout: LayoutNode;
-  focusedTileId: string | null;
+  workspaces: Workspace[];
+  activeWorkspaceIndex: number;
+
+  getActiveWorkspace: () => Workspace;
+  switchWorkspace: (index: number) => void;
+  switchWorkspaceRelative: (delta: number) => void;
 
   createTile: (direction?: SplitDirection | 'auto', type?: TileType) => string;
   closeTile: (tileId: string) => void;
@@ -67,41 +70,23 @@ interface AppState {
   loadRecentProjects: () => Promise<void>;
 }
 
-const createInitialTile = (): { tile: Tile; session: Session; layout: LayoutNode } => {
-  const tileId = uuidv4();
-  const sessionId = uuidv4();
-  const now = Date.now();
+const NUM_WORKSPACES = 5;
 
-  const session: Session = {
-    id: sessionId,
-    title: 'New Chat',
-    messages: [],
-    streamingMessageId: null,
-    isStreaming: false,
-    busy: false,
-    createdAt: now,
-    updatedAt: now,
-    autoApproveSession: false,
-    pendingApprovals: {},
-    todos: [],
+function createEmptyWorkspace(id: number): Workspace {
+  return {
+    id,
+    tiles: {},
+    layout: null,
+    focusedTileId: null,
   };
+}
 
-  const tile: Tile = {
-    id: tileId,
-    type: 'agent',
-    sessionId,
-    project: null,
-  };
-
-  const layout = createInitialLayout(tileId);
-
-  return { tile, session, layout };
-};
-
-const initial = createInitialTile();
+function createInitialWorkspaces(): Workspace[] {
+  return Array.from({ length: NUM_WORKSPACES }, (_, i) => createEmptyWorkspace(i + 1));
+}
 
 export const useStore = create<AppState>((set, get) => ({
-  sessions: { [initial.session.id]: initial.session },
+  sessions: {},
   mode: 'agent',
   modelConfig: {
     name: 'claude-sonnet-4-5-20250514',
@@ -112,12 +97,31 @@ export const useStore = create<AppState>((set, get) => ({
   blink: true,
   recentProjects: [],
 
-  tiles: { [initial.tile.id]: initial.tile },
-  layout: initial.layout,
-  focusedTileId: initial.tile.id,
+  workspaces: createInitialWorkspaces(),
+  activeWorkspaceIndex: 0,
+
+  getActiveWorkspace: () => {
+    const { workspaces, activeWorkspaceIndex } = get();
+    return workspaces[activeWorkspaceIndex];
+  },
+
+  switchWorkspace: (index) => {
+    if (index >= 0 && index < NUM_WORKSPACES) {
+      set({ activeWorkspaceIndex: index });
+    }
+  },
+
+  switchWorkspaceRelative: (delta) => {
+    const { activeWorkspaceIndex } = get();
+    const newIndex = (activeWorkspaceIndex + delta + NUM_WORKSPACES) % NUM_WORKSPACES;
+    set({ activeWorkspaceIndex: newIndex });
+  },
 
   createTile: (direction, type = 'agent') => {
-    const { focusedTileId, layout, tiles } = get();
+    const { workspaces, activeWorkspaceIndex } = get();
+    const workspace = workspaces[activeWorkspaceIndex];
+    const { focusedTileId, layout, tiles } = workspace;
+
     const tileId = uuidv4();
     const sessionId = uuidv4();
     const now = Date.now();
@@ -143,8 +147,8 @@ export const useStore = create<AppState>((set, get) => ({
       project: focusedTileId ? tiles[focusedTileId]?.project || null : null,
     };
 
-    let newLayout = layout;
-    if (focusedTileId) {
+    let newLayout: LayoutNode;
+    if (layout && focusedTileId) {
       let splitDir: 'horizontal' | 'vertical';
       if (direction === 'auto' || !direction) {
         const dims = getTileDimensions(layout, focusedTileId, window.innerWidth, window.innerHeight);
@@ -153,72 +157,108 @@ export const useStore = create<AppState>((set, get) => ({
         splitDir = direction;
       }
       newLayout = splitTile(layout, focusedTileId, tileId, splitDir);
+    } else {
+      newLayout = createInitialLayout(tileId);
     }
+
+    const updatedWorkspace: Workspace = {
+      ...workspace,
+      tiles: { ...tiles, [tileId]: tile },
+      layout: newLayout,
+      focusedTileId: tileId,
+    };
+
+    const updatedWorkspaces = [...workspaces];
+    updatedWorkspaces[activeWorkspaceIndex] = updatedWorkspace;
 
     set((state) => ({
       sessions: { ...state.sessions, [sessionId]: session },
-      tiles: { ...state.tiles, [tileId]: tile },
-      layout: newLayout,
-      focusedTileId: tileId,
+      workspaces: updatedWorkspaces,
     }));
 
     return tileId;
   },
 
   closeTile: (tileId) => {
-    const { layout, tiles, sessions, focusedTileId } = get();
+    const { workspaces, activeWorkspaceIndex, sessions } = get();
+    const workspace = workspaces[activeWorkspaceIndex];
+    const { layout, tiles, focusedTileId } = workspace;
+
     const tile = tiles[tileId];
-    if (!tile) return;
+    if (!tile || !layout) return;
 
     const newLayout = removeTile(layout, tileId);
-    if (!newLayout) {
-      window.close();
-      return;
-    }
 
     const { [tileId]: removedTile, ...remainingTiles } = tiles;
     const { [tile.sessionId]: removedSession, ...remainingSessions } = sessions;
 
-    const remainingTileIds = getTileIds(newLayout);
-    const newFocusedId = focusedTileId === tileId
-      ? remainingTileIds[0] || null
-      : focusedTileId;
+    let newFocusedId: string | null = null;
+    if (newLayout) {
+      const remainingTileIds = getTileIds(newLayout);
+      newFocusedId = focusedTileId === tileId
+        ? remainingTileIds[0] || null
+        : focusedTileId;
+    }
+
+    const updatedWorkspace: Workspace = {
+      ...workspace,
+      tiles: remainingTiles,
+      layout: newLayout,
+      focusedTileId: newFocusedId,
+    };
+
+    const updatedWorkspaces = [...workspaces];
+    updatedWorkspaces[activeWorkspaceIndex] = updatedWorkspace;
 
     set({
-      layout: newLayout,
-      tiles: remainingTiles,
+      workspaces: updatedWorkspaces,
       sessions: remainingSessions,
-      focusedTileId: newFocusedId,
     });
   },
 
   focusTile: (tileId) => {
-    const { tiles } = get();
-    if (tiles[tileId]) {
-      set({ focusedTileId: tileId });
+    const { workspaces, activeWorkspaceIndex } = get();
+    const workspace = workspaces[activeWorkspaceIndex];
+
+    if (workspace.tiles[tileId]) {
+      const updatedWorkspace = { ...workspace, focusedTileId: tileId };
+      const updatedWorkspaces = [...workspaces];
+      updatedWorkspaces[activeWorkspaceIndex] = updatedWorkspace;
+      set({ workspaces: updatedWorkspaces });
     }
   },
 
   setTileProject: (tileId, project) => {
     set((state) => {
-      const tile = state.tiles[tileId];
+      const { workspaces, activeWorkspaceIndex } = state;
+      const workspace = workspaces[activeWorkspaceIndex];
+      const tile = workspace.tiles[tileId];
       if (!tile) return state;
-      return {
-        tiles: {
-          ...state.tiles,
-          [tileId]: { ...tile, project },
-        },
+
+      const updatedWorkspace = {
+        ...workspace,
+        tiles: { ...workspace.tiles, [tileId]: { ...tile, project } },
       };
+      const updatedWorkspaces = [...workspaces];
+      updatedWorkspaces[activeWorkspaceIndex] = updatedWorkspace;
+
+      return { workspaces: updatedWorkspaces };
     });
   },
 
   navigateTile: (direction) => {
-    const { layout, focusedTileId } = get();
-    if (!focusedTileId) return;
+    const { workspaces, activeWorkspaceIndex } = get();
+    const workspace = workspaces[activeWorkspaceIndex];
+    const { layout, focusedTileId } = workspace;
+
+    if (!focusedTileId || !layout) return;
 
     const adjacentTileId = findAdjacentTile(layout, focusedTileId, direction);
     if (adjacentTileId) {
-      set({ focusedTileId: adjacentTileId });
+      const updatedWorkspace = { ...workspace, focusedTileId: adjacentTileId };
+      const updatedWorkspaces = [...workspaces];
+      updatedWorkspaces[activeWorkspaceIndex] = updatedWorkspace;
+      set({ workspaces: updatedWorkspaces });
     }
   },
 
@@ -227,12 +267,14 @@ export const useStore = create<AppState>((set, get) => ({
   },
 
   getTile: (tileId) => {
-    return get().tiles[tileId] || null;
+    const { workspaces, activeWorkspaceIndex } = get();
+    return workspaces[activeWorkspaceIndex].tiles[tileId] || null;
   },
 
   getFocusedTile: () => {
-    const { tiles, focusedTileId } = get();
-    return focusedTileId ? tiles[focusedTileId] || null : null;
+    const { workspaces, activeWorkspaceIndex } = get();
+    const workspace = workspaces[activeWorkspaceIndex];
+    return workspace.focusedTileId ? workspace.tiles[workspace.focusedTileId] || null : null;
   },
 
   createSession: (tileId) => {
