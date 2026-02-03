@@ -165,9 +165,12 @@ export function App() {
 
   const isEmpty = !layout || Object.keys(tiles).length === 0;
 
+  const focusedTile = focusedTileId ? tiles[focusedTileId] : null;
+  const project = focusedTile?.project;
+
   return (
     <div className="flex flex-col h-screen bg-[#1a2332] text-gray-100">
-      <WorkspaceBar />
+      <WorkspaceBar project={project} />
       <div className="flex-1 min-h-0">
         {isEmpty ? (
           <FolderSelectScreen

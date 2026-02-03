@@ -61,3 +61,11 @@ contextBridge.exposeInMainWorld('terminal', {
     return () => ipcRenderer.removeListener('terminal:data', handler);
   },
 });
+
+contextBridge.exposeInMainWorld('git', {
+  listBranches: (projectPath: string) => ipcRenderer.invoke('git:listBranches', projectPath),
+  switchBranch: (projectPath: string, branchName: string) =>
+    ipcRenderer.invoke('git:switchBranch', projectPath, branchName),
+  createBranch: (projectPath: string, branchName: string) =>
+    ipcRenderer.invoke('git:createBranch', projectPath, branchName),
+});

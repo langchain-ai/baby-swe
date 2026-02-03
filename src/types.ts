@@ -4,6 +4,7 @@ export interface Project {
   name: string;
   createdAt: number;
   lastOpenedAt: number;
+  gitBranch?: string;
 }
 
 export type TileType = 'agent' | 'terminal';
@@ -83,6 +84,11 @@ declare global {
       resize: (id: string, cols: number, rows: number) => void;
       destroy: (id: string) => void;
       onData: (callback: (id: string, data: string) => void) => () => void;
+    };
+    git: {
+      listBranches: (projectPath: string) => Promise<{ branches: string[]; current: string | null }>;
+      switchBranch: (projectPath: string, branchName: string) => Promise<{ success: boolean; error?: string }>;
+      createBranch: (projectPath: string, branchName: string) => Promise<{ success: boolean; error?: string }>;
     };
   }
 }

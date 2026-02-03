@@ -8,11 +8,13 @@ interface FolderSelectScreenProps {
 }
 
 export function FolderSelectScreen({ onOpenFolder, onSelectRecent, recentProjects }: FolderSelectScreenProps) {
+  const displayedProjects = recentProjects.slice(0, 4);
+
   return (
-    <div className="flex flex-col items-center justify-center h-screen bg-[#1a2332] text-gray-100">
+    <div className="flex flex-col items-center justify-center h-full bg-[#1a2332] text-gray-100">
       <div className="flex flex-col items-center gap-8">
         <Logo />
-        <div className="text-center">
+        <div className="flex flex-col items-center">
           <p className="text-gray-400 mb-6">Open a folder to get started</p>
           <button
             onClick={onOpenFolder}
@@ -23,11 +25,11 @@ export function FolderSelectScreen({ onOpenFolder, onSelectRecent, recentProject
           </button>
         </div>
 
-        {recentProjects.length > 0 && (
+        {displayedProjects.length > 0 && (
           <div className="mt-4 w-full max-w-md">
             <p className="text-gray-500 text-sm mb-3 text-center">Recent</p>
             <div className="space-y-2">
-              {recentProjects.map((project) => (
+              {displayedProjects.map((project) => (
                 <button
                   key={project.id}
                   onClick={() => onSelectRecent(project.path)}

@@ -13,6 +13,70 @@ const MAX_FALLBACK_FILES = 1000;
 const FALLBACK_PATTERNS = ['*', '*/*', '*/*/*', '*/*/*/*'];
 const IGNORE_DIRS = new Set(['.git', 'node_modules', '__pycache__', '.venv', 'build', 'dist', '.next', '.cache']);
 
+function getGitBranch(projectPath: string): string | undefined {
+  try {
+    const result = execSync('git rev-parse --abbrev-ref HEAD', {
+      cwd: projectPath,
+      encoding: 'utf-8',
+      timeout: 2000,
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+    return result.trim() || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function listGitBranches(projectPath: string): { branches: string[]; current: string | null } {
+  try {
+    const result = execSync('git branch --no-color', {
+      cwd: projectPath,
+      encoding: 'utf-8',
+      timeout: 5000,
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+    const lines = result.trim().split('\n').filter(Boolean);
+    let current: string | null = null;
+    const branches = lines.map((line) => {
+      const isCurrent = line.startsWith('* ');
+      const name = line.replace(/^\*?\s+/, '').trim();
+      if (isCurrent) current = name;
+      return name;
+    });
+    return { branches, current };
+  } catch {
+    return { branches: [], current: null };
+  }
+}
+
+function switchGitBranch(projectPath: string, branchName: string): { success: boolean; error?: string } {
+  try {
+    execSync(`git checkout ${branchName}`, {
+      cwd: projectPath,
+      encoding: 'utf-8',
+      timeout: 10000,
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+    return { success: true };
+  } catch (e: any) {
+    return { success: false, error: e.message || 'Failed to switch branch' };
+  }
+}
+
+function createGitBranch(projectPath: string, branchName: string): { success: boolean; error?: string } {
+  try {
+    execSync(`git checkout -b ${branchName}`, {
+      cwd: projectPath,
+      encoding: 'utf-8',
+      timeout: 10000,
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+    return { success: true };
+  } catch (e: any) {
+    return { success: false, error: e.message || 'Failed to create branch' };
+  }
+}
+
 function listProjectFiles(projectPath: string): string[] {
   try {
     const result = execSync('git ls-files', {
@@ -194,9 +258,11 @@ function setupStorageIPC(): void {
 
     const project = storage.getOrCreateProject(folderPath);
     storage.migrateFromFolderStorage(project);
-    tileProjects.set(tileId, project);
-    mainWindow?.webContents.send('tile:projectChanged', tileId, project);
-    return project;
+    const gitBranch = getGitBranch(folderPath);
+    const projectWithBranch = { ...project, gitBranch };
+    tileProjects.set(tileId, projectWithBranch);
+    mainWindow?.webContents.send('tile:projectChanged', tileId, projectWithBranch);
+    return projectWithBranch;
   });
 
   ipcMain.handle('tile:closeProject', (_event, tileId: string) => {
@@ -207,6 +273,38 @@ function setupStorageIPC(): void {
   ipcMain.handle('fs:listFiles', (_event, projectPath?: string) => {
     if (!projectPath) return [];
     return listProjectFiles(projectPath);
+  });
+
+  ipcMain.handle('git:listBranches', (_event, projectPath: string) => {
+    return listGitBranches(projectPath);
+  });
+
+  ipcMain.handle('git:switchBranch', (_event, projectPath: string, branchName: string) => {
+    const result = switchGitBranch(projectPath, branchName);
+    if (result.success) {
+      for (const [tileId, project] of tileProjects.entries()) {
+        if (project?.path === projectPath) {
+          const updatedProject = { ...project, gitBranch: branchName };
+          tileProjects.set(tileId, updatedProject);
+          mainWindow?.webContents.send('tile:projectChanged', tileId, updatedProject);
+        }
+      }
+    }
+    return result;
+  });
+
+  ipcMain.handle('git:createBranch', (_event, projectPath: string, branchName: string) => {
+    const result = createGitBranch(projectPath, branchName);
+    if (result.success) {
+      for (const [tileId, project] of tileProjects.entries()) {
+        if (project?.path === projectPath) {
+          const updatedProject = { ...project, gitBranch: branchName };
+          tileProjects.set(tileId, updatedProject);
+          mainWindow?.webContents.send('tile:projectChanged', tileId, updatedProject);
+        }
+      }
+    }
+    return result;
   });
 }
 
