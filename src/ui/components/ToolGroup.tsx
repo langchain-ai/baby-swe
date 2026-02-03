@@ -57,21 +57,21 @@ export function ToolGroup({ groupType, tools, onApprove, onReject, onAutoApprove
     ? <span className="text-yellow-400 animate-pulse">●</span>
     : hasError
     ? <span className="text-red-400">●</span>
-    : <span className="text-cyan-400">●</span>;
+    : <span className="text-[#87CEEB]">●</span>;
 
   return (
-    <div className="my-0.5 font-mono text-xs">
+    <div className="my-1 font-mono text-sm">
       <div
         className="flex items-center gap-2 cursor-pointer select-none text-gray-500 hover:text-gray-400"
         onClick={() => setExpanded(!expanded)}
       >
         {statusIcon}
         <span>{label}</span>
-        <span className="text-gray-700">(ctrl+o to expand)</span>
+        <span className="text-gray-600">(ctrl+o to expand)</span>
       </div>
 
       {expanded && (
-        <div className="ml-3 border-l border-gray-800 pl-3 mt-0.5 space-y-0.5">
+        <div className="ml-3 border-l border-gray-800 pl-3 mt-1 space-y-1">
           {tools.map((tool) => (
             <ToolExecution
               key={tool.toolCallId}

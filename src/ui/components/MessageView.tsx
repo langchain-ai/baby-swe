@@ -5,6 +5,7 @@ import { ToolExecution } from './ToolExecution';
 import { SubagentGroup } from './SubagentGroup';
 import { ToolGroup } from './ToolGroup';
 import { TodoList } from './TodoList';
+import { HeaderBar } from './HeaderBar';
 import type { Chunk, Message, ToolExecutionChunk, TodoItem } from '../../types';
 
 type ToolGroupType = 'exploring' | 'writing' | 'executing' | 'subagent' | 'other';
@@ -85,23 +86,19 @@ interface MessageViewProps extends ApprovalCallbacks {
   messages: Message[];
   isStreaming: boolean;
   todos?: TodoItem[];
+  showHeader?: boolean;
 }
 
-function StreamingCursor() {
-  return <span className="inline-block w-1.5 h-3 bg-cyan-500 ml-0.5 animate-pulse" />;
-}
 
 function ChunkRenderer({
   chunk,
-  showCursor,
   ...callbacks
-}: { chunk: Chunk; showCursor?: boolean } & ApprovalCallbacks) {
+}: { chunk: Chunk } & ApprovalCallbacks) {
   switch (chunk.kind) {
     case 'text':
       return (
         <div className="text-gray-200">
           <Markdown content={chunk.text} />
-          {showCursor && <StreamingCursor />}
         </div>
       );
     case 'code':
@@ -135,7 +132,7 @@ function UserMessage({ message }: { message: Message }) {
     .join('');
 
   return (
-    <div className="flex items-start gap-2 my-3">
+    <div className="flex items-start gap-2 my-4">
       <span className="text-gray-400 select-none">❯</span>
       <span className="text-gray-100 bg-gray-800/50 px-2 py-0.5 rounded">{text}</span>
     </div>
@@ -152,14 +149,14 @@ function AgentMessage({
   if (groupedItems.length === 0 && isStreaming) {
     return (
       <div className="flex items-start gap-2 my-1">
-        <span className="text-cyan-400 select-none">●</span>
+        <span className="text-[#87CEEB] select-none">●</span>
         <span className="text-gray-400">...</span>
       </div>
     );
   }
 
   return (
-    <div className="my-1">
+    <div className="my-2 space-y-1">
       {groupedItems.map((item, i) => {
         if ('type' in item && item.type === 'subagent-group') {
           return (
@@ -186,17 +183,12 @@ function AgentMessage({
         }
 
         const chunk = item as Chunk;
-        const isLastItem = i === groupedItems.length - 1;
 
         return (
           <div key={i} className="flex items-start gap-2">
-            <span className="text-cyan-400 select-none">●</span>
+            <span className="text-[#87CEEB] select-none">●</span>
             <div className="flex-1">
-              <ChunkRenderer
-                chunk={chunk}
-                showCursor={isStreaming && isLastItem && chunk.kind === 'text'}
-                {...callbacks}
-              />
+              <ChunkRenderer chunk={chunk} {...callbacks} />
             </div>
           </div>
         );
@@ -216,7 +208,7 @@ function MessageBubble({
   return <AgentMessage message={message} isStreaming={isStreaming} {...callbacks} />;
 }
 
-export function MessageView({ messages, isStreaming, todos, onApprove, onReject, onAutoApprove }: MessageViewProps) {
+export function MessageView({ messages, isStreaming, todos, showHeader, onApprove, onReject, onAutoApprove }: MessageViewProps) {
   const setScrollRef = useCallback(
     (node: HTMLDivElement | null) => {
       if (!node) return;
@@ -226,20 +218,19 @@ export function MessageView({ messages, isStreaming, todos, onApprove, onReject,
   );
 
   return (
-    <div ref={setScrollRef} className="flex-1 overflow-y-auto px-4 py-4 text-xs leading-5">
-      <div className="max-w-4xl mx-auto">
-        {todos && todos.length > 0 && <TodoList todos={todos} />}
-        {messages.map((message, index) => (
-          <MessageBubble
-            key={message.id}
-            message={message}
-            isStreaming={isStreaming && index === messages.length - 1}
-            onApprove={onApprove}
-            onReject={onReject}
-            onAutoApprove={onAutoApprove}
-          />
-        ))}
-      </div>
+    <div ref={setScrollRef} className="flex-1 overflow-y-auto px-4 py-4 text-sm leading-relaxed">
+      {showHeader && <HeaderBar />}
+      {todos && todos.length > 0 && <TodoList todos={todos} />}
+      {messages.map((message, index) => (
+        <MessageBubble
+          key={message.id}
+          message={message}
+          isStreaming={isStreaming && index === messages.length - 1}
+          onApprove={onApprove}
+          onReject={onReject}
+          onAutoApprove={onAutoApprove}
+        />
+      ))}
     </div>
   );
 }

@@ -233,7 +233,7 @@ export function DiffView({ diffData }: DiffViewProps) {
       {hasMoreLines && !expanded && (
         <button
           onClick={() => setExpanded(true)}
-          className="mt-1 text-xs text-cyan-400 hover:text-cyan-300"
+          className="mt-1 text-xs text-[#87CEEB] hover:text-[#a8d8ea]"
         >
           +{hiddenCount} more lines
         </button>
@@ -241,7 +241,7 @@ export function DiffView({ diffData }: DiffViewProps) {
       {expanded && hasMoreLines && (
         <button
           onClick={() => setExpanded(false)}
-          className="mt-1 text-xs text-cyan-400 hover:text-cyan-300"
+          className="mt-1 text-xs text-[#87CEEB] hover:text-[#a8d8ea]"
         >
           Show less
         </button>

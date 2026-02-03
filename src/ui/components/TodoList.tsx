@@ -9,7 +9,7 @@ function StatusIcon({ status }: { status: TodoItem['status'] }) {
     case 'pending':
       return <span className="text-gray-500">○</span>;
     case 'in_progress':
-      return <span className="text-cyan-400 animate-pulse">◐</span>;
+      return <span className="text-[#87CEEB] animate-pulse">◐</span>;
     case 'completed':
       return <span className="text-green-400">●</span>;
   }

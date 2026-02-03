@@ -215,7 +215,7 @@ export function PromptBar({ onSubmit, busy }: PromptBarProps) {
 
       <div className="mt-2 text-xs text-gray-600">
         <span className="text-gray-500">▸▸</span>
-        <span className={mode === 'agent' ? 'text-cyan-400 ml-1' : 'text-purple-400 ml-1'}>
+        <span className={mode === 'agent' ? 'text-[#87CEEB] ml-1' : 'text-purple-400 ml-1'}>
           {mode} mode
         </span>
         <span className="text-gray-600 ml-1">(shift+tab to cycle)</span>

@@ -169,7 +169,7 @@ export function FileAutocomplete({ query, selectedIndex, onSelect }: FileAutocom
               isSelected ? 'bg-[#2a3142]' : 'hover:bg-[#252a3a]'
             }`}
           >
-            <span className="text-cyan-400">@</span>
+            <span className="text-[#87CEEB]">@</span>
             <span className="text-gray-200 font-medium truncate flex-1">{filePath}</span>
             {ext && <span className="text-gray-500 text-sm">{ext}</span>}
           </button>

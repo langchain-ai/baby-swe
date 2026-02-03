@@ -145,7 +145,7 @@ function ToolOutput({ output, expanded, onToggle }: { output: string; expanded: 
       {isLong && !expanded && (
         <button
           onClick={onToggle}
-          className="mt-1 text-xs text-cyan-400 hover:text-cyan-300"
+          className="mt-1 text-xs text-[#87CEEB] hover:text-[#a8d8ea]"
         >
           +{hiddenLines} more lines (ctrl+o)
         </button>
@@ -153,7 +153,7 @@ function ToolOutput({ output, expanded, onToggle }: { output: string; expanded: 
       {expanded && isLong && (
         <button
           onClick={onToggle}
-          className="mt-1 text-xs text-cyan-400 hover:text-cyan-300"
+          className="mt-1 text-xs text-[#87CEEB] hover:text-[#a8d8ea]"
         >
           Show less
         </button>
@@ -171,7 +171,7 @@ export function ToolExecution({ chunk, onApprove, onReject, onAutoApprove }: Too
   const statusIcon = {
     'pending-approval': <span className="text-yellow-400 animate-pulse">●</span>,
     running: <span className="text-yellow-400 animate-pulse">●</span>,
-    success: <span className="text-cyan-400">●</span>,
+    success: <span className="text-[#87CEEB]">●</span>,
     error: <span className="text-red-400">●</span>,
   }[status];
 
@@ -181,7 +181,7 @@ export function ToolExecution({ chunk, onApprove, onReject, onAutoApprove }: Too
   const summary = getToolSummary(toolName, toolArgs || {}, output, status);
 
   return (
-    <div className="my-1 font-mono text-xs">
+    <div className="my-1 font-mono text-sm">
       <div className="flex items-center gap-2">
         {statusIcon}
         <span className="text-gray-300">{displayName}</span>
@@ -190,7 +190,7 @@ export function ToolExecution({ chunk, onApprove, onReject, onAutoApprove }: Too
         )}
       </div>
 
-      <div className="ml-3 border-l border-gray-700 pl-3 mt-0.5">
+      <div className="ml-3 border-l border-gray-700 pl-3 mt-1">
         {status === 'pending-approval' && approvalRequestId ? (
           <>
             {showDiff && <DiffView diffData={diffData} />}

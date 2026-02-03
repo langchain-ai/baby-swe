@@ -16,7 +16,7 @@ function extractText(children: ReactNode): string {
 
 export function Markdown({ content }: MarkdownProps) {
   return (
-    <div className="leading-5">
+    <div className="leading-relaxed space-y-1">
       <ReactMarkdown
         remarkPlugins={[remarkGfm, remarkBreaks]}
         components={{
@@ -25,7 +25,7 @@ export function Markdown({ content }: MarkdownProps) {
           h3: ({ children }) => <div className="text-gray-100 font-semibold">{children}</div>,
           p: ({ children }) => <div>{children}</div>,
           a: ({ href, children }) => (
-            <a className="text-cyan-400 underline" href={href} target="_blank" rel="noreferrer">
+            <a className="text-[#87CEEB] underline" href={href} target="_blank" rel="noreferrer">
               {children}
             </a>
           ),
@@ -57,7 +57,7 @@ export function Markdown({ content }: MarkdownProps) {
                 </pre>
               );
             }
-            return <code className="text-cyan-300">`{text}`</code>;
+            return <code className="text-[#a8d8ea]">`{text}`</code>;
           },
           pre: ({ children }) => <>{children}</>,
         }}

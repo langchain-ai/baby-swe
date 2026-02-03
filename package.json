@@ -5,7 +5,8 @@
   "description": "A terminal-style AI coding assistant",
   "main": "dist/main.js",
   "scripts": {
-    "dev": "bun run build && concurrently -k \"bun run watch:main\" \"bun run watch:renderer\" \"bun run watch:css\" \"bun run watch:electron\"",
+    "dev": "bun run build && electron .",
+    "watch": "bun run build && concurrently -k \"bun run watch:main\" \"bun run watch:renderer\" \"bun run watch:css\" \"bun run watch:electron\"",
     "build": "tsc -p tsconfig.main.json && esbuild src/renderer.tsx --bundle --outfile=dist/renderer.js --platform=browser --target=chrome120 && cp ./src/index.html ./dist/index.html && tailwindcss -i ./src/styles/input.css -o ./dist/styles/output.css",
     "watch:main": "tsc -p tsconfig.main.json --watch --preserveWatchOutput",
     "watch:renderer": "esbuild src/renderer.tsx --bundle --outfile=dist/renderer.js --platform=browser --target=chrome120 --watch",

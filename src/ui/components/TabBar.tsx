@@ -10,7 +10,7 @@ interface TabBarProps {
 
 export function TabBar({ sessions, activeSessionId, onSelect, onCreate, onClose }: TabBarProps) {
   return (
-    <div className="flex items-center bg-[#12171f] border-b border-[#2a3142] h-10 shrink-0">
+    <div className="flex items-center bg-[#1e2a3a] border-b border-[#2a3142] h-10 shrink-0">
       <div className="flex-1 flex items-center overflow-x-auto scrollbar-hide">
         {sessions.map((session) => (
           <Tab
@@ -48,7 +48,7 @@ function Tab({ session, isActive, onSelect, onClose, showClose }: TabProps) {
       onClick={onSelect}
       className={`group flex items-center gap-2 px-3 h-full border-r border-[#2a3142] cursor-pointer min-w-0 max-w-[180px] ${
         isActive
-          ? 'bg-[#0a0f1a] text-gray-200'
+          ? 'bg-[#1a2332] text-gray-200'
           : 'text-gray-500 hover:text-gray-300 hover:bg-[#1a1f2e]'
       }`}
     >

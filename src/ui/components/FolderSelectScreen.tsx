@@ -9,14 +9,14 @@ interface FolderSelectScreenProps {
 
 export function FolderSelectScreen({ onOpenFolder, onSelectRecent, recentProjects }: FolderSelectScreenProps) {
   return (
-    <div className="flex flex-col items-center justify-center h-screen bg-[#0a0f1a] text-gray-100">
+    <div className="flex flex-col items-center justify-center h-screen bg-[#1a2332] text-gray-100">
       <div className="flex flex-col items-center gap-8">
         <Logo />
         <div className="text-center">
           <p className="text-gray-400 mb-6">Open a folder to get started</p>
           <button
             onClick={onOpenFolder}
-            className="flex items-center gap-2 px-6 py-3 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg transition-colors font-medium"
+            className="flex items-center gap-2 px-6 py-3 bg-[#5a9bc7] hover:bg-[#6daad3] text-white rounded-lg transition-colors font-medium"
           >
             <FolderIcon />
             Open Folder

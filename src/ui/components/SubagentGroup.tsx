@@ -48,7 +48,7 @@ function SubagentItem({
   const statusIcon = {
     'pending-approval': <span className="text-yellow-400 animate-pulse">●</span>,
     running: <span className="text-yellow-400 animate-pulse">●</span>,
-    success: <span className="text-cyan-400">●</span>,
+    success: <span className="text-[#87CEEB]">●</span>,
     error: <span className="text-red-400">●</span>,
   }[task.status];
 
@@ -56,7 +56,7 @@ function SubagentItem({
     <div className="my-1 font-mono text-sm">
       <div className="flex items-center gap-2">
         {statusIcon}
-        <span className="text-cyan-400">{subagentType}</span>
+        <span className="text-[#87CEEB]">{subagentType}</span>
         <span className="text-gray-400">({truncatedDesc})</span>
         {task.elapsedMs && task.status !== 'running' && (
           <span className="text-gray-600 text-xs">{formatElapsed(task.elapsedMs)}</span>

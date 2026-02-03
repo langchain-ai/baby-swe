@@ -75,7 +75,7 @@ export function ThreadHistory({ onClose }: Props) {
   };
 
   return (
-    <div className="absolute top-full right-0 mt-2 w-80 bg-[#12171f] border border-gray-700 rounded-lg shadow-xl z-50 overflow-hidden">
+    <div className="absolute top-full right-0 mt-2 w-80 bg-[#1e2a3a] border border-gray-700 rounded-lg shadow-xl z-50 overflow-hidden">
       <div className="p-3 border-b border-gray-700">
         <input
           type="text"
@@ -110,7 +110,7 @@ export function ThreadHistory({ onClose }: Props) {
                       onBlur={() => handleEditSave(thread.id)}
                       onKeyDown={(e) => handleEditKeyDown(e, thread.id)}
                       onClick={(e) => e.stopPropagation()}
-                      className="flex-1 bg-[#0a0f1a] text-gray-200 text-sm px-2 py-1 rounded border border-gray-600 focus:outline-none"
+                      className="flex-1 bg-[#1a2332] text-gray-200 text-sm px-2 py-1 rounded border border-gray-600 focus:outline-none"
                       autoFocus
                     />
                   ) : (
@@ -118,7 +118,7 @@ export function ThreadHistory({ onClose }: Props) {
                   )}
                   {thread.id === currentThreadId && editingId !== thread.id && (
                     <>
-                      <span className="text-xs text-gray-500 px-2 py-0.5 bg-[#0a0f1a] rounded">
+                      <span className="text-xs text-gray-500 px-2 py-0.5 bg-[#1a2332] rounded">
                         Current
                       </span>
                       <button

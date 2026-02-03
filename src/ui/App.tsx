@@ -246,7 +246,7 @@ export function App() {
 
   if (!hasMessages) {
     return (
-      <div className="flex flex-col h-screen bg-[#0a0f1a] text-gray-100">
+      <div className="flex flex-col h-screen bg-[#1a2332] text-gray-100">
         <HeaderBar />
         <div className="flex-1 flex flex-col items-center justify-center px-4">
           <div className="w-full max-w-2xl">
@@ -259,8 +259,7 @@ export function App() {
   }
 
   return (
-    <div className="flex flex-col h-screen bg-[#0a0f1a] text-gray-100">
-      <HeaderBar />
+    <div className="flex flex-col h-screen bg-[#1a2332] text-gray-100">
       <MessageView
         messages={activeSession.messages}
         isStreaming={activeSession.isStreaming}
@@ -268,11 +267,10 @@ export function App() {
         onApprove={handleApprove}
         onReject={handleReject}
         onAutoApprove={handleAutoApprove}
+        showHeader
       />
       <div className="px-4 pb-4">
-        <div className="max-w-4xl mx-auto">
-          <PromptBar onSubmit={handleSubmit} busy={activeSession.busy} />
-        </div>
+        <PromptBar onSubmit={handleSubmit} busy={activeSession.busy} />
       </div>
       <Footer />
     </div>
