@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useRef, useEffect } from 'react';
 import { CodeBlock } from './CodeBlock';
 import { Markdown } from './Markdown';
 import { ToolExecution } from './ToolExecution';
@@ -193,16 +193,31 @@ function MessageBubble({
 }
 
 export function MessageView({ messages, isStreaming, todos, showHeader, onApprove, onReject, onAutoApprove }: MessageViewProps) {
-  const setScrollRef = useCallback(
-    (node: HTMLDivElement | null) => {
-      if (!node) return;
-      node.scrollTop = node.scrollHeight;
-    },
-    [messages, isStreaming, todos]
-  );
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const isNearBottomRef = useRef(true);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+
+    const handleScroll = () => {
+      const threshold = 100;
+      const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+      isNearBottomRef.current = distanceFromBottom < threshold;
+    };
+
+    el.addEventListener('scroll', handleScroll);
+    return () => el.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  useEffect(() => {
+    if (isNearBottomRef.current && scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [messages, isStreaming, todos]);
 
   return (
-    <div ref={setScrollRef} className="flex-1 overflow-y-auto px-4 py-4 text-sm leading-relaxed">
+    <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4 text-sm leading-relaxed">
       {showHeader && <HeaderBar />}
       {todos && todos.length > 0 && <TodoList todos={todos} />}
       {messages.map((message, index) => (

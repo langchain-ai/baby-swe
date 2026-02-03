@@ -16,37 +16,33 @@ function formatElapsed(ms?: number): string {
 }
 
 function getToolDisplayName(toolName: string, toolArgs: Record<string, unknown>): string {
-  const truncatePath = (path: string, maxLen = 50) => {
-    if (!path) return 'file';
-    if (path.length <= maxLen) return path;
-    const parts = path.split('/');
-    if (parts.length <= 2) return path.slice(-maxLen);
-    return '...' + path.slice(-(maxLen - 3));
-  };
-
   switch (toolName) {
     case 'execute': {
       const cmd = (toolArgs?.command as string) || '';
-      const truncated = cmd.length > 50 ? cmd.slice(0, 50) + '...' : cmd;
+      const truncated = cmd.length > 60 ? cmd.slice(0, 60) + '...' : cmd;
       return `Bash(${truncated})`;
     }
     case 'task': {
       const type = (toolArgs?.subagent_type as string) || 'Task';
       const desc = (toolArgs?.description as string) || 'task';
-      const truncatedDesc = desc.length > 40 ? desc.slice(0, 40) + '...' : desc;
+      const truncatedDesc = desc.length > 50 ? desc.slice(0, 50) + '...' : desc;
       return `${type}(${truncatedDesc})`;
     }
+    case 'list_dir': {
+      const path = (toolArgs?.path as string) || (toolArgs?.directory as string) || '.';
+      return `List(${path})`;
+    }
     case 'write_file': {
-      const path = (toolArgs?.filePath as string) || (toolArgs?.path as string) || '';
-      return `Write(${truncatePath(path)})`;
+      const path = (toolArgs?.filePath as string) || (toolArgs?.path as string) || 'file';
+      return `Write(${path})`;
     }
     case 'edit_file': {
-      const path = (toolArgs?.filePath as string) || (toolArgs?.path as string) || '';
-      return `Update(${truncatePath(path)})`;
+      const path = (toolArgs?.filePath as string) || (toolArgs?.path as string) || 'file';
+      return `Update(${path})`;
     }
     case 'read_file': {
-      const path = (toolArgs?.path as string) || '';
-      return `Read(${truncatePath(path)})`;
+      const path = (toolArgs?.path as string) || (toolArgs?.file_path as string) || 'file';
+      return `Read(${path})`;
     }
     case 'glob':
     case 'search': {
@@ -55,16 +51,16 @@ function getToolDisplayName(toolName: string, toolArgs: Record<string, unknown>)
     }
     case 'grep': {
       const pattern = (toolArgs?.pattern as string) || '';
-      const truncated = pattern.length > 30 ? pattern.slice(0, 30) + '...' : pattern;
+      const truncated = pattern.length > 40 ? pattern.slice(0, 40) + '...' : pattern;
       return `Search(pattern: "${truncated}")`;
     }
     case 'web_search': {
       const query = (toolArgs?.query as string) || '';
-      return `WebSearch(${query.slice(0, 30)}${query.length > 30 ? '...' : ''})`;
+      return `WebSearch(${query.slice(0, 40)}${query.length > 40 ? '...' : ''})`;
     }
     case 'fetch_url': {
       const url = (toolArgs?.url as string) || '';
-      return `Fetch(${url.slice(0, 40)}${url.length > 40 ? '...' : ''})`;
+      return `Fetch(${url.slice(0, 50)}${url.length > 50 ? '...' : ''})`;
     }
     case 'write_todos':
       return `TodoWrite(${((toolArgs?.todos as Array<unknown>) || []).length} items)`;
@@ -98,6 +94,10 @@ function getToolSummary(toolName: string, toolArgs: Record<string, unknown>, out
     case 'write_file':
     case 'edit_file': {
       return 'File updated';
+    }
+    case 'list_dir': {
+      const items = output?.split('\n').filter(l => l.trim()).length || 0;
+      return `${items} items`;
     }
     case 'glob':
     case 'search': {
@@ -194,8 +194,8 @@ export function ToolExecution({ chunk, onApprove, onReject, onAutoApprove }: Too
       </div>
 
       {hasContent && (
-        <div className="flex">
-          <span className="text-gray-600 select-none">└ </span>
+        <div className="flex items-start gap-2">
+          <span className="text-gray-600 select-none">└</span>
           <div className="flex-1">
             {status === 'pending-approval' && approvalRequestId ? (
               <>
