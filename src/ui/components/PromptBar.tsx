@@ -103,7 +103,7 @@ export function PromptBar({ onSubmit, busy, projectPath, sessionId, isFocused }:
   };
 
   const handleModelSelect = (model: ModelOption) => {
-    setModelConfig({ name: model.id });
+    setModelConfig({ name: model.id, effort: model.effort || 'default' });
     setQuery('');
     inputRef.current?.focus();
   };
@@ -246,6 +246,7 @@ export function PromptBar({ onSubmit, busy, projectPath, sessionId, isFocused }:
         <ModelAutocomplete
           selectedIndex={modelSelectedIndex}
           currentModelId={modelConfig.name}
+          currentEffort={modelConfig.effort}
           onSelect={handleModelSelect}
         />
       )}

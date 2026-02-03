@@ -60,7 +60,7 @@ declare global {
     };
     agent: {
       invoke: (message: string) => Promise<{ content: string }>;
-      stream: (sessionId: string, tileId: string, messages: ChatMessage[]) => void;
+      stream: (sessionId: string, tileId: string, messages: ChatMessage[], modelConfig: ModelConfig) => void;
       cancel: (sessionId: string) => void;
       onStreamEvent: (callback: (event: StreamEvent) => void) => () => void;
       respondToApproval: (response: ApprovalResponse) => void;

@@ -1,19 +1,21 @@
 import { createDeepAgent } from "deepagents";
 import { LocalSandboxBackend } from "./backends/local-sandbox";
 import { ChatAnthropic } from "@langchain/anthropic";
+import { ChatOpenAI } from "@langchain/openai";
 import { ipcMain, BrowserWindow } from "electron";
 import { v4 as uuidv4 } from "uuid";
 import * as fs from "fs";
 import * as path from "path";
 import { execSync } from "child_process";
 import "dotenv/config";
-import type { ApprovalDecision, ApprovalResponse, ChatMessage, DiffData, TodoItem } from "./types";
+import type { ApprovalDecision, ApprovalResponse, ChatMessage, DiffData, TodoItem, ModelConfig } from "./types";
 import { loadAgentMemory } from "./memory/agents";
 import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 import { tavily } from "@tavily/core";
 import TurndownService from "turndown";
 import { loadSettings } from "./storage";
+import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
 
 const sessionControllers = new Map<string, AbortController>();
 const pendingApprovals = new Map<string, { resolve: (decision: ApprovalDecision) => void }>();
@@ -332,12 +334,45 @@ function computeDiffData(
   };
 }
 
-function createAgent(rootDir?: string) {
-  const model = new ChatAnthropic({
-    model: "claude-opus-4-5-20251101",
+function createModel(modelConfig: ModelConfig): BaseChatModel {
+  const { name, effort } = modelConfig;
+
+  if (name.startsWith('gpt-')) {
+    const openaiConfig: ConstructorParameters<typeof ChatOpenAI>[0] = {
+      model: name,
+      openAIApiKey: process.env.OPENAI_API_KEY,
+      streaming: true,
+    };
+
+    if (effort && effort !== 'default') {
+      const effortMap: Record<string, string> = {
+        'low': 'low',
+        'medium': 'medium',
+        'medium-fast': 'medium',
+        'high': 'high',
+        'high-fast': 'high',
+      };
+      const reasoningEffort = effortMap[effort];
+      if (reasoningEffort) {
+        openaiConfig.modelKwargs = {
+          reasoning_effort: reasoningEffort,
+        };
+      }
+    }
+
+    return new ChatOpenAI(openaiConfig);
+  }
+
+  return new ChatAnthropic({
+    model: name,
     anthropicApiKey: process.env.ANTHROPIC_API_KEY,
     streaming: true,
   });
+}
+
+function createAgent(rootDir?: string, modelConfig?: ModelConfig) {
+  const modelCfg = modelConfig || { name: 'claude-sonnet-4-5-20250514', provider: 'anthropic', effort: 'default' };
+  const model = createModel(modelCfg);
 
   let systemPrompt: string;
 
@@ -418,7 +453,7 @@ export function setupAgentIPC(mainWindow: BrowserWindow, getTileProject: (tileId
     }
   });
 
-  ipcMain.on("agent:stream", async (_event, sessionId: string, tileId: string, messages: ChatMessage[]) => {
+  ipcMain.on("agent:stream", async (_event, sessionId: string, tileId: string, messages: ChatMessage[], modelConfig: ModelConfig) => {
     const controller = new AbortController();
     sessionControllers.set(sessionId, controller);
 
@@ -426,9 +461,9 @@ export function setupAgentIPC(mainWindow: BrowserWindow, getTileProject: (tileId
 
     try {
       const folder = getTileProject(tileId);
-      const streamAgent = createAgent(folder || undefined);
+      const streamAgent = createAgent(folder || undefined, modelConfig);
 
-      console.log(`[agent:stream] Starting stream for session ${sessionId}, tile: ${tileId}, folder: ${folder}, messages: ${messages.length}`);
+      console.log(`[agent:stream] Starting stream for session ${sessionId}, tile: ${tileId}, folder: ${folder}, model: ${modelConfig.name}, effort: ${modelConfig.effort}, messages: ${messages.length}`);
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const stream = await streamAgent.streamEvents(

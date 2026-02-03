@@ -120,7 +120,7 @@ export function TileContainer({ tileId, isFocused, onFocus }: TileContainerProps
       chatHistory.push({ role: 'user', content: query });
       addMessageToSession(session.id, 'user', [{ kind: 'text', text: query }]);
       startStreaming(session.id);
-      window.agent.stream(session.id, tileId, chatHistory);
+      window.agent.stream(session.id, tileId, chatHistory, modelConfig);
     },
     [tile, session, tileId, addMessageToSession, startStreaming, createSession, clearSession, tokenUsage, modelConfig, setModelConfig]
   );

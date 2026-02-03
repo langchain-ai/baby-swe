@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import type { StreamEvent, ApprovalResponse, ChatMessage } from './types';
+import type { StreamEvent, ApprovalResponse, ChatMessage, ModelConfig } from './types';
 
 contextBridge.exposeInMainWorld('versions', {
   node: () => process.versions.node,
@@ -9,8 +9,8 @@ contextBridge.exposeInMainWorld('versions', {
 
 contextBridge.exposeInMainWorld('agent', {
   invoke: (message: string) => ipcRenderer.invoke('agent:invoke', message),
-  stream: (sessionId: string, tileId: string, messages: ChatMessage[]) => {
-    ipcRenderer.send('agent:stream', sessionId, tileId, messages);
+  stream: (sessionId: string, tileId: string, messages: ChatMessage[], modelConfig: ModelConfig) => {
+    ipcRenderer.send('agent:stream', sessionId, tileId, messages, modelConfig);
   },
   cancel: (sessionId: string) => {
     ipcRenderer.send('agent:cancel', sessionId);

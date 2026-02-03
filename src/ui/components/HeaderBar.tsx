@@ -4,6 +4,15 @@ import type { Project } from '../../types';
 const MODELS: Record<string, string> = {
   'claude-sonnet-4-5-20250514': 'Sonnet 4.5',
   'claude-opus-4-5-20250514': 'Opus 4.5',
+  'gpt-5.2-codex': 'GPT-5.2 Codex',
+};
+
+const GPT_EFFORT_LABELS: Record<string, string> = {
+  'low': 'GPT-5.2 Fast',
+  'medium': 'GPT-5.2 High',
+  'medium-fast': 'GPT-5.2 High Fast',
+  'high': 'GPT-5.2 Extra High',
+  'high-fast': 'GPT-5.2 Extra High Fast',
 };
 
 interface HeaderBarProps {
@@ -14,7 +23,15 @@ interface HeaderBarProps {
 export function HeaderBar({ project, compact }: HeaderBarProps) {
   const { modelConfig } = useStore();
 
-  const modelLabel = MODELS[modelConfig.name] || modelConfig.name;
+  const getModelLabel = () => {
+    if (modelConfig.name === 'gpt-5.2' && modelConfig.effort) {
+      return GPT_EFFORT_LABELS[modelConfig.effort] || `GPT-5.2 (${modelConfig.effort})`;
+    }
+    return MODELS[modelConfig.name] || modelConfig.name;
+  };
+
+  const modelLabel = getModelLabel();
+  const apiLabel = modelConfig.name.startsWith('gpt-') ? 'OpenAI API' : 'Claude API';
   const projectPath = project?.path || '~';
   const displayPath = projectPath.replace(/^\/Users\/[^/]+/, '~');
 
@@ -44,7 +61,7 @@ export function HeaderBar({ project, compact }: HeaderBarProps) {
       </pre>
       <div className="flex flex-col gap-0.5">
         <span className="text-gray-200 font-semibold">Baby SWE v0.1.0</span>
-        <span className="text-gray-500">{modelLabel} · Claude API</span>
+        <span className="text-gray-500">{modelLabel} · {apiLabel}</span>
         <span className="text-gray-500">{displayPath}</span>
       </div>
     </div>

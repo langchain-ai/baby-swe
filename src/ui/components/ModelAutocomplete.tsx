@@ -3,21 +3,28 @@ import { useEffect, useRef } from 'react';
 export interface ModelOption {
   id: string;
   name: string;
-  description: string;
+  effort?: string;
 }
 
 export const AVAILABLE_MODELS: ModelOption[] = [
-  { id: 'claude-sonnet-4-5-20250514', name: 'Sonnet 4.5', description: 'Fast and capable' },
-  { id: 'claude-opus-4-5-20250514', name: 'Opus 4.5', description: 'Most intelligent' },
+  { id: 'claude-opus-4-5-20250514', name: 'Opus 4.5' },
+  { id: 'claude-sonnet-4-5-20250514', name: 'Sonnet 4.5' },
+  { id: 'gpt-5.2', name: 'GPT-5.2 Fast', effort: 'low' },
+  { id: 'gpt-5.2', name: 'GPT-5.2 High', effort: 'medium' },
+  { id: 'gpt-5.2', name: 'GPT-5.2 High Fast', effort: 'medium-fast' },
+  { id: 'gpt-5.2', name: 'GPT-5.2 Extra High', effort: 'high' },
+  { id: 'gpt-5.2', name: 'GPT-5.2 Extra High Fast', effort: 'high-fast' },
+  { id: 'gpt-5.2-codex', name: 'GPT-5.2 Codex' },
 ];
 
 interface ModelAutocompleteProps {
   selectedIndex: number;
   currentModelId: string;
+  currentEffort?: string;
   onSelect: (model: ModelOption) => void;
 }
 
-export function ModelAutocomplete({ selectedIndex, currentModelId, onSelect }: ModelAutocompleteProps) {
+export function ModelAutocomplete({ selectedIndex, currentModelId, currentEffort, onSelect }: ModelAutocompleteProps) {
   const listRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -28,14 +35,14 @@ export function ModelAutocomplete({ selectedIndex, currentModelId, onSelect }: M
   return (
     <div
       ref={listRef}
-      className="absolute bottom-full left-0 right-0 mb-2 bg-[#1a1f2e] border border-[#2a3142] rounded-lg shadow-xl overflow-hidden"
+      className="absolute bottom-full left-0 right-0 mb-2 bg-[#1a1f2e] border border-[#2a3142] rounded-lg shadow-xl overflow-hidden max-h-[300px] overflow-y-auto"
     >
-      <div className="px-4 py-2 text-xs text-gray-500 font-medium border-b border-[#2a3142]">
+      <div className="px-4 py-2 text-xs text-gray-500 font-medium border-b border-[#2a3142] sticky top-0 bg-[#1a1f2e]">
         Select Model
       </div>
       {AVAILABLE_MODELS.map((model, idx) => {
         const isSelected = idx === selectedIndex;
-        const isCurrent = model.id === currentModelId;
+        const isCurrent = model.id === currentModelId && (model.effort || undefined) === (currentEffort || undefined);
 
         return (
           <button
@@ -46,10 +53,9 @@ export function ModelAutocomplete({ selectedIndex, currentModelId, onSelect }: M
               isSelected ? 'bg-[#2a3142]' : 'hover:bg-[#252a3a]'
             }`}
           >
-            <span className="text-gray-200 font-medium">{model.name}</span>
-            <span className="text-gray-500 text-sm">{model.description}</span>
+            <span className={isCurrent ? 'text-gray-200 font-medium' : 'text-gray-400'}>{model.name}</span>
             {isCurrent && (
-              <span className="ml-auto text-xs text-[#5a9bc7]">current</span>
+              <span className="ml-auto text-gray-400">✓</span>
             )}
           </button>
         );
