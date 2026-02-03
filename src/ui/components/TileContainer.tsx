@@ -5,6 +5,7 @@ import { MessageView } from './MessageView';
 import { PromptBar } from './PromptBar';
 import { Logo } from './Logo';
 import { TerminalTile } from './TerminalTile';
+import { executeCommand } from '../../commands';
 import type { Message, ChatMessage, Project } from '../../types';
 
 function messagesToChatMessages(messages: Message[]): ChatMessage[] {
@@ -49,9 +50,13 @@ export function TileContainer({ tileId, isFocused, onFocus }: TileContainerProps
     loadRecentProjects,
     setTileProject,
     createSession,
+    clearSession,
     addMessageToSession,
     startStreaming,
     setAutoApproveSession,
+    tokenUsage,
+    modelConfig,
+    setModelConfig,
   } = useStore();
 
   const tiles = workspaces[activeWorkspaceIndex].tiles;
@@ -93,7 +98,22 @@ export function TileContainer({ tileId, isFocused, onFocus }: TileContainerProps
 
   const handleSubmit = useCallback(
     async (query: string) => {
-      if (!tile || !session) return;
+      if (!tile) return;
+
+      if (query.startsWith('/')) {
+        const commandExecuted = executeCommand(query, {
+          sessionId: session?.id || null,
+          createSession: () => createSession(tileId),
+          clearSession,
+          addSystemMessage: addMessageToSession,
+          tokenUsage,
+          modelConfig,
+          setModelConfig,
+        });
+        if (commandExecuted) return;
+      }
+
+      if (!session) return;
 
       const existingMessages = session.messages;
       const chatHistory = messagesToChatMessages(existingMessages);
@@ -102,7 +122,7 @@ export function TileContainer({ tileId, isFocused, onFocus }: TileContainerProps
       startStreaming(session.id);
       window.agent.stream(session.id, tileId, chatHistory);
     },
-    [tile, session, tileId, addMessageToSession, startStreaming]
+    [tile, session, tileId, addMessageToSession, startStreaming, createSession, clearSession, tokenUsage, modelConfig, setModelConfig]
   );
 
   if (!tile) {

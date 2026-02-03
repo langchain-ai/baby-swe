@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { useStore } from '../../store';
 import { CommandAutocomplete, getFilteredCommandCount, getCommandAtIndex } from './CommandAutocomplete';
 import { FileAutocomplete, fuzzySearch, getFileAtIndex } from './FileAutocomplete';
+import { ModelAutocomplete, getModelCount, getModelAtIndex, type ModelOption } from './ModelAutocomplete';
 import type { Command } from '../../commands';
 
 interface PromptBarProps {
@@ -14,18 +15,21 @@ interface PromptBarProps {
 
 export function PromptBar({ onSubmit, busy, projectPath, sessionId, isFocused }: PromptBarProps) {
   const [query, setQuery] = useState('');
-  const { sessions, setSessionMode } = useStore();
+  const { sessions, setSessionMode, modelConfig, setModelConfig } = useStore();
   const session = sessions[sessionId];
   const mode = session?.mode ?? 'agent';
   const inputRef = useRef<HTMLInputElement>(null);
   const [commandSelectedIndex, setCommandSelectedIndex] = useState(0);
   const [fileSelectedIndex, setFileSelectedIndex] = useState(0);
+  const [modelSelectedIndex, setModelSelectedIndex] = useState(0);
   const [projectFiles, setProjectFiles] = useState<string[]>([]);
   const [cursorPosition, setCursorPosition] = useState(0);
 
   const isTypingCommand = query.startsWith('/');
   const commandQuery = isTypingCommand ? query.slice(1).split(/\s/)[0] : '';
-  const showCommandAutocomplete = isTypingCommand && !query.includes(' ');
+  const isModelCommand = query.toLowerCase() === '/model' || query.toLowerCase().startsWith('/model ');
+  const showModelAutocomplete = isModelCommand;
+  const showCommandAutocomplete = isTypingCommand && !query.includes(' ') && !isModelCommand;
 
   const getFileAutocompleteContext = useCallback(() => {
     const beforeCursor = query.slice(0, cursorPosition);
@@ -50,6 +54,10 @@ export function PromptBar({ onSubmit, busy, projectPath, sessionId, isFocused }:
   useEffect(() => {
     setFileSelectedIndex(0);
   }, [fileContext?.fileQuery]);
+
+  useEffect(() => {
+    setModelSelectedIndex(0);
+  }, [isModelCommand]);
 
   useEffect(() => {
     if (projectPath) {
@@ -94,6 +102,12 @@ export function PromptBar({ onSubmit, busy, projectPath, sessionId, isFocused }:
     }, 0);
   };
 
+  const handleModelSelect = (model: ModelOption) => {
+    setModelConfig({ name: model.id });
+    setQuery('');
+    inputRef.current?.focus();
+  };
+
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setQuery(e.target.value);
     setCursorPosition(e.target.selectionStart || 0);
@@ -104,6 +118,37 @@ export function PromptBar({ onSubmit, busy, projectPath, sessionId, isFocused }:
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (showModelAutocomplete) {
+      const count = getModelCount();
+
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setModelSelectedIndex((prev) => (prev + 1) % count);
+        return;
+      }
+
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setModelSelectedIndex((prev) => (prev - 1 + count) % count);
+        return;
+      }
+
+      if (e.key === 'Enter' || e.key === 'Tab') {
+        e.preventDefault();
+        const model = getModelAtIndex(modelSelectedIndex);
+        if (model) {
+          handleModelSelect(model);
+        }
+        return;
+      }
+
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setQuery('');
+        return;
+      }
+    }
+
     if (showCommandAutocomplete) {
       const count = getFilteredCommandCount(commandQuery);
 
@@ -138,8 +183,12 @@ export function PromptBar({ onSubmit, busy, projectPath, sessionId, isFocused }:
         e.preventDefault();
         const command = getCommandAtIndex(commandQuery, commandSelectedIndex);
         if (command) {
-          onSubmit(`/${command.name}`);
-          setQuery('');
+          if (command.name === 'model') {
+            setQuery('/model');
+          } else {
+            onSubmit(`/${command.name}`);
+            setQuery('');
+          }
         }
         return;
       }
@@ -193,6 +242,13 @@ export function PromptBar({ onSubmit, busy, projectPath, sessionId, isFocused }:
 
   return (
     <div className="relative font-mono">
+      {showModelAutocomplete && (
+        <ModelAutocomplete
+          selectedIndex={modelSelectedIndex}
+          currentModelId={modelConfig.name}
+          onSelect={handleModelSelect}
+        />
+      )}
       {showCommandAutocomplete && (
         <CommandAutocomplete
           query={commandQuery}

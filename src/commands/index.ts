@@ -96,3 +96,10 @@ registerCommand({
     ctx.addSystemMessage(sessionId, [{ kind: 'text', text: statusText }]);
   },
 });
+
+registerCommand({
+  name: 'model',
+  description: 'Switch between available models',
+  category: 'Actions',
+  execute: () => {},
+});
