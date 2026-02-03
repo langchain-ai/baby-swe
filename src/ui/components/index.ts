@@ -3,3 +3,6 @@ export { MessageView } from './MessageView';
 export { PromptBar } from './PromptBar';
 export { FolderSelectScreen } from './FolderSelectScreen';
 export { Footer } from './Footer';
+export { TileContainer } from './TileContainer';
+export { TilingLayout } from './TilingLayout';
+export { SplitResizer } from './SplitResizer';

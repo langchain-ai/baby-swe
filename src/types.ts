@@ -6,6 +6,29 @@ export interface Project {
   lastOpenedAt: number;
 }
 
+export interface Tile {
+  id: string;
+  sessionId: string;
+  project: Project | null;
+}
+
+export type SplitDirection = 'horizontal' | 'vertical';
+
+export interface SplitNode {
+  type: 'split';
+  direction: SplitDirection;
+  ratio: number;
+  first: LayoutNode;
+  second: LayoutNode;
+}
+
+export interface TileNode {
+  type: 'tile';
+  tileId: string;
+}
+
+export type LayoutNode = SplitNode | TileNode;
+
 export interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
@@ -26,7 +49,7 @@ declare global {
     };
     agent: {
       invoke: (message: string) => Promise<{ content: string }>;
-      stream: (sessionId: string, messages: ChatMessage[]) => void;
+      stream: (sessionId: string, tileId: string, messages: ChatMessage[]) => void;
       cancel: (sessionId: string) => void;
       onStreamEvent: (callback: (event: StreamEvent) => void) => () => void;
       respondToApproval: (response: ApprovalResponse) => void;
@@ -35,15 +58,14 @@ declare global {
       getSettings: () => Promise<GlobalSettings>;
       saveSettings: (settings: GlobalSettings) => Promise<void>;
       getRecentProjects: () => Promise<Project[]>;
-      openProject: (folderPath?: string) => Promise<Project | null>;
-      closeProject: () => Promise<void>;
-      onProjectChanged: (callback: (project: Project | null) => void) => () => void;
-      getThreads: () => Promise<Thread[]>;
-      saveThread: (thread: Thread) => Promise<void>;
-      deleteThread: (threadId: string) => Promise<void>;
+    };
+    tile: {
+      openProject: (tileId: string, folderPath?: string) => Promise<Project | null>;
+      closeProject: (tileId: string) => Promise<void>;
+      onProjectChanged: (callback: (tileId: string, project: Project | null) => void) => () => void;
     };
     fs: {
-      listFiles: () => Promise<string[]>;
+      listFiles: (projectPath?: string) => Promise<string[]>;
     };
   }
 }

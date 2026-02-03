@@ -57,11 +57,11 @@ function listFilesWithGlob(projectPath: string): string[] {
 }
 
 let mainWindow: BrowserWindow | null = null;
-let currentProject: Project | null = null;
+const tileProjects = new Map<string, Project | null>();
 
 function updateWindowTitle(): void {
   if (!mainWindow) return;
-  mainWindow.setTitle(currentProject ? `Baby SWE - ${currentProject.name}` : 'Baby SWE');
+  mainWindow.setTitle('Baby SWE');
 }
 
 function createMenu(): void {
@@ -69,29 +69,6 @@ function createMenu(): void {
     {
       label: 'File',
       submenu: [
-        {
-          label: 'Open Folder...',
-          accelerator: 'CmdOrCtrl+O',
-          click: async () => {
-            const result = await dialog.showOpenDialog(mainWindow!, {
-              properties: ['openDirectory'],
-            });
-            if (!result.canceled && result.filePaths.length > 0) {
-              currentProject = storage.getOrCreateProject(result.filePaths[0]);
-              storage.migrateFromFolderStorage(currentProject);
-              updateWindowTitle();
-              mainWindow?.webContents.send('project:changed', currentProject);
-            }
-          },
-        },
-        {
-          label: 'Close Folder',
-          click: () => {
-            currentProject = null;
-            updateWindowTitle();
-            mainWindow?.webContents.send('project:changed', null);
-          },
-        },
         { type: 'separator' },
         { role: 'quit' },
       ],
@@ -158,7 +135,7 @@ function setupStorageIPC(): void {
 
   ipcMain.handle('storage:getRecentProjects', () => storage.getRecentProjects());
 
-  ipcMain.handle('storage:openProject', async (_event, folderPath?: string) => {
+  ipcMain.handle('tile:openProject', async (_event, tileId: string, folderPath?: string) => {
     if (!folderPath) {
       const result = await dialog.showOpenDialog(mainWindow!, {
         properties: ['openDirectory'],
@@ -167,37 +144,21 @@ function setupStorageIPC(): void {
       folderPath = result.filePaths[0];
     }
 
-    currentProject = storage.getOrCreateProject(folderPath);
-    storage.migrateFromFolderStorage(currentProject);
-    updateWindowTitle();
-    mainWindow?.webContents.send('project:changed', currentProject);
-    return currentProject;
+    const project = storage.getOrCreateProject(folderPath);
+    storage.migrateFromFolderStorage(project);
+    tileProjects.set(tileId, project);
+    mainWindow?.webContents.send('tile:projectChanged', tileId, project);
+    return project;
   });
 
-  ipcMain.handle('storage:closeProject', () => {
-    currentProject = null;
-    updateWindowTitle();
-    mainWindow?.webContents.send('project:changed', null);
+  ipcMain.handle('tile:closeProject', (_event, tileId: string) => {
+    tileProjects.delete(tileId);
+    mainWindow?.webContents.send('tile:projectChanged', tileId, null);
   });
 
-  ipcMain.handle('storage:getThreads', () => {
-    if (!currentProject) return [];
-    return storage.loadThreadsForProject(currentProject.id);
-  });
-
-  ipcMain.handle('storage:saveThread', (_event, thread) => {
-    if (!currentProject) return;
-    storage.saveThread(currentProject.id, thread);
-  });
-
-  ipcMain.handle('storage:deleteThread', (_event, threadId: string) => {
-    if (!currentProject) return;
-    storage.deleteThread(currentProject.id, threadId);
-  });
-
-  ipcMain.handle('fs:listFiles', () => {
-    if (!currentProject?.path) return [];
-    return listProjectFiles(currentProject.path);
+  ipcMain.handle('fs:listFiles', (_event, projectPath?: string) => {
+    if (!projectPath) return [];
+    return listProjectFiles(projectPath);
   });
 }
 
@@ -223,7 +184,7 @@ app.whenReady().then(() => {
   createMenu();
   setupStorageIPC();
   createWindow();
-  setupAgentIPC(mainWindow!, () => currentProject?.path || null);
+  setupAgentIPC(mainWindow!, (tileId: string) => tileProjects.get(tileId)?.path || null);
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {

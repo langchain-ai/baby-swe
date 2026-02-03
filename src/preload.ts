@@ -9,8 +9,8 @@ contextBridge.exposeInMainWorld('versions', {
 
 contextBridge.exposeInMainWorld('agent', {
   invoke: (message: string) => ipcRenderer.invoke('agent:invoke', message),
-  stream: (sessionId: string, messages: ChatMessage[]) => {
-    ipcRenderer.send('agent:stream', sessionId, messages);
+  stream: (sessionId: string, tileId: string, messages: ChatMessage[]) => {
+    ipcRenderer.send('agent:stream', sessionId, tileId, messages);
   },
   cancel: (sessionId: string) => {
     ipcRenderer.send('agent:cancel', sessionId);
@@ -31,18 +31,21 @@ contextBridge.exposeInMainWorld('storage', {
   getSettings: () => ipcRenderer.invoke('storage:getSettings'),
   saveSettings: (settings: unknown) => ipcRenderer.invoke('storage:saveSettings', settings),
   getRecentProjects: () => ipcRenderer.invoke('storage:getRecentProjects'),
-  openProject: (folderPath?: string) => ipcRenderer.invoke('storage:openProject', folderPath),
-  closeProject: () => ipcRenderer.invoke('storage:closeProject'),
-  onProjectChanged: (callback: (project: unknown) => void) => {
-    const handler = (_event: Electron.IpcRendererEvent, project: unknown) => callback(project);
-    ipcRenderer.on('project:changed', handler);
-    return () => ipcRenderer.removeListener('project:changed', handler);
+});
+
+contextBridge.exposeInMainWorld('tile', {
+  openProject: (tileId: string, folderPath?: string) =>
+    ipcRenderer.invoke('tile:openProject', tileId, folderPath),
+  closeProject: (tileId: string) =>
+    ipcRenderer.invoke('tile:closeProject', tileId),
+  onProjectChanged: (callback: (tileId: string, project: unknown) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, tileId: string, project: unknown) =>
+      callback(tileId, project);
+    ipcRenderer.on('tile:projectChanged', handler);
+    return () => ipcRenderer.removeListener('tile:projectChanged', handler);
   },
-  getThreads: () => ipcRenderer.invoke('storage:getThreads'),
-  saveThread: (thread: unknown) => ipcRenderer.invoke('storage:saveThread', thread),
-  deleteThread: (threadId: string) => ipcRenderer.invoke('storage:deleteThread', threadId),
 });
 
 contextBridge.exposeInMainWorld('fs', {
-  listFiles: () => ipcRenderer.invoke('fs:listFiles'),
+  listFiles: (projectPath?: string) => ipcRenderer.invoke('fs:listFiles', projectPath),
 });

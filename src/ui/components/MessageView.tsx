@@ -5,7 +5,7 @@ import { ToolExecution } from './ToolExecution';
 import { ToolGroup } from './ToolGroup';
 import { TodoList } from './TodoList';
 import { HeaderBar } from './HeaderBar';
-import type { Chunk, Message, ToolExecutionChunk, TodoItem } from '../../types';
+import type { Chunk, Message, ToolExecutionChunk, TodoItem, Project } from '../../types';
 
 type ToolGroupType = 'read' | 'search' | 'write' | 'execute' | 'explore' | 'other';
 
@@ -82,6 +82,7 @@ interface MessageViewProps extends ApprovalCallbacks {
   isStreaming: boolean;
   todos?: TodoItem[];
   showHeader?: boolean;
+  project?: Project | null;
 }
 
 
@@ -192,7 +193,7 @@ function MessageBubble({
   return <AgentMessage message={message} isStreaming={isStreaming} {...callbacks} />;
 }
 
-export function MessageView({ messages, isStreaming, todos, showHeader, onApprove, onReject, onAutoApprove }: MessageViewProps) {
+export function MessageView({ messages, isStreaming, todos, showHeader, project, onApprove, onReject, onAutoApprove }: MessageViewProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const isNearBottomRef = useRef(true);
 
@@ -218,7 +219,7 @@ export function MessageView({ messages, isStreaming, todos, showHeader, onApprov
 
   return (
     <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4 text-sm leading-relaxed">
-      {showHeader && <HeaderBar />}
+      {showHeader && <HeaderBar project={project} compact />}
       {todos && todos.length > 0 && <TodoList todos={todos} />}
       {messages.map((message, index) => (
         <MessageBubble

@@ -1,139 +1,39 @@
 import { useCallback, useEffect } from 'react';
 import { useStore } from '../store';
-import { HeaderBar, MessageView, PromptBar, FolderSelectScreen, Footer } from './components';
-import { executeCommand, type CommandContext } from '../commands';
-import type { Message, ChatMessage } from '../types';
-
-function messagesToChatMessages(messages: Message[]): ChatMessage[] {
-  const chatMessages: ChatMessage[] = [];
-  for (const msg of messages) {
-    if (msg.author === 'user' || msg.author === 'agent') {
-      const textContent = msg.chunks
-        .map((c) => {
-          if (c.kind === 'text') return c.text;
-          if (c.kind === 'code') {
-            const language = c.language ? c.language : '';
-            return `\n\`\`\`${language}\n${c.text}\n\`\`\`\n`;
-          }
-          return '';
-        })
-        .join('');
-      if (textContent) {
-        chatMessages.push({
-          role: msg.author === 'user' ? 'user' : 'assistant',
-          content: textContent,
-        });
-      }
-    }
-  }
-  return chatMessages;
-}
+import { TilingLayout } from './components/TilingLayout';
+import { Footer } from './components';
 
 export function App() {
   const {
+    layout,
+    tiles,
+    focusedTileId,
     sessions,
-    activeSessionId,
-    currentProject,
-    recentProjects,
-    tokenUsage,
-    setCurrentProject,
+    createTile,
+    closeTile,
+    navigateTile,
+    setTileProject,
     loadRecentProjects,
-    loadThreadsFromStorage,
-    createSession,
-    closeSession,
-    clearSession,
-    switchSession,
-    addMessageToSession,
-    startStreaming,
     appendStreamToken,
     addToolStart,
     updateToolEnd,
     updateToolStatus,
-    setAutoApproveSession,
-    finalizeStream,
-    abortStream,
     updateTokenUsage,
     updateTodos,
+    finalizeStream,
+    abortStream,
   } = useStore();
-
-  const activeSession = activeSessionId ? sessions[activeSessionId] : null;
-
-  useEffect(() => {
-    function handleGlobalKeyDown(e: KeyboardEvent) {
-      const isMod = e.metaKey || e.ctrlKey;
-
-      if (isMod && e.key === 'k') {
-        e.preventDefault();
-        if (activeSessionId) {
-          clearSession(activeSessionId);
-        }
-        return;
-      }
-
-      if (isMod && e.key === 't') {
-        e.preventDefault();
-        createSession();
-        return;
-      }
-
-      if (isMod && e.key === 'w') {
-        e.preventDefault();
-        if (activeSessionId) {
-          if (sessions[activeSessionId]?.isStreaming) {
-            window.agent.cancel(activeSessionId);
-          }
-          closeSession(activeSessionId);
-        }
-        return;
-      }
-
-      if (isMod && e.altKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
-        e.preventDefault();
-        const sessionIds = Object.keys(sessions);
-        if (sessionIds.length < 2 || !activeSessionId) return;
-        const currentIndex = sessionIds.indexOf(activeSessionId);
-        const delta = e.key === 'ArrowLeft' ? -1 : 1;
-        const newIndex = (currentIndex + delta + sessionIds.length) % sessionIds.length;
-        switchSession(sessionIds[newIndex]);
-        return;
-      }
-
-      if (isMod && e.key >= '1' && e.key <= '9') {
-        e.preventDefault();
-        const sessionIds = Object.keys(sessions);
-        const index = parseInt(e.key, 10) - 1;
-        if (index < sessionIds.length) {
-          switchSession(sessionIds[index]);
-        }
-        return;
-      }
-
-      if (e.key === 'Escape' && activeSessionId && (activeSession?.isStreaming || activeSession?.busy)) {
-        e.preventDefault();
-        window.agent.cancel(activeSessionId);
-        return;
-      }
-    }
-    document.addEventListener('keydown', handleGlobalKeyDown);
-    return () => document.removeEventListener('keydown', handleGlobalKeyDown);
-  }, [activeSessionId, activeSession?.isStreaming, activeSession?.busy, sessions, clearSession, createSession, closeSession, switchSession]);
 
   useEffect(() => {
     loadRecentProjects();
   }, [loadRecentProjects]);
 
   useEffect(() => {
-    const unsubscribe = window.storage.onProjectChanged((project) => {
-      setCurrentProject(project);
+    const unsubscribe = window.tile.onProjectChanged((tileId, project) => {
+      setTileProject(tileId, project as any);
     });
     return unsubscribe;
-  }, [setCurrentProject]);
-
-  useEffect(() => {
-    if (currentProject) {
-      loadThreadsFromStorage();
-    }
-  }, [currentProject, loadThreadsFromStorage]);
+  }, [setTileProject]);
 
   useEffect(() => {
     const unsubscribe = window.agent.onStreamEvent((event) => {
@@ -167,110 +67,76 @@ export function App() {
     return unsubscribe;
   }, [appendStreamToken, addToolStart, updateToolEnd, updateToolStatus, updateTokenUsage, updateTodos, finalizeStream, abortStream]);
 
-  const handleOpenFolder = useCallback(async () => {
-    await window.storage.openProject();
-  }, []);
+  const handleKeyDown = useCallback((e: KeyboardEvent) => {
+    const isMod = e.metaKey || e.ctrlKey;
 
-  const handleSelectRecent = useCallback(async (path: string) => {
-    await window.storage.openProject(path);
-  }, []);
-
-  const handleApprove = useCallback((approvalRequestId: string) => {
-    window.agent.respondToApproval({ requestId: approvalRequestId, decision: 'approve' });
-  }, []);
-
-  const handleReject = useCallback((approvalRequestId: string) => {
-    window.agent.respondToApproval({ requestId: approvalRequestId, decision: 'reject' });
-  }, []);
-
-  const handleAutoApprove = useCallback((approvalRequestId: string) => {
-    if (activeSessionId) {
-      setAutoApproveSession(activeSessionId, true);
+    if (isMod && e.key === 't') {
+      e.preventDefault();
+      createTile('auto');
+      return;
     }
-    window.agent.respondToApproval({ requestId: approvalRequestId, decision: 'auto-approve' });
-  }, [activeSessionId, setAutoApproveSession]);
 
-  const handleSubmit = useCallback(
-    async (query: string) => {
-      const sendAgentPrompt = (prompt: string) => {
-        const sessionId = activeSessionId || createSession();
-        const existingMessages = sessions[sessionId]?.messages || [];
-        const chatHistory = messagesToChatMessages(existingMessages);
-        chatHistory.push({ role: 'user', content: prompt });
-        addMessageToSession(sessionId, 'user', [{ kind: 'text', text: prompt }]);
-        startStreaming(sessionId);
-        window.agent.stream(sessionId, chatHistory);
-      };
-
-      const commandCtx: CommandContext = {
-        sessionId: activeSessionId,
-        createSession,
-        clearSession,
-        addSystemMessage: (sessionId, chunks) => addMessageToSession(sessionId, 'system', chunks),
-        tokenUsage,
-        sendAgentPrompt,
-      };
-
-      if (executeCommand(query, commandCtx)) {
-        return;
+    if (isMod && e.key === 'w') {
+      e.preventDefault();
+      if (focusedTileId) {
+        const tile = tiles[focusedTileId];
+        if (tile) {
+          const session = sessions[tile.sessionId];
+          if (session?.isStreaming) {
+            window.agent.cancel(session.id);
+          }
+        }
+        closeTile(focusedTileId);
       }
+      return;
+    }
 
-      if (!activeSessionId) {
-        const newId = createSession();
-        addMessageToSession(newId, 'user', [{ kind: 'text', text: query }]);
-        startStreaming(newId);
-        window.agent.stream(newId, [{ role: 'user', content: query }]);
-      } else {
-        const existingMessages = sessions[activeSessionId]?.messages || [];
-        const chatHistory = messagesToChatMessages(existingMessages);
-        chatHistory.push({ role: 'user', content: query });
-        addMessageToSession(activeSessionId, 'user', [{ kind: 'text', text: query }]);
-        startStreaming(activeSessionId);
-        window.agent.stream(activeSessionId, chatHistory);
+    if (isMod && e.key === 'ArrowLeft') {
+      e.preventDefault();
+      navigateTile('left');
+      return;
+    }
+
+    if (isMod && e.key === 'ArrowRight') {
+      e.preventDefault();
+      navigateTile('right');
+      return;
+    }
+
+    if (isMod && e.key === 'ArrowUp') {
+      e.preventDefault();
+      navigateTile('up');
+      return;
+    }
+
+    if (isMod && e.key === 'ArrowDown') {
+      e.preventDefault();
+      navigateTile('down');
+      return;
+    }
+
+    if (e.key === 'Escape' && focusedTileId) {
+      const tile = tiles[focusedTileId];
+      if (tile) {
+        const session = sessions[tile.sessionId];
+        if (session?.isStreaming || session?.busy) {
+          e.preventDefault();
+          window.agent.cancel(session.id);
+        }
       }
-    },
-    [activeSessionId, createSession, clearSession, addMessageToSession, startStreaming, tokenUsage, sessions]
-  );
+      return;
+    }
+  }, [focusedTileId, tiles, sessions, createTile, closeTile, navigateTile]);
 
-  if (!currentProject) {
-    return (
-      <FolderSelectScreen
-        onOpenFolder={handleOpenFolder}
-        onSelectRecent={handleSelectRecent}
-        recentProjects={recentProjects}
-      />
-    );
-  }
-
-  const hasMessages = activeSession && activeSession.messages.length > 0;
-
-  if (!hasMessages) {
-    return (
-      <div className="flex flex-col h-screen bg-[#1a2332] text-gray-100">
-        <HeaderBar />
-        <div className="flex-1 flex flex-col items-center justify-center px-4">
-          <div className="w-full max-w-2xl">
-            <PromptBar onSubmit={handleSubmit} busy={activeSession?.busy ?? false} />
-          </div>
-        </div>
-        <Footer />
-      </div>
-    );
-  }
+  useEffect(() => {
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [handleKeyDown]);
 
   return (
     <div className="flex flex-col h-screen bg-[#1a2332] text-gray-100">
-      <MessageView
-        messages={activeSession.messages}
-        isStreaming={activeSession.isStreaming}
-        todos={activeSession.todos}
-        onApprove={handleApprove}
-        onReject={handleReject}
-        onAutoApprove={handleAutoApprove}
-        showHeader
-      />
-      <div className="px-4 pb-4">
-        <PromptBar onSubmit={handleSubmit} busy={activeSession.busy} />
+      <div className="flex-1 min-h-0">
+        <TilingLayout node={layout} />
       </div>
       <Footer />
     </div>

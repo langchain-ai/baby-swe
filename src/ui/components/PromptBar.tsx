@@ -7,9 +7,10 @@ import type { Command } from '../../commands';
 interface PromptBarProps {
   onSubmit: (query: string) => void;
   busy: boolean;
+  projectPath?: string;
 }
 
-export function PromptBar({ onSubmit, busy }: PromptBarProps) {
+export function PromptBar({ onSubmit, busy, projectPath }: PromptBarProps) {
   const [query, setQuery] = useState('');
   const { mode, setMode } = useStore();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -47,8 +48,12 @@ export function PromptBar({ onSubmit, busy }: PromptBarProps) {
   }, [fileContext?.fileQuery]);
 
   useEffect(() => {
-    window.fs.listFiles().then(setProjectFiles);
-  }, []);
+    if (projectPath) {
+      window.fs.listFiles(projectPath).then(setProjectFiles);
+    } else {
+      setProjectFiles([]);
+    }
+  }, [projectPath]);
 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {

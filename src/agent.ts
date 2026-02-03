@@ -413,11 +413,10 @@ export interface AgentResponse {
   }>;
 }
 
-export function setupAgentIPC(mainWindow: BrowserWindow, getFolder: () => string | null) {
+export function setupAgentIPC(mainWindow: BrowserWindow, getTileProject: (tileId: string) => string | null) {
   ipcMain.handle("agent:invoke", async (_event, userMessage: string): Promise<AgentResponse> => {
     try {
-      const folder = getFolder();
-      const agent = createAgent(folder || undefined);
+      const agent = createAgent(undefined);
       const result = await agent.invoke(
         { messages: [{ role: "user", content: userMessage }] },
         { recursionLimit: 10000 }
@@ -435,17 +434,17 @@ export function setupAgentIPC(mainWindow: BrowserWindow, getFolder: () => string
     }
   });
 
-  ipcMain.on("agent:stream", async (_event, sessionId: string, messages: ChatMessage[]) => {
+  ipcMain.on("agent:stream", async (_event, sessionId: string, tileId: string, messages: ChatMessage[]) => {
     const controller = new AbortController();
     sessionControllers.set(sessionId, controller);
 
     const toolTimers = new Map<string, number>();
 
     try {
-      const folder = getFolder();
+      const folder = getTileProject(tileId);
       const streamAgent = createAgent(folder || undefined);
 
-      console.log(`[agent:stream] Starting stream for session ${sessionId}, folder: ${folder}, messages: ${messages.length}`);
+      console.log(`[agent:stream] Starting stream for session ${sessionId}, tile: ${tileId}, folder: ${folder}, messages: ${messages.length}`);
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const stream = await streamAgent.streamEvents(
@@ -512,7 +511,6 @@ export function setupAgentIPC(mainWindow: BrowserWindow, getFolder: () => string
           const requiresApproval = TOOLS_REQUIRING_APPROVAL.includes(toolName) && !settings.yoloMode;
           const approvalRequestId = requiresApproval ? uuidv4() : undefined;
 
-          const folder = getFolder();
           let diffData: DiffData | undefined;
           if (folder && (toolName === 'edit_file' || toolName === 'write_file')) {
             diffData = computeDiffData(toolName, toolArgs, folder);

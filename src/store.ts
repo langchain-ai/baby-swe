@@ -1,7 +1,8 @@
 import { create } from 'zustand';
 import { v4 as uuidv4 } from 'uuid';
-import type { Message, Chunk, Mode, ModelConfig, ToolStatus, Thread, Session, Project, ApprovalRequest, DiffData, TodoItem } from './types';
-import { loadSettings, saveSettings, loadRecentProjects, loadThreads, saveThread, deleteThread as deleteThreadFromStorage } from './persistence';
+import type { Message, Chunk, Mode, ModelConfig, ToolStatus, Thread, Session, Project, ApprovalRequest, DiffData, TodoItem, Tile, LayoutNode, SplitDirection } from './types';
+import { loadSettings, saveSettings, loadRecentProjects } from './persistence';
+import { createInitialLayout, splitTile, removeTile, getTileIds, getSmartDirection, findAdjacentTile, getTileDimensions } from './layout-utils';
 
 function generateTitle(messages: Message[]): string {
   const firstUserMessage = messages.find((m) => m.author === 'user');
@@ -20,22 +21,28 @@ function generateTitle(messages: Message[]): string {
 
 interface AppState {
   sessions: Record<string, Session>;
-  activeSessionId: string | null;
   mode: Mode;
   modelConfig: ModelConfig;
   tokenUsage: { input: number; output: number; total: number };
   blink: boolean;
-  threads: Thread[];
-  currentProject: Project | null;
   recentProjects: Project[];
-  projectLoading: boolean;
 
-  createSession: () => string;
-  closeSession: (id: string) => void;
-  clearSession: (id: string) => void;
-  switchSession: (id: string) => void;
-  renameSession: (id: string, title: string) => void;
-  getActiveSession: () => Session | null;
+  tiles: Record<string, Tile>;
+  layout: LayoutNode;
+  focusedTileId: string | null;
+
+  createTile: (direction?: SplitDirection | 'auto') => string;
+  closeTile: (tileId: string) => void;
+  focusTile: (tileId: string) => void;
+  setTileProject: (tileId: string, project: Project | null) => void;
+  navigateTile: (direction: 'left' | 'right' | 'up' | 'down') => void;
+  updateSplitRatio: (tileId: string, delta: number) => void;
+  getTile: (tileId: string) => Tile | null;
+  getFocusedTile: () => Tile | null;
+
+  createSession: (tileId: string) => string;
+  clearSession: (sessionId: string) => void;
+  getSession: (sessionId: string) => Session | null;
 
   addMessageToSession: (sessionId: string, author: Message['author'], chunks: Chunk[]) => string;
   updateToolExecution: (sessionId: string, messageId: string, toolCallId: string, status: ToolStatus, output?: string, elapsedMs?: number) => void;
@@ -58,16 +65,42 @@ interface AppState {
   updateTokenUsage: (input: number, output: number) => void;
   toggleBlink: () => void;
   loadRecentProjects: () => Promise<void>;
-  loadThreadsFromStorage: () => Promise<void>;
-  switchThread: (id: string) => void;
-  deleteThread: (id: string) => void;
-  renameThread: (id: string, title: string) => void;
-  setCurrentProject: (project: Project | null) => Promise<void>;
 }
 
+const createInitialTile = (): { tile: Tile; session: Session; layout: LayoutNode } => {
+  const tileId = uuidv4();
+  const sessionId = uuidv4();
+  const now = Date.now();
+
+  const session: Session = {
+    id: sessionId,
+    title: 'New Chat',
+    messages: [],
+    streamingMessageId: null,
+    isStreaming: false,
+    busy: false,
+    createdAt: now,
+    updatedAt: now,
+    autoApproveSession: false,
+    pendingApprovals: {},
+    todos: [],
+  };
+
+  const tile: Tile = {
+    id: tileId,
+    sessionId,
+    project: null,
+  };
+
+  const layout = createInitialLayout(tileId);
+
+  return { tile, session, layout };
+};
+
+const initial = createInitialTile();
+
 export const useStore = create<AppState>((set, get) => ({
-  sessions: {},
-  activeSessionId: null,
+  sessions: { [initial.session.id]: initial.session },
   mode: 'agent',
   modelConfig: {
     name: 'claude-sonnet-4-5-20250514',
@@ -76,12 +109,131 @@ export const useStore = create<AppState>((set, get) => ({
   },
   tokenUsage: { input: 0, output: 0, total: 0 },
   blink: true,
-  threads: [],
-  currentProject: null,
   recentProjects: [],
-  projectLoading: false,
 
-  createSession: () => {
+  tiles: { [initial.tile.id]: initial.tile },
+  layout: initial.layout,
+  focusedTileId: initial.tile.id,
+
+  createTile: (direction) => {
+    const { focusedTileId, layout, tiles } = get();
+    const tileId = uuidv4();
+    const sessionId = uuidv4();
+    const now = Date.now();
+
+    const session: Session = {
+      id: sessionId,
+      title: 'New Chat',
+      messages: [],
+      streamingMessageId: null,
+      isStreaming: false,
+      busy: false,
+      createdAt: now,
+      updatedAt: now,
+      autoApproveSession: false,
+      pendingApprovals: {},
+      todos: [],
+    };
+
+    const tile: Tile = {
+      id: tileId,
+      sessionId,
+      project: focusedTileId ? tiles[focusedTileId]?.project || null : null,
+    };
+
+    let newLayout = layout;
+    if (focusedTileId) {
+      let splitDir: 'horizontal' | 'vertical';
+      if (direction === 'auto' || !direction) {
+        const dims = getTileDimensions(layout, focusedTileId, window.innerWidth, window.innerHeight);
+        splitDir = dims ? getSmartDirection(dims.width, dims.height) : 'horizontal';
+      } else {
+        splitDir = direction;
+      }
+      newLayout = splitTile(layout, focusedTileId, tileId, splitDir);
+    }
+
+    set((state) => ({
+      sessions: { ...state.sessions, [sessionId]: session },
+      tiles: { ...state.tiles, [tileId]: tile },
+      layout: newLayout,
+      focusedTileId: tileId,
+    }));
+
+    return tileId;
+  },
+
+  closeTile: (tileId) => {
+    const { layout, tiles, sessions, focusedTileId } = get();
+    const tile = tiles[tileId];
+    if (!tile) return;
+
+    const newLayout = removeTile(layout, tileId);
+    if (!newLayout) {
+      window.close();
+      return;
+    }
+
+    const { [tileId]: removedTile, ...remainingTiles } = tiles;
+    const { [tile.sessionId]: removedSession, ...remainingSessions } = sessions;
+
+    const remainingTileIds = getTileIds(newLayout);
+    const newFocusedId = focusedTileId === tileId
+      ? remainingTileIds[0] || null
+      : focusedTileId;
+
+    set({
+      layout: newLayout,
+      tiles: remainingTiles,
+      sessions: remainingSessions,
+      focusedTileId: newFocusedId,
+    });
+  },
+
+  focusTile: (tileId) => {
+    const { tiles } = get();
+    if (tiles[tileId]) {
+      set({ focusedTileId: tileId });
+    }
+  },
+
+  setTileProject: (tileId, project) => {
+    set((state) => {
+      const tile = state.tiles[tileId];
+      if (!tile) return state;
+      return {
+        tiles: {
+          ...state.tiles,
+          [tileId]: { ...tile, project },
+        },
+      };
+    });
+  },
+
+  navigateTile: (direction) => {
+    const { layout, focusedTileId } = get();
+    if (!focusedTileId) return;
+
+    const adjacentTileId = findAdjacentTile(layout, focusedTileId, direction);
+    if (adjacentTileId) {
+      set({ focusedTileId: adjacentTileId });
+    }
+  },
+
+  updateSplitRatio: (_tileId, _delta) => {
+    // TODO: Implement split ratio adjustment
+  },
+
+  getTile: (tileId) => {
+    return get().tiles[tileId] || null;
+  },
+
+  getFocusedTile: () => {
+    const { tiles, focusedTileId } = get();
+    return focusedTileId ? tiles[focusedTileId] || null : null;
+  },
+
+  createSession: (tileId) => {
     const id = uuidv4();
     const session: Session = {
       id,
@@ -96,32 +248,25 @@ export const useStore = create<AppState>((set, get) => ({
       pendingApprovals: {},
       todos: [],
     };
-    set((state) => ({
-      sessions: { ...state.sessions, [id]: session },
-      activeSessionId: id,
-    }));
+    set((state) => {
+      const tile = state.tiles[tileId];
+      if (!tile) return { sessions: { ...state.sessions, [id]: session } };
+      return {
+        sessions: { ...state.sessions, [id]: session },
+        tiles: { ...state.tiles, [tileId]: { ...tile, sessionId: id } },
+      };
+    });
     return id;
   },
 
-  closeSession: (id) => {
+  clearSession: (sessionId) => {
     set((state) => {
-      const { [id]: removed, ...remaining } = state.sessions;
-      const remainingIds = Object.keys(remaining);
-      const newActiveId = state.activeSessionId === id
-        ? (remainingIds.length > 0 ? remainingIds[0] : null)
-        : state.activeSessionId;
-      return { sessions: remaining, activeSessionId: newActiveId };
-    });
-  },
-
-  clearSession: (id) => {
-    set((state) => {
-      const session = state.sessions[id];
+      const session = state.sessions[sessionId];
       if (!session) return state;
       return {
         sessions: {
           ...state.sessions,
-          [id]: {
+          [sessionId]: {
             ...session,
             messages: [],
             title: 'New Chat',
@@ -139,29 +284,8 @@ export const useStore = create<AppState>((set, get) => ({
     });
   },
 
-  switchSession: (id) => {
-    const { sessions } = get();
-    if (sessions[id]) {
-      set({ activeSessionId: id });
-    }
-  },
-
-  renameSession: (id, title) => {
-    set((state) => {
-      const session = state.sessions[id];
-      if (!session) return state;
-      return {
-        sessions: {
-          ...state.sessions,
-          [id]: { ...session, title, updatedAt: Date.now() },
-        },
-      };
-    });
-  },
-
-  getActiveSession: () => {
-    const { sessions, activeSessionId } = get();
-    return activeSessionId ? sessions[activeSessionId] || null : null;
+  getSession: (sessionId) => {
+    return get().sessions[sessionId] || null;
   },
 
   addMessageToSession: (sessionId, author, chunks) => {
@@ -172,38 +296,28 @@ export const useStore = create<AppState>((set, get) => ({
     });
     const newMessage: Message = { id, author, timestamp, chunks };
 
-    const { currentProject, threads } = get();
     set((state) => {
       const session = state.sessions[sessionId];
       if (!session) return state;
 
       const newMessages = [...session.messages, newMessage];
       const title = session.messages.length === 0 ? generateTitle(newMessages) : session.title;
-      const now = Date.now();
 
       const updatedSession: Session = {
         ...session,
         messages: newMessages,
         title,
-        updatedAt: now,
+        updatedAt: Date.now(),
       };
-
-      const updatedThreads = syncSessionToThreads(state.threads, updatedSession, currentProject?.id);
-      if (currentProject) {
-        const threadToSave = updatedThreads.find((t) => t.messages[0]?.id === updatedSession.messages[0]?.id);
-        if (threadToSave) saveThread(threadToSave);
-      }
 
       return {
         sessions: { ...state.sessions, [sessionId]: updatedSession },
-        threads: updatedThreads,
       };
     });
     return id;
   },
 
   updateToolExecution: (sessionId, messageId, toolCallId, status, output, elapsedMs) => {
-    const { currentProject } = get();
     set((state) => {
       const session = state.sessions[sessionId];
       if (!session) return state;
@@ -225,15 +339,8 @@ export const useStore = create<AppState>((set, get) => ({
         updatedAt: Date.now(),
       };
 
-      const updatedThreads = syncSessionToThreads(state.threads, updatedSession, currentProject?.id);
-      if (currentProject) {
-        const threadToSave = updatedThreads.find((t) => t.messages[0]?.id === updatedSession.messages[0]?.id);
-        if (threadToSave) saveThread(threadToSave);
-      }
-
       return {
         sessions: { ...state.sessions, [sessionId]: updatedSession },
-        threads: updatedThreads,
       };
     });
   },
@@ -359,30 +466,20 @@ export const useStore = create<AppState>((set, get) => ({
   },
 
   finalizeStream: (sessionId) => {
-    const { currentProject } = get();
     set((state) => {
       const session = state.sessions[sessionId];
       if (!session || !session.streamingMessageId) return state;
-      const newMessages = session.messages;
 
       const updatedSession: Session = {
         ...session,
-        messages: newMessages,
         streamingMessageId: null,
         isStreaming: false,
         busy: false,
         updatedAt: Date.now(),
       };
 
-      const updatedThreads = syncSessionToThreads(state.threads, updatedSession, currentProject?.id);
-      if (currentProject) {
-        const threadToSave = updatedThreads.find((t) => t.messages[0]?.id === updatedSession.messages[0]?.id);
-        if (threadToSave) saveThread(threadToSave);
-      }
-
       return {
         sessions: { ...state.sessions, [sessionId]: updatedSession },
-        threads: updatedThreads,
       };
     });
   },
@@ -516,109 +613,4 @@ export const useStore = create<AppState>((set, get) => ({
     const projects = await loadRecentProjects();
     set({ recentProjects: projects });
   },
-
-  loadThreadsFromStorage: async () => {
-    const { currentProject } = get();
-    if (!currentProject) {
-      set({ threads: [], sessions: {}, activeSessionId: null });
-      return;
-    }
-
-    set({ projectLoading: true });
-    const threads = await loadThreads();
-    const settings = await loadSettings();
-    set({
-      threads,
-      sessions: {},
-      activeSessionId: null,
-      projectLoading: false,
-      modelConfig: settings.modelConfig,
-    });
-  },
-
-  switchThread: (id) => {
-    const { threads, sessions, createSession } = get();
-    const thread = threads.find((t) => t.id === id);
-    if (!thread) return;
-
-    const existingSessionId = Object.keys(sessions).find(
-      (sid) => sessions[sid].messages.length > 0 && sessions[sid].messages[0]?.id === thread.messages[0]?.id
-    );
-
-    if (existingSessionId) {
-      set({ activeSessionId: existingSessionId });
-    } else {
-      const sessionId = createSession();
-      set((state) => ({
-        sessions: {
-          ...state.sessions,
-          [sessionId]: {
-            ...state.sessions[sessionId],
-            messages: thread.messages,
-            title: thread.title,
-          },
-        },
-      }));
-    }
-  },
-
-  deleteThread: (id) => {
-    const { currentProject } = get();
-    set((state) => {
-      const updatedThreads = state.threads.filter((t) => t.id !== id);
-      if (currentProject) {
-        deleteThreadFromStorage(id);
-      }
-      return { threads: updatedThreads };
-    });
-  },
-
-  renameThread: (id, title) => {
-    const { currentProject } = get();
-    set((state) => {
-      const thread = state.threads.find((t) => t.id === id);
-      if (!thread) return state;
-      const updatedThread = { ...thread, title };
-      const updatedThreads = state.threads.map((t) => (t.id === id ? updatedThread : t));
-      if (currentProject) {
-        saveThread(updatedThread);
-      }
-      return { threads: updatedThreads };
-    });
-  },
-
-  setCurrentProject: async (project) => {
-    set({ currentProject: project, projectLoading: true, threads: [], sessions: {}, activeSessionId: null });
-
-    if (project) {
-      const threads = await loadThreads();
-      const settings = await loadSettings();
-      set({ threads, projectLoading: false, modelConfig: settings.modelConfig });
-    } else {
-      set({ projectLoading: false });
-    }
-  },
 }));
-
-function syncSessionToThreads(threads: Thread[], session: Session, projectId?: string): Thread[] {
-  if (session.messages.length === 0) return threads;
-
-  const existingIndex = threads.findIndex((t) =>
-    t.messages[0]?.id === session.messages[0]?.id
-  );
-
-  const thread: Thread = {
-    id: existingIndex >= 0 ? threads[existingIndex].id : uuidv4(),
-    projectId: projectId || (existingIndex >= 0 ? threads[existingIndex].projectId : ''),
-    title: session.title,
-    createdAt: existingIndex >= 0 ? threads[existingIndex].createdAt : session.createdAt,
-    updatedAt: session.updatedAt,
-    messages: session.messages,
-  };
-
-  if (existingIndex >= 0) {
-    return threads.map((t, i) => (i === existingIndex ? thread : t));
-  }
-  return [thread, ...threads];
-}
-
