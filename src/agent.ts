@@ -6,7 +6,6 @@ import { ipcMain, BrowserWindow } from "electron";
 import { v4 as uuidv4 } from "uuid";
 import * as fs from "fs";
 import * as path from "path";
-import { execSync } from "child_process";
 import "dotenv/config";
 import type { ApprovalDecision, ApprovalResponse, ChatMessage, DiffData, TodoItem, ModelConfig, ApiKeys, Mode } from "./types";
 import { loadAgentMemory } from "./memory/agents";
@@ -16,6 +15,7 @@ import { tavily } from "@tavily/core";
 import TurndownService from "turndown";
 import { loadSettings } from "./storage";
 import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
+import { buildSystemPrompt } from "./prompts";
 
 const sessionControllers = new Map<string, AbortController>();
 const pendingApprovals = new Map<string, { resolve: (decision: ApprovalDecision) => void }>();
@@ -144,119 +144,6 @@ function isBinaryFile(filePath: string): boolean {
   return BINARY_EXTENSIONS.has(ext);
 }
 
-const IGNORE_DIRS = new Set([
-  '.git', 'node_modules', '__pycache__', '.venv', 'venv',
-  'build', 'dist', '.next', '.cache', 'coverage', '.turbo',
-]);
-
-function getDirectoryStructure(rootDir: string, maxDepth: number, maxEntries: number): string {
-  const lines: string[] = [];
-  let entryCount = 0;
-
-  function walk(dir: string, depth: number, prefix: string): void {
-    if (depth > maxDepth || entryCount >= maxEntries) return;
-
-    try {
-      const entries = fs.readdirSync(dir, { withFileTypes: true })
-        .filter(e => !e.name.startsWith('.') && !IGNORE_DIRS.has(e.name))
-        .sort((a, b) => {
-          if (a.isDirectory() && !b.isDirectory()) return -1;
-          if (!a.isDirectory() && b.isDirectory()) return 1;
-          return a.name.localeCompare(b.name);
-        });
-
-      for (const entry of entries) {
-        if (entryCount >= maxEntries) break;
-
-        const isDir = entry.isDirectory();
-        lines.push(`${prefix}${isDir ? '/' : ''}${entry.name}`);
-        entryCount++;
-
-        if (isDir && depth < maxDepth) {
-          walk(path.join(dir, entry.name), depth + 1, prefix + '  ');
-        }
-      }
-    } catch {
-      // Skip directories we can't read
-    }
-  }
-
-  walk(rootDir, 1, '');
-  return lines.join('\n');
-}
-
-function getLocalContext(rootDir: string): string {
-  const sections: string[] = [];
-
-  try {
-    const branch = execSync('git rev-parse --abbrev-ref HEAD', {
-      cwd: rootDir,
-      encoding: 'utf-8',
-      timeout: 5000,
-      stdio: ['pipe', 'pipe', 'pipe'],
-    }).trim();
-    sections.push(`Current branch: ${branch}`);
-  } catch {
-    // Not a git repo or git not available
-  }
-
-  try {
-    let mainBranch = 'main';
-    try {
-      execSync('git rev-parse --verify main', {
-        cwd: rootDir,
-        encoding: 'utf-8',
-        timeout: 5000,
-        stdio: ['pipe', 'pipe', 'pipe'],
-      });
-    } catch {
-      try {
-        execSync('git rev-parse --verify master', {
-          cwd: rootDir,
-          encoding: 'utf-8',
-          timeout: 5000,
-          stdio: ['pipe', 'pipe', 'pipe'],
-        });
-        mainBranch = 'master';
-      } catch {
-        mainBranch = '';
-      }
-    }
-    if (mainBranch) {
-      sections.push(`Main branch: ${mainBranch}`);
-    }
-  } catch {
-    // Ignore
-  }
-
-  try {
-    const status = execSync('git status --porcelain', {
-      cwd: rootDir,
-      encoding: 'utf-8',
-      timeout: 5000,
-      stdio: ['pipe', 'pipe', 'pipe'],
-    }).trim();
-    if (status) {
-      const statusLines = status.split('\n').slice(0, 15);
-      const truncated = status.split('\n').length > 15 ? '\n  ...(truncated)' : '';
-      sections.push(`Git status:\n${statusLines.join('\n')}${truncated}`);
-    }
-  } catch {
-    // Not a git repo
-  }
-
-  try {
-    const structure = getDirectoryStructure(rootDir, 3, 20);
-    if (structure) {
-      sections.push(`Directory structure:\n${structure}`);
-    }
-  } catch {
-    // Ignore
-  }
-
-  return sections.join('\n\n');
-}
-
 function computeDiffData(
   toolName: string,
   toolArgs: Record<string, unknown>,
@@ -376,38 +263,8 @@ function createModel(modelConfig: ModelConfig, apiKeys?: ApiKeys): BaseChatModel
 function createAgent(rootDir?: string, modelConfig?: ModelConfig, apiKeys?: ApiKeys) {
   const modelCfg = modelConfig || { name: 'claude-sonnet-4-5', provider: 'anthropic', effort: 'default' };
   const model = createModel(modelCfg, apiKeys);
-
-  let systemPrompt: string;
-
-  if (rootDir) {
-    const localContext = getLocalContext(rootDir);
-    const agentMemory = loadAgentMemory(rootDir);
-
-    systemPrompt = `You are baby-swe, a software engineering assistant.
-Be terse and formal. No emojis. No filler phrases.
-
-Your current working directory is: ${rootDir}
-You have full access to the filesystem within this directory. Use the available tools to explore and modify the codebase:
-- File tools: ls, read_file, write_file, edit_file, glob, grep
-- Shell execution: execute (run shell commands in the project directory)
-
-IMPORTANT: When the user mentions files using the @path/to/file syntax, the @ symbol is just a mention marker.
-The actual file path is everything after the @ symbol (without the @). For example, @src/index.ts refers to the file src/index.ts.
-
-When the user asks about code or files, start by exploring the directory structure to understand the project.
-When running commands with execute, prefer non-interactive commands and handle errors gracefully.${localContext ? `
-
-## Project Context
-${localContext}` : ''}${agentMemory ? `
-
-## Agent Memory
-${agentMemory}` : ''}`;
-  } else {
-    systemPrompt = `You are baby-swe, a software engineering assistant.
-Be terse and formal. No emojis. No filler phrases.
-
-No working directory selected. Open a folder to enable filesystem access.`;
-  }
+  const agentMemory = rootDir ? loadAgentMemory(rootDir) || undefined : undefined;
+  const systemPrompt = buildSystemPrompt(rootDir, agentMemory);
 
   const config: Parameters<typeof createDeepAgent>[0] = {
     model,
