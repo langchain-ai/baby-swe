@@ -383,9 +383,8 @@ function createAgent(rootDir?: string, modelConfig?: ModelConfig, apiKeys?: ApiK
     const localContext = getLocalContext(rootDir);
     const agentMemory = loadAgentMemory(rootDir);
 
-    systemPrompt = `You are baby-swe, a helpful software engineering assistant.
-You help users with coding tasks, debugging, and software development questions.
-Be concise and helpful.
+    systemPrompt = `You are baby-swe, a software engineering assistant.
+Be terse and formal. No emojis. No filler phrases.
 
 Your current working directory is: ${rootDir}
 You have full access to the filesystem within this directory. Use the available tools to explore and modify the codebase:
@@ -404,11 +403,10 @@ ${localContext}` : ''}${agentMemory ? `
 ## Agent Memory
 ${agentMemory}` : ''}`;
   } else {
-    systemPrompt = `You are baby-swe, a helpful software engineering assistant.
-You help users with coding tasks, debugging, and software development questions.
-Be concise and helpful.
+    systemPrompt = `You are baby-swe, a software engineering assistant.
+Be terse and formal. No emojis. No filler phrases.
 
-No working directory has been selected. Ask the user to open a folder to enable filesystem access.`;
+No working directory selected. Open a folder to enable filesystem access.`;
   }
 
   const config: Parameters<typeof createDeepAgent>[0] = {
