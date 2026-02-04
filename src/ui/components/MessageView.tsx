@@ -88,8 +88,9 @@ interface MessageViewProps extends ApprovalCallbacks {
 
 function ChunkRenderer({
   chunk,
+  projectPath,
   ...callbacks
-}: { chunk: Chunk } & ApprovalCallbacks) {
+}: { chunk: Chunk; projectPath?: string } & ApprovalCallbacks) {
   switch (chunk.kind) {
     case 'text':
       return (
@@ -113,6 +114,7 @@ function ChunkRenderer({
       return (
         <ToolExecution
           chunk={chunk}
+          projectPath={projectPath}
           onApprove={callbacks.onApprove}
           onReject={callbacks.onReject}
           onAutoApprove={callbacks.onAutoApprove}
@@ -138,8 +140,9 @@ function UserMessage({ message }: { message: Message }) {
 function AgentMessage({
   message,
   isStreaming,
+  projectPath,
   ...callbacks
-}: { message: Message; isStreaming?: boolean } & ApprovalCallbacks) {
+}: { message: Message; isStreaming?: boolean; projectPath?: string } & ApprovalCallbacks) {
   const groupedItems = groupChunksForRender(message.chunks);
 
   if (groupedItems.length === 0 && isStreaming) {
@@ -160,6 +163,7 @@ function AgentMessage({
               key={`tool-group-${i}`}
               groupType={item.groupType}
               tools={item.tools}
+              projectPath={projectPath}
               onApprove={callbacks.onApprove}
               onReject={callbacks.onReject}
               onAutoApprove={callbacks.onAutoApprove}
@@ -173,7 +177,7 @@ function AgentMessage({
           <div key={i} className="flex items-start gap-2">
             <span className="text-[#87CEEB] select-none">●</span>
             <div className="flex-1">
-              <ChunkRenderer chunk={chunk} {...callbacks} />
+              <ChunkRenderer chunk={chunk} projectPath={projectPath} {...callbacks} />
             </div>
           </div>
         );
@@ -185,12 +189,13 @@ function AgentMessage({
 function MessageBubble({
   message,
   isStreaming,
+  projectPath,
   ...callbacks
-}: { message: Message; isStreaming?: boolean } & ApprovalCallbacks) {
+}: { message: Message; isStreaming?: boolean; projectPath?: string } & ApprovalCallbacks) {
   if (message.author === 'user') {
     return <UserMessage message={message} />;
   }
-  return <AgentMessage message={message} isStreaming={isStreaming} {...callbacks} />;
+  return <AgentMessage message={message} isStreaming={isStreaming} projectPath={projectPath} {...callbacks} />;
 }
 
 export function MessageView({ messages, isStreaming, todos, showHeader, project, onApprove, onReject, onAutoApprove }: MessageViewProps) {
@@ -226,6 +231,7 @@ export function MessageView({ messages, isStreaming, todos, showHeader, project,
           key={message.id}
           message={message}
           isStreaming={isStreaming && index === messages.length - 1}
+          projectPath={project?.path}
           onApprove={onApprove}
           onReject={onReject}
           onAutoApprove={onAutoApprove}

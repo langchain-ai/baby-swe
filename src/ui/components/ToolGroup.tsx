@@ -5,6 +5,7 @@ import { ToolExecution } from './ToolExecution';
 interface ToolGroupProps {
   groupType: 'read' | 'search' | 'write' | 'execute' | 'explore' | 'other';
   tools: ToolExecutionChunk[];
+  projectPath?: string;
   onApprove?: (approvalRequestId: string) => void;
   onReject?: (approvalRequestId: string) => void;
   onAutoApprove?: (approvalRequestId: string) => void;
@@ -12,7 +13,7 @@ interface ToolGroupProps {
 
 const MAX_VISIBLE_TOOLS = 5;
 
-export function ToolGroup({ groupType, tools, onApprove, onReject, onAutoApprove }: ToolGroupProps) {
+export function ToolGroup({ groupType, tools, projectPath, onApprove, onReject, onAutoApprove }: ToolGroupProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const hasRunning = tools.some(t => t.status === 'running');
   const needsScroll = tools.length > MAX_VISIBLE_TOOLS;
@@ -27,6 +28,7 @@ export function ToolGroup({ groupType, tools, onApprove, onReject, onAutoApprove
     return (
       <ToolExecution
         chunk={tools[0]}
+        projectPath={projectPath}
         onApprove={onApprove}
         onReject={onReject}
         onAutoApprove={onAutoApprove}
@@ -44,6 +46,7 @@ export function ToolGroup({ groupType, tools, onApprove, onReject, onAutoApprove
           <ToolExecution
             key={tool.toolCallId}
             chunk={tool}
+            projectPath={projectPath}
             onApprove={onApprove}
             onReject={onReject}
             onAutoApprove={onAutoApprove}

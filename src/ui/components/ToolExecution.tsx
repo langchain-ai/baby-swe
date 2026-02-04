@@ -4,6 +4,7 @@ import { DiffView } from './DiffView';
 
 interface ToolExecutionProps {
   chunk: ToolExecutionChunk;
+  projectPath?: string;
   onApprove?: (approvalRequestId: string) => void;
   onReject?: (approvalRequestId: string) => void;
   onAutoApprove?: (approvalRequestId: string) => void;
@@ -15,7 +16,13 @@ function formatElapsed(ms?: number): string {
   return `${(ms / 1000).toFixed(1)}s`;
 }
 
-function getToolDisplayName(toolName: string, toolArgs: Record<string, unknown>): string {
+function stripProjectPath(path: string, projectPath?: string): string {
+  if (!projectPath || !path.startsWith(projectPath)) return path;
+  const relative = path.slice(projectPath.length);
+  return relative.startsWith('/') ? '.' + relative : './' + relative;
+}
+
+function getToolDisplayName(toolName: string, toolArgs: Record<string, unknown>, projectPath?: string): string {
   switch (toolName) {
     case 'execute': {
       const cmd = (toolArgs?.command as string) || '';
@@ -29,19 +36,19 @@ function getToolDisplayName(toolName: string, toolArgs: Record<string, unknown>)
       return `${type}(${truncatedDesc})`;
     }
     case 'list_dir': {
-      const path = (toolArgs?.path as string) || (toolArgs?.directory as string) || '.';
+      const path = stripProjectPath((toolArgs?.path as string) || (toolArgs?.directory as string) || '.', projectPath);
       return `List(${path})`;
     }
     case 'write_file': {
-      const path = (toolArgs?.filePath as string) || (toolArgs?.path as string) || 'file';
+      const path = stripProjectPath((toolArgs?.filePath as string) || (toolArgs?.path as string) || 'file', projectPath);
       return `Write(${path})`;
     }
     case 'edit_file': {
-      const path = (toolArgs?.filePath as string) || (toolArgs?.path as string) || 'file';
+      const path = stripProjectPath((toolArgs?.filePath as string) || (toolArgs?.path as string) || 'file', projectPath);
       return `Update(${path})`;
     }
     case 'read_file': {
-      const path = (toolArgs?.path as string) || (toolArgs?.file_path as string) || 'file';
+      const path = stripProjectPath((toolArgs?.path as string) || (toolArgs?.file_path as string) || 'file', projectPath);
       return `Read(${path})`;
     }
     case 'glob':
@@ -165,10 +172,10 @@ function KeyboardApproval({
   );
 }
 
-export function ToolExecution({ chunk, onApprove, onReject, onAutoApprove }: ToolExecutionProps) {
+export function ToolExecution({ chunk, projectPath, onApprove, onReject, onAutoApprove }: ToolExecutionProps) {
   const { toolName, toolArgs, status, output, elapsedMs, approvalRequestId, diffData } = chunk;
 
-  const displayName = getToolDisplayName(toolName, toolArgs || {});
+  const displayName = getToolDisplayName(toolName, toolArgs || {}, projectPath);
 
   const statusIcon = {
     'pending-approval': <span className="text-yellow-400 animate-pulse">●</span>,

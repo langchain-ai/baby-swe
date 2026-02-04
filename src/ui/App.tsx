@@ -31,6 +31,7 @@ export function App() {
     loadApiKeys,
     saveApiKeys,
     setShowApiKeysScreen,
+    loadModelConfig,
   } = useStore();
 
   const workspace = workspaces[activeWorkspaceIndex];
@@ -39,7 +40,8 @@ export function App() {
   useEffect(() => {
     loadRecentProjects();
     loadApiKeys();
-  }, [loadRecentProjects, loadApiKeys]);
+    loadModelConfig();
+  }, [loadRecentProjects, loadApiKeys, loadModelConfig]);
 
   useEffect(() => {
     const unsubscribe = window.tile.onProjectChanged((tileId, project) => {

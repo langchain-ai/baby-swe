@@ -74,6 +74,7 @@ interface AppState {
   setShowApiKeysScreen: (show: boolean) => void;
   loadApiKeys: () => Promise<void>;
   saveApiKeys: (keys: ApiKeys) => Promise<void>;
+  loadModelConfig: () => Promise<void>;
 }
 
 const NUM_WORKSPACES = 5;
@@ -663,7 +664,9 @@ export const useStore = create<AppState>((set, get) => ({
   setModelConfig: (config) =>
     set((state) => {
       const newConfig = { ...state.modelConfig, ...config };
-      saveSettings({ version: 1, modelConfig: newConfig });
+      loadSettings().then((existingSettings) => {
+        saveSettings({ ...existingSettings, modelConfig: newConfig });
+      });
       return { modelConfig: newConfig };
     }),
   toggleBlink: () => set((state) => ({ blink: !state.blink })),
@@ -692,5 +695,12 @@ export const useStore = create<AppState>((set, get) => ({
     const settings = await loadSettings();
     await saveSettings({ ...settings, apiKeys: keys });
     set({ apiKeys: keys, showApiKeysScreen: false });
+  },
+
+  loadModelConfig: async () => {
+    const settings = await loadSettings();
+    if (settings.modelConfig) {
+      set({ modelConfig: settings.modelConfig });
+    }
   },
 }));
