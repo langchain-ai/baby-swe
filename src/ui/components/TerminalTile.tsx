@@ -130,9 +130,12 @@ export function TerminalTile({ tileId, cwd, isFocused, onFocus }: TerminalTilePr
 
   return (
     <div
-      className={`h-full w-full bg-[#1a2332] ${isFocused ? 'ring-2 ring-[#5a9bc7] ring-inset' : ''}`}
+      className="relative h-full w-full bg-[#1a2332]"
       onClick={onFocus}
     >
+      {isFocused && (
+        <div aria-hidden className="pointer-events-none absolute inset-0 ring-2 ring-[#5a9bc7] ring-inset z-20" />
+      )}
       <div ref={containerRef} className="h-full w-full p-2" />
     </div>
   );

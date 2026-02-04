@@ -203,7 +203,7 @@ export function ToolExecution({ chunk, projectPath, onApprove, onReject, onAutoA
       {hasContent && (
         <div className="flex items-start gap-2">
           <span className="text-gray-600 select-none">└</span>
-          <div className="flex-1">
+          <div className="flex-1 min-w-0">
             {status === 'pending-approval' && approvalRequestId ? (
               <>
                 {showDiff && <DiffView diffData={diffData} />}

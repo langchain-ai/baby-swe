@@ -150,9 +150,12 @@ export function TileContainer({ tileId, isFocused, onFocus }: TileContainerProps
     return (
       <div
         ref={containerRef}
-        className={`flex flex-col h-full bg-[#1a2332] text-gray-100 ${isFocused ? 'ring-2 ring-[#5a9bc7] ring-inset' : ''}`}
+        className="relative flex flex-col h-full bg-[#1a2332] text-gray-100"
         onClick={onFocus}
       >
+        {isFocused && (
+          <div aria-hidden className="pointer-events-none absolute inset-0 ring-2 ring-[#5a9bc7] ring-inset z-20" />
+        )}
         <TileFolderSelect
           onOpenFolder={handleOpenFolder}
           onSelectRecent={handleSelectRecent}
@@ -168,9 +171,12 @@ export function TileContainer({ tileId, isFocused, onFocus }: TileContainerProps
     return (
       <div
         ref={containerRef}
-        className={`flex flex-col h-full bg-[#1a2332] text-gray-100 ${isFocused ? 'ring-2 ring-[#5a9bc7] ring-inset' : ''}`}
+        className="relative flex flex-col h-full bg-[#1a2332] text-gray-100"
         onClick={onFocus}
       >
+        {isFocused && (
+          <div aria-hidden className="pointer-events-none absolute inset-0 ring-2 ring-[#5a9bc7] ring-inset z-20" />
+        )}
         <HeaderBar project={tile.project} compact />
         <div className="flex-1 flex flex-col items-center justify-center px-4">
           <div className="w-full max-w-2xl">
@@ -190,9 +196,12 @@ export function TileContainer({ tileId, isFocused, onFocus }: TileContainerProps
   return (
     <div
       ref={containerRef}
-      className={`flex flex-col h-full bg-[#1a2332] text-gray-100 overflow-hidden ${isFocused ? 'ring-2 ring-[#5a9bc7] ring-inset' : ''}`}
+      className="relative flex flex-col h-full bg-[#1a2332] text-gray-100 overflow-hidden"
       onClick={onFocus}
     >
+      {isFocused && (
+        <div aria-hidden className="pointer-events-none absolute inset-0 ring-2 ring-[#5a9bc7] ring-inset z-20" />
+      )}
       <MessageView
         messages={session.messages}
         isStreaming={session.isStreaming}

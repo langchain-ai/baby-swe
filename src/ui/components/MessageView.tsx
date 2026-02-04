@@ -176,7 +176,7 @@ function AgentMessage({
         return (
           <div key={i} className="flex items-start gap-2">
             <span className="text-[#87CEEB] select-none">●</span>
-            <div className="flex-1">
+            <div className="flex-1 min-w-0">
               <ChunkRenderer chunk={chunk} projectPath={projectPath} {...callbacks} />
             </div>
           </div>
@@ -223,7 +223,7 @@ export function MessageView({ messages, isStreaming, todos, showHeader, project,
   }, [messages, isStreaming, todos]);
 
   return (
-    <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4 text-sm leading-relaxed">
+    <div ref={scrollRef} className="flex-1 min-h-0 min-w-0 overflow-y-auto px-4 py-4 text-sm leading-relaxed">
       {showHeader && <HeaderBar project={project} compact />}
       {todos && todos.length > 0 && <TodoList todos={todos} />}
       {messages.map((message, index) => (
