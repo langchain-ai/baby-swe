@@ -241,7 +241,7 @@ export function PromptBar({ onSubmit, busy, projectPath, sessionId, isFocused }:
   };
 
   return (
-    <div className="relative font-mono">
+    <div className="relative font-mono text-sm">
       {showModelAutocomplete && (
         <ModelAutocomplete
           selectedIndex={modelSelectedIndex}

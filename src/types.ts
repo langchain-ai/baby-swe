@@ -45,10 +45,17 @@ export interface ChatMessage {
   content: string;
 }
 
+export interface ApiKeys {
+  anthropic?: string;
+  openai?: string;
+  tavily?: string;
+}
+
 export interface GlobalSettings {
   version: number;
   modelConfig: ModelConfig;
   yoloMode?: boolean;
+  apiKeys?: ApiKeys;
 }
 
 declare global {

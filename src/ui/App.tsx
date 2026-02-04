@@ -3,6 +3,7 @@ import { useStore } from '../store';
 import { TilingLayout } from './components/TilingLayout';
 import { WorkspaceBar } from './components/WorkspaceBar';
 import { FolderSelectScreen } from './components';
+import { ApiKeysScreen } from './components/ApiKeysScreen';
 
 export function App() {
   const {
@@ -25,6 +26,11 @@ export function App() {
     updateTodos,
     finalizeStream,
     abortStream,
+    showApiKeysScreen,
+    apiKeys,
+    loadApiKeys,
+    saveApiKeys,
+    setShowApiKeysScreen,
   } = useStore();
 
   const workspace = workspaces[activeWorkspaceIndex];
@@ -32,7 +38,8 @@ export function App() {
 
   useEffect(() => {
     loadRecentProjects();
-  }, [loadRecentProjects]);
+    loadApiKeys();
+  }, [loadRecentProjects, loadApiKeys]);
 
   useEffect(() => {
     const unsubscribe = window.tile.onProjectChanged((tileId, project) => {
@@ -167,6 +174,33 @@ export function App() {
 
   const focusedTile = focusedTileId ? tiles[focusedTileId] : null;
   const project = focusedTile?.project;
+
+  const needsApiKeys = apiKeys === null || (!apiKeys.anthropic && !apiKeys.openai);
+  const shouldShowApiKeysScreen = showApiKeysScreen || (needsApiKeys && isEmpty);
+
+  const handleSaveApiKeys = useCallback(async (keys: Parameters<typeof saveApiKeys>[0]) => {
+    await saveApiKeys(keys);
+  }, [saveApiKeys]);
+
+  const handleCancelApiKeys = useCallback(() => {
+    setShowApiKeysScreen(false);
+  }, [setShowApiKeysScreen]);
+
+  if (shouldShowApiKeysScreen) {
+    return (
+      <div className="flex flex-col h-screen bg-[#1a2332] text-gray-100">
+        <WorkspaceBar project={project} />
+        <div className="flex-1 min-h-0">
+          <ApiKeysScreen
+            initialKeys={apiKeys}
+            onSave={handleSaveApiKeys}
+            onCancel={!needsApiKeys ? handleCancelApiKeys : undefined}
+            isStartup={needsApiKeys && isEmpty}
+          />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col h-screen bg-[#1a2332] text-gray-100">

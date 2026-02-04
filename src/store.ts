@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { v4 as uuidv4 } from 'uuid';
-import type { Message, Chunk, Mode, ModelConfig, ToolStatus, Thread, Session, Project, ApprovalRequest, DiffData, TodoItem, Tile, LayoutNode, SplitDirection, TileType, Workspace } from './types';
+import type { Message, Chunk, Mode, ModelConfig, ToolStatus, Thread, Session, Project, ApprovalRequest, DiffData, TodoItem, Tile, LayoutNode, SplitDirection, TileType, Workspace, ApiKeys } from './types';
 import { loadSettings, saveSettings, loadRecentProjects } from './persistence';
 import { createInitialLayout, splitTile, removeTile, getTileIds, getSmartDirection, findAdjacentTile, getTileDimensions } from './layout-utils';
 
@@ -26,6 +26,8 @@ interface AppState {
   tokenUsage: { input: number; output: number; total: number };
   blink: boolean;
   recentProjects: Project[];
+  showApiKeysScreen: boolean;
+  apiKeys: ApiKeys | null;
 
   workspaces: Workspace[];
   activeWorkspaceIndex: number;
@@ -69,6 +71,9 @@ interface AppState {
   updateTokenUsage: (input: number, output: number) => void;
   toggleBlink: () => void;
   loadRecentProjects: () => Promise<void>;
+  setShowApiKeysScreen: (show: boolean) => void;
+  loadApiKeys: () => Promise<void>;
+  saveApiKeys: (keys: ApiKeys) => Promise<void>;
 }
 
 const NUM_WORKSPACES = 5;
@@ -90,13 +95,15 @@ export const useStore = create<AppState>((set, get) => ({
   sessions: {},
   mode: 'agent',
   modelConfig: {
-    name: 'claude-sonnet-4-5-20250514',
+    name: 'claude-sonnet-4-5',
     provider: 'anthropic',
     effort: 'medium',
   },
   tokenUsage: { input: 0, output: 0, total: 0 },
   blink: true,
   recentProjects: [],
+  showApiKeysScreen: false,
+  apiKeys: null,
 
   workspaces: createInitialWorkspaces(),
   activeWorkspaceIndex: 0,
@@ -672,5 +679,18 @@ export const useStore = create<AppState>((set, get) => ({
   loadRecentProjects: async () => {
     const projects = await loadRecentProjects();
     set({ recentProjects: projects });
+  },
+
+  setShowApiKeysScreen: (show) => set({ showApiKeysScreen: show }),
+
+  loadApiKeys: async () => {
+    const settings = await loadSettings();
+    set({ apiKeys: settings.apiKeys || null });
+  },
+
+  saveApiKeys: async (keys) => {
+    const settings = await loadSettings();
+    await saveSettings({ ...settings, apiKeys: keys });
+    set({ apiKeys: keys, showApiKeysScreen: false });
   },
 }));

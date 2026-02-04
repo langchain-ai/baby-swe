@@ -11,6 +11,7 @@ export interface CommandContext {
   sendAgentPrompt?: (prompt: string) => void;
   modelConfig: ModelConfig;
   setModelConfig: (config: Partial<ModelConfig>) => void;
+  setShowApiKeysScreen?: (show: boolean) => void;
 }
 
 export interface Command {

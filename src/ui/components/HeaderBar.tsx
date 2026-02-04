@@ -2,8 +2,8 @@ import { useStore } from '../../store';
 import type { Project } from '../../types';
 
 const MODELS: Record<string, string> = {
-  'claude-sonnet-4-5-20250514': 'Sonnet 4.5',
-  'claude-opus-4-5-20250514': 'Opus 4.5',
+  'claude-sonnet-4-5': 'Sonnet 4.5',
+  'claude-opus-4-5': 'Opus 4.5',
   'gpt-5.2-codex': 'GPT-5.2 Codex',
 };
 

@@ -8,7 +8,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { execSync } from "child_process";
 import "dotenv/config";
-import type { ApprovalDecision, ApprovalResponse, ChatMessage, DiffData, TodoItem, ModelConfig } from "./types";
+import type { ApprovalDecision, ApprovalResponse, ChatMessage, DiffData, TodoItem, ModelConfig, ApiKeys } from "./types";
 import { loadAgentMemory } from "./memory/agents";
 import { tool } from "@langchain/core/tools";
 import { z } from "zod";
@@ -35,9 +35,10 @@ const MAX_OUTPUT_SIZE = 100 * 1024;
 
 const webSearchTool = tool(
   async ({ query }: { query: string }) => {
-    const apiKey = process.env.TAVILY_API_KEY;
+    const settings = loadSettings();
+    const apiKey = settings.apiKeys?.tavily || process.env.TAVILY_API_KEY;
     if (!apiKey) {
-      return JSON.stringify({ results: [], error: 'TAVILY_API_KEY not set in environment' });
+      return JSON.stringify({ results: [], error: 'Tavily API key not set. Use /keys command to configure.' });
     }
     try {
       const client = tavily({ apiKey });
@@ -334,13 +335,14 @@ function computeDiffData(
   };
 }
 
-function createModel(modelConfig: ModelConfig): BaseChatModel {
+function createModel(modelConfig: ModelConfig, apiKeys?: ApiKeys): BaseChatModel {
   const { name, effort } = modelConfig;
 
   if (name.startsWith('gpt-')) {
+    const openaiApiKey = apiKeys?.openai || process.env.OPENAI_API_KEY;
     const openaiConfig: ConstructorParameters<typeof ChatOpenAI>[0] = {
       model: name,
-      openAIApiKey: process.env.OPENAI_API_KEY,
+      openAIApiKey: openaiApiKey,
       streaming: true,
     };
 
@@ -363,16 +365,17 @@ function createModel(modelConfig: ModelConfig): BaseChatModel {
     return new ChatOpenAI(openaiConfig);
   }
 
+  const anthropicApiKey = apiKeys?.anthropic || process.env.ANTHROPIC_API_KEY;
   return new ChatAnthropic({
     model: name,
-    anthropicApiKey: process.env.ANTHROPIC_API_KEY,
+    anthropicApiKey: anthropicApiKey,
     streaming: true,
   });
 }
 
-function createAgent(rootDir?: string, modelConfig?: ModelConfig) {
-  const modelCfg = modelConfig || { name: 'claude-sonnet-4-5-20250514', provider: 'anthropic', effort: 'default' };
-  const model = createModel(modelCfg);
+function createAgent(rootDir?: string, modelConfig?: ModelConfig, apiKeys?: ApiKeys) {
+  const modelCfg = modelConfig || { name: 'claude-sonnet-4-5', provider: 'anthropic', effort: 'default' };
+  const model = createModel(modelCfg, apiKeys);
 
   let systemPrompt: string;
 
@@ -435,7 +438,8 @@ export interface AgentResponse {
 export function setupAgentIPC(mainWindow: BrowserWindow, getTileProject: (tileId: string) => string | null) {
   ipcMain.handle("agent:invoke", async (_event, userMessage: string): Promise<AgentResponse> => {
     try {
-      const agent = createAgent(undefined);
+      const settings = loadSettings();
+      const agent = createAgent(undefined, undefined, settings.apiKeys);
       const result = await agent.invoke(
         { messages: [{ role: "user", content: userMessage }] },
         { recursionLimit: 10000 }
@@ -461,7 +465,9 @@ export function setupAgentIPC(mainWindow: BrowserWindow, getTileProject: (tileId
 
     try {
       const folder = getTileProject(tileId);
-      const streamAgent = createAgent(folder || undefined, modelConfig);
+      const settings = loadSettings();
+      const apiKeys = settings.apiKeys;
+      const streamAgent = createAgent(folder || undefined, modelConfig, apiKeys);
 
       console.log(`[agent:stream] Starting stream for session ${sessionId}, tile: ${tileId}, folder: ${folder}, model: ${modelConfig.name}, effort: ${modelConfig.effort}, messages: ${messages.length}`);
 

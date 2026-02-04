@@ -48,7 +48,7 @@ export function loadSettings(): GlobalSettings {
   return {
     version: 1,
     modelConfig: {
-      name: 'claude-sonnet-4-5-20250514',
+      name: 'claude-sonnet-4-5',
       provider: 'anthropic',
       effort: 'medium',
     },

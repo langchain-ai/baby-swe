@@ -57,6 +57,7 @@ export function TileContainer({ tileId, isFocused, onFocus }: TileContainerProps
     tokenUsage,
     modelConfig,
     setModelConfig,
+    setShowApiKeysScreen,
   } = useStore();
 
   const tiles = workspaces[activeWorkspaceIndex].tiles;
@@ -109,6 +110,7 @@ export function TileContainer({ tileId, isFocused, onFocus }: TileContainerProps
           tokenUsage,
           modelConfig,
           setModelConfig,
+          setShowApiKeysScreen,
         });
         if (commandExecuted) return;
       }
@@ -122,7 +124,7 @@ export function TileContainer({ tileId, isFocused, onFocus }: TileContainerProps
       startStreaming(session.id);
       window.agent.stream(session.id, tileId, chatHistory, modelConfig);
     },
-    [tile, session, tileId, addMessageToSession, startStreaming, createSession, clearSession, tokenUsage, modelConfig, setModelConfig]
+    [tile, session, tileId, addMessageToSession, startStreaming, createSession, clearSession, tokenUsage, modelConfig, setModelConfig, setShowApiKeysScreen]
   );
 
   if (!tile) {

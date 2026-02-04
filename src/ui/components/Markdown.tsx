@@ -52,7 +52,7 @@ export function Markdown({ content }: MarkdownProps) {
             const isBlock = match || text.includes('\n');
             if (isBlock) {
               return (
-                <pre className="bg-[#111827] rounded px-3 py-2 my-2 overflow-x-auto border-l-2 border-gray-700">
+                <pre className="bg-[#111827] rounded px-3 py-2 my-2 text-sm overflow-x-auto border-l-2 border-gray-700">
                   <code className="text-gray-300">{text.replace(/\n$/, '')}</code>
                 </pre>
               );
