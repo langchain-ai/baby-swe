@@ -1,30 +1,30 @@
-import { useCallback, useRef, useEffect } from 'react';
-import { useStore } from '../../store';
-import { HeaderBar } from './HeaderBar';
-import { MessageView } from './MessageView';
-import { PromptBar } from './PromptBar';
-import { Logo } from './Logo';
-import { TerminalTile } from './TerminalTile';
-import { executeCommand } from '../../commands';
-import type { Message, ChatMessage, Project } from '../../types';
+import { useCallback, useRef, useEffect } from "react";
+import { useStore } from "../../store";
+import { HeaderBar } from "./HeaderBar";
+import { MessageView } from "./MessageView";
+import { PromptBar } from "./PromptBar";
+import { Logo } from "./Logo";
+import { TerminalTile } from "./TerminalTile";
+import { executeCommand } from "../../commands";
+import type { Message, ChatMessage, Project } from "../../types";
 
 function messagesToChatMessages(messages: Message[]): ChatMessage[] {
   const chatMessages: ChatMessage[] = [];
   for (const msg of messages) {
-    if (msg.author === 'user' || msg.author === 'agent') {
+    if (msg.author === "user" || msg.author === "agent") {
       const textContent = msg.chunks
         .map((c) => {
-          if (c.kind === 'text') return c.text;
-          if (c.kind === 'code') {
-            const language = c.language ? c.language : '';
+          if (c.kind === "text") return c.text;
+          if (c.kind === "code") {
+            const language = c.language ? c.language : "";
             return `\n\`\`\`${language}\n${c.text}\n\`\`\`\n`;
           }
-          return '';
+          return "";
         })
-        .join('');
+        .join("");
       if (textContent) {
         chatMessages.push({
-          role: msg.author === 'user' ? 'user' : 'assistant',
+          role: msg.author === "user" ? "user" : "assistant",
           content: textContent,
         });
       }
@@ -39,7 +39,11 @@ interface TileContainerProps {
   onFocus: () => void;
 }
 
-export function TileContainer({ tileId, isFocused, onFocus }: TileContainerProps) {
+export function TileContainer({
+  tileId,
+  isFocused,
+  onFocus,
+}: TileContainerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
 
   const {
@@ -75,33 +79,48 @@ export function TileContainer({ tileId, isFocused, onFocus }: TileContainerProps
     }
   }, [tileId, setTileProject]);
 
-  const handleSelectRecent = useCallback(async (path: string) => {
-    const project = await window.tile.openProject(tileId, path);
-    if (project) {
-      setTileProject(tileId, project);
-    }
-  }, [tileId, setTileProject]);
+  const handleSelectRecent = useCallback(
+    async (path: string) => {
+      const project = await window.tile.openProject(tileId, path);
+      if (project) {
+        setTileProject(tileId, project);
+      }
+    },
+    [tileId, setTileProject],
+  );
 
   const handleApprove = useCallback((approvalRequestId: string) => {
-    window.agent.respondToApproval({ requestId: approvalRequestId, decision: 'approve' });
+    window.agent.respondToApproval({
+      requestId: approvalRequestId,
+      decision: "approve",
+    });
   }, []);
 
   const handleReject = useCallback((approvalRequestId: string) => {
-    window.agent.respondToApproval({ requestId: approvalRequestId, decision: 'reject' });
+    window.agent.respondToApproval({
+      requestId: approvalRequestId,
+      decision: "reject",
+    });
   }, []);
 
-  const handleAutoApprove = useCallback((approvalRequestId: string) => {
-    if (session) {
-      setAutoApproveSession(session.id, true);
-    }
-    window.agent.respondToApproval({ requestId: approvalRequestId, decision: 'auto-approve' });
-  }, [session, setAutoApproveSession]);
+  const handleAutoApprove = useCallback(
+    (approvalRequestId: string) => {
+      if (session) {
+        setAutoApproveSession(session.id, true);
+      }
+      window.agent.respondToApproval({
+        requestId: approvalRequestId,
+        decision: "auto-approve",
+      });
+    },
+    [session, setAutoApproveSession],
+  );
 
   const handleSubmit = useCallback(
     async (query: string) => {
       if (!tile) return;
 
-      if (query.startsWith('/')) {
+      if (query.startsWith("/")) {
         const commandExecuted = executeCommand(query, {
           sessionId: session?.id || null,
           createSession: () => createSession(tileId),
@@ -119,12 +138,30 @@ export function TileContainer({ tileId, isFocused, onFocus }: TileContainerProps
 
       const existingMessages = session.messages;
       const chatHistory = messagesToChatMessages(existingMessages);
-      chatHistory.push({ role: 'user', content: query });
-      addMessageToSession(session.id, 'user', [{ kind: 'text', text: query }]);
+      chatHistory.push({ role: "user", content: query });
+      addMessageToSession(session.id, "user", [{ kind: "text", text: query }]);
       startStreaming(session.id);
-      window.agent.stream(session.id, tileId, chatHistory, modelConfig, session.mode);
+      window.agent.stream(
+        session.id,
+        tileId,
+        chatHistory,
+        modelConfig,
+        session.mode,
+      );
     },
-    [tile, session, tileId, addMessageToSession, startStreaming, createSession, clearSession, tokenUsage, modelConfig, setModelConfig, setShowApiKeysScreen]
+    [
+      tile,
+      session,
+      tileId,
+      addMessageToSession,
+      startStreaming,
+      createSession,
+      clearSession,
+      tokenUsage,
+      modelConfig,
+      setModelConfig,
+      setShowApiKeysScreen,
+    ],
   );
 
   if (!tile) {
@@ -135,7 +172,7 @@ export function TileContainer({ tileId, isFocused, onFocus }: TileContainerProps
     );
   }
 
-  if (tile.type === 'terminal') {
+  if (tile.type === "terminal") {
     return (
       <TerminalTile
         tileId={tileId}
@@ -154,7 +191,10 @@ export function TileContainer({ tileId, isFocused, onFocus }: TileContainerProps
         onClick={onFocus}
       >
         {isFocused && (
-          <div aria-hidden className="pointer-events-none absolute inset-0 ring-2 ring-[#5a9bc7] ring-inset z-20" />
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-0 ring-2 ring-[#5a9bc7] ring-inset z-20"
+          />
         )}
         <TileFolderSelect
           onOpenFolder={handleOpenFolder}
@@ -175,7 +215,10 @@ export function TileContainer({ tileId, isFocused, onFocus }: TileContainerProps
         onClick={onFocus}
       >
         {isFocused && (
-          <div aria-hidden className="pointer-events-none absolute inset-0 ring-2 ring-[#5a9bc7] ring-inset z-20" />
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-0 ring-2 ring-[#5a9bc7] ring-inset z-20"
+          />
         )}
         <HeaderBar project={tile.project} compact />
         <div className="flex-1 flex flex-col items-center justify-center px-4">
@@ -200,7 +243,10 @@ export function TileContainer({ tileId, isFocused, onFocus }: TileContainerProps
       onClick={onFocus}
     >
       {isFocused && (
-        <div aria-hidden className="pointer-events-none absolute inset-0 ring-2 ring-[#5a9bc7] ring-inset z-20" />
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0 ring-2 ring-[#5a9bc7] ring-inset z-20"
+        />
       )}
       <MessageView
         messages={session.messages}
@@ -231,13 +277,19 @@ interface TileFolderSelectProps {
   recentProjects: Project[];
 }
 
-function TileFolderSelect({ onOpenFolder, onSelectRecent, recentProjects }: TileFolderSelectProps) {
+function TileFolderSelect({
+  onOpenFolder,
+  onSelectRecent,
+  recentProjects,
+}: TileFolderSelectProps) {
   return (
     <div className="flex flex-col items-center justify-center flex-1">
       <div className="flex flex-col items-center gap-6">
         <Logo />
         <div className="text-center">
-          <p className="text-gray-400 mb-4 text-sm">Open a folder to get started</p>
+          <p className="text-gray-400 mb-4 text-sm">
+            Open a folder to get started
+          </p>
           <button
             onClick={onOpenFolder}
             className="flex items-center gap-2 px-4 py-2 bg-[#5a9bc7] hover:bg-[#6daad3] text-white rounded-lg transition-colors font-medium text-sm"
@@ -259,8 +311,12 @@ function TileFolderSelect({ onOpenFolder, onSelectRecent, recentProjects }: Tile
                 >
                   <FolderIcon />
                   <div className="flex-1 min-w-0">
-                    <p className="text-gray-200 text-sm truncate">{project.name}</p>
-                    <p className="text-gray-500 text-xs truncate">{project.path}</p>
+                    <p className="text-gray-200 text-sm truncate">
+                      {project.name}
+                    </p>
+                    <p className="text-gray-500 text-xs truncate">
+                      {project.path}
+                    </p>
                   </div>
                 </button>
               ))}
@@ -274,7 +330,16 @@ function TileFolderSelect({ onOpenFolder, onSelectRecent, recentProjects }: Tile
 
 function FolderIcon() {
   return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
       <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
     </svg>
   );

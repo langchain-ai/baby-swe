@@ -1,6 +1,6 @@
-import { useLayoutEffect, useRef } from 'react';
-import { Terminal } from 'xterm';
-import { FitAddon } from '@xterm/addon-fit';
+import { useLayoutEffect, useRef } from "react";
+import { Terminal } from "xterm";
+import { FitAddon } from "@xterm/addon-fit";
 
 interface TerminalTileProps {
   tileId: string;
@@ -9,7 +9,12 @@ interface TerminalTileProps {
   onFocus: () => void;
 }
 
-export function TerminalTile({ tileId, cwd, isFocused, onFocus }: TerminalTileProps) {
+export function TerminalTile({
+  tileId,
+  cwd,
+  isFocused,
+  onFocus,
+}: TerminalTileProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
@@ -23,29 +28,29 @@ export function TerminalTile({ tileId, cwd, isFocused, onFocus }: TerminalTilePr
     const term = new Terminal({
       cursorBlink: true,
       fontSize: 13,
-      fontFamily: 'JetBrains Mono, Menlo, Monaco, monospace',
+      fontFamily: "JetBrains Mono, Menlo, Monaco, monospace",
       theme: {
-        background: '#1a2332',
-        foreground: '#e5e7eb',
-        cursor: '#5a9bc7',
-        cursorAccent: '#1a2332',
-        selectionBackground: '#5a9bc755',
-        black: '#1a2332',
-        red: '#e07a5f',
-        green: '#81b29a',
-        yellow: '#f2cc8f',
-        blue: '#5a9bc7',
-        magenta: '#c9a0dc',
-        cyan: '#87CEEB',
-        white: '#e5e7eb',
-        brightBlack: '#4a5568',
-        brightRed: '#fc8181',
-        brightGreen: '#9ae6b4',
-        brightYellow: '#faf089',
-        brightBlue: '#90cdf4',
-        brightMagenta: '#d6bcfa',
-        brightCyan: '#9decf9',
-        brightWhite: '#ffffff',
+        background: "#1a2332",
+        foreground: "#e5e7eb",
+        cursor: "#5a9bc7",
+        cursorAccent: "#1a2332",
+        selectionBackground: "#5a9bc755",
+        black: "#1a2332",
+        red: "#e07a5f",
+        green: "#81b29a",
+        yellow: "#f2cc8f",
+        blue: "#5a9bc7",
+        magenta: "#c9a0dc",
+        cyan: "#87CEEB",
+        white: "#e5e7eb",
+        brightBlack: "#4a5568",
+        brightRed: "#fc8181",
+        brightGreen: "#9ae6b4",
+        brightYellow: "#faf089",
+        brightBlue: "#90cdf4",
+        brightMagenta: "#d6bcfa",
+        brightCyan: "#9decf9",
+        brightWhite: "#ffffff",
       },
     });
 
@@ -82,7 +87,7 @@ export function TerminalTile({ tileId, cwd, isFocused, onFocus }: TerminalTilePr
         const paddingBottom = Number.parseFloat(style.paddingBottom) || 0;
         const contentBottom = containerRect.bottom - paddingBottom;
         const overflowBottom = termRect.bottom - contentBottom;
-        const overflowTop = (containerRect.top + paddingTop) - termRect.top;
+        const overflowTop = containerRect.top + paddingTop - termRect.top;
 
         if ((overflowBottom > 0.5 || overflowTop > 0.5) && term.rows > 1) {
           term.resize(term.cols, term.rows - 1);
@@ -129,12 +134,12 @@ export function TerminalTile({ tileId, cwd, isFocused, onFocus }: TerminalTilePr
   }, [isFocused]);
 
   return (
-    <div
-      className="relative h-full w-full bg-[#1a2332]"
-      onClick={onFocus}
-    >
+    <div className="relative h-full w-full bg-[#1a2332]" onClick={onFocus}>
       {isFocused && (
-        <div aria-hidden className="pointer-events-none absolute inset-0 ring-2 ring-[#5a9bc7] ring-inset z-20" />
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0 ring-2 ring-[#5a9bc7] ring-inset z-20"
+        />
       )}
       <div ref={containerRef} className="h-full w-full p-2" />
     </div>

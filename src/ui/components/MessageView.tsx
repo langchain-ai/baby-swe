@@ -1,36 +1,52 @@
-import { useRef, useEffect } from 'react';
-import { CodeBlock } from './CodeBlock';
-import { Markdown } from './Markdown';
-import { ToolExecution } from './ToolExecution';
-import { ToolGroup } from './ToolGroup';
-import { TodoList } from './TodoList';
-import { HeaderBar } from './HeaderBar';
-import type { Chunk, Message, ToolExecutionChunk, TodoItem, Project } from '../../types';
+import { useRef, useEffect } from "react";
+import { CodeBlock } from "./CodeBlock";
+import { Markdown } from "./Markdown";
+import { ToolExecution } from "./ToolExecution";
+import { ToolGroup } from "./ToolGroup";
+import { TodoList } from "./TodoList";
+import { HeaderBar } from "./HeaderBar";
+import type {
+  Chunk,
+  Message,
+  ToolExecutionChunk,
+  TodoItem,
+  Project,
+} from "../../types";
 
-type ToolGroupType = 'read' | 'search' | 'write' | 'execute' | 'explore' | 'other';
+type ToolGroupType =
+  | "read"
+  | "search"
+  | "write"
+  | "execute"
+  | "explore"
+  | "other";
 
 type GroupedItem =
   | Chunk
-  | { type: 'tool-group'; groupType: ToolGroupType; tools: ToolExecutionChunk[] };
+  | {
+      type: "tool-group";
+      groupType: ToolGroupType;
+      tools: ToolExecutionChunk[];
+    };
 
 function getToolGroupType(toolName: string): ToolGroupType {
   switch (toolName) {
-    case 'read_file':
-      return 'read';
-    case 'glob':
-    case 'search':
-    case 'grep':
-    case 'list_dir':
-      return 'search';
-    case 'write_file':
-    case 'edit_file':
-      return 'write';
-    case 'execute':
-      return 'execute';
-    case 'task':
-      return 'explore';
+    case "read_file":
+      return "read";
+    case "glob":
+    case "search":
+    case "grep":
+    case "list_dir":
+      return "search";
+    case "write_file":
+    case "edit_file":
+      return "write";
+    case "execute":
+      return "execute";
+    case "task":
+      return "explore";
     default:
-      return 'other';
+      return "other";
   }
 }
 
@@ -41,14 +57,18 @@ function groupChunksForRender(chunks: Chunk[]): GroupedItem[] {
 
   const flushToolGroup = () => {
     if (currentToolGroup.length > 0 && currentGroupType) {
-      result.push({ type: 'tool-group', groupType: currentGroupType, tools: [...currentToolGroup] });
+      result.push({
+        type: "tool-group",
+        groupType: currentGroupType,
+        tools: [...currentToolGroup],
+      });
       currentToolGroup = [];
       currentGroupType = null;
     }
   };
 
   for (const chunk of chunks) {
-    if (chunk.kind === 'tool-execution') {
+    if (chunk.kind === "tool-execution") {
       const groupType = getToolGroupType(chunk.toolName);
 
       if (currentGroupType === null) {
@@ -85,24 +105,23 @@ interface MessageViewProps extends ApprovalCallbacks {
   project?: Project | null;
 }
 
-
 function ChunkRenderer({
   chunk,
   projectPath,
   ...callbacks
 }: { chunk: Chunk; projectPath?: string } & ApprovalCallbacks) {
   switch (chunk.kind) {
-    case 'text':
+    case "text":
       return (
         <div className="text-gray-200">
           <Markdown content={chunk.text} />
         </div>
       );
-    case 'code':
+    case "code":
       return <CodeBlock text={chunk.text} language={chunk.language} />;
-    case 'error':
+    case "error":
       return <span className="text-red-400">{chunk.text}</span>;
-    case 'list':
+    case "list":
       return (
         <div className="text-gray-300 ml-2">
           {chunk.lines.map((line, i) => (
@@ -110,7 +129,7 @@ function ChunkRenderer({
           ))}
         </div>
       );
-    case 'tool-execution':
+    case "tool-execution":
       return (
         <ToolExecution
           chunk={chunk}
@@ -125,14 +144,16 @@ function ChunkRenderer({
 
 function UserMessage({ message }: { message: Message }) {
   const text = message.chunks
-    .filter((c) => c.kind === 'text')
-    .map((c) => (c as { kind: 'text'; text: string }).text)
-    .join('');
+    .filter((c) => c.kind === "text")
+    .map((c) => (c as { kind: "text"; text: string }).text)
+    .join("");
 
   return (
     <div className="flex items-start gap-2 my-4">
       <span className="text-gray-400 select-none">❯</span>
-      <span className="text-gray-100 bg-gray-800/50 px-2 py-0.5 rounded">{text}</span>
+      <span className="text-gray-100 bg-gray-800/50 px-2 py-0.5 rounded">
+        {text}
+      </span>
     </div>
   );
 }
@@ -142,7 +163,11 @@ function AgentMessage({
   isStreaming,
   projectPath,
   ...callbacks
-}: { message: Message; isStreaming?: boolean; projectPath?: string } & ApprovalCallbacks) {
+}: {
+  message: Message;
+  isStreaming?: boolean;
+  projectPath?: string;
+} & ApprovalCallbacks) {
   const groupedItems = groupChunksForRender(message.chunks);
 
   if (groupedItems.length === 0 && isStreaming) {
@@ -157,7 +182,7 @@ function AgentMessage({
   return (
     <div className="my-2 space-y-1">
       {groupedItems.map((item, i) => {
-        if ('type' in item && item.type === 'tool-group') {
+        if ("type" in item && item.type === "tool-group") {
           return (
             <ToolGroup
               key={`tool-group-${i}`}
@@ -177,7 +202,11 @@ function AgentMessage({
           <div key={i} className="flex items-start gap-2">
             <span className="text-[#87CEEB] select-none">●</span>
             <div className="flex-1 min-w-0">
-              <ChunkRenderer chunk={chunk} projectPath={projectPath} {...callbacks} />
+              <ChunkRenderer
+                chunk={chunk}
+                projectPath={projectPath}
+                {...callbacks}
+              />
             </div>
           </div>
         );
@@ -191,14 +220,34 @@ function MessageBubble({
   isStreaming,
   projectPath,
   ...callbacks
-}: { message: Message; isStreaming?: boolean; projectPath?: string } & ApprovalCallbacks) {
-  if (message.author === 'user') {
+}: {
+  message: Message;
+  isStreaming?: boolean;
+  projectPath?: string;
+} & ApprovalCallbacks) {
+  if (message.author === "user") {
     return <UserMessage message={message} />;
   }
-  return <AgentMessage message={message} isStreaming={isStreaming} projectPath={projectPath} {...callbacks} />;
+  return (
+    <AgentMessage
+      message={message}
+      isStreaming={isStreaming}
+      projectPath={projectPath}
+      {...callbacks}
+    />
+  );
 }
 
-export function MessageView({ messages, isStreaming, todos, showHeader, project, onApprove, onReject, onAutoApprove }: MessageViewProps) {
+export function MessageView({
+  messages,
+  isStreaming,
+  todos,
+  showHeader,
+  project,
+  onApprove,
+  onReject,
+  onAutoApprove,
+}: MessageViewProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const isNearBottomRef = useRef(true);
 
@@ -208,12 +257,13 @@ export function MessageView({ messages, isStreaming, todos, showHeader, project,
 
     const handleScroll = () => {
       const threshold = 100;
-      const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+      const distanceFromBottom =
+        el.scrollHeight - el.scrollTop - el.clientHeight;
       isNearBottomRef.current = distanceFromBottom < threshold;
     };
 
-    el.addEventListener('scroll', handleScroll);
-    return () => el.removeEventListener('scroll', handleScroll);
+    el.addEventListener("scroll", handleScroll);
+    return () => el.removeEventListener("scroll", handleScroll);
   }, []);
 
   useEffect(() => {
@@ -223,7 +273,10 @@ export function MessageView({ messages, isStreaming, todos, showHeader, project,
   }, [messages, isStreaming, todos]);
 
   return (
-    <div ref={scrollRef} className="flex-1 min-h-0 min-w-0 overflow-y-auto px-4 py-4 text-sm leading-relaxed">
+    <div
+      ref={scrollRef}
+      className="flex-1 min-h-0 min-w-0 overflow-y-auto px-4 py-4 text-sm leading-relaxed"
+    >
       {showHeader && <HeaderBar project={project} compact />}
       {todos && todos.length > 0 && <TodoList todos={todos} />}
       {messages.map((message, index) => (
