@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useLayoutEffect, useRef } from 'react';
 import { Terminal } from 'xterm';
 import { FitAddon } from '@xterm/addon-fit';
 
@@ -14,8 +14,11 @@ export function TerminalTile({ tileId, cwd, isFocused, onFocus }: TerminalTilePr
   const terminalRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!containerRef.current) return;
+
+    let disposed = false;
+    let rafId: number | null = null;
 
     const term = new Terminal({
       cursorBlink: true,
@@ -50,7 +53,6 @@ export function TerminalTile({ tileId, cwd, isFocused, onFocus }: TerminalTilePr
     term.loadAddon(fitAddon);
 
     term.open(containerRef.current);
-    fitAddon.fit();
 
     terminalRef.current = term;
     fitAddonRef.current = fitAddon;
@@ -67,13 +69,52 @@ export function TerminalTile({ tileId, cwd, isFocused, onFocus }: TerminalTilePr
       }
     });
 
-    const resizeObserver = new ResizeObserver(() => {
+    const fitAndResize = () => {
+      if (disposed || !containerRef.current) return;
       fitAddon.fit();
+
+      const termEl = term.element;
+      if (termEl) {
+        const containerRect = containerRef.current.getBoundingClientRect();
+        const termRect = termEl.getBoundingClientRect();
+        const style = window.getComputedStyle(containerRef.current);
+        const paddingTop = Number.parseFloat(style.paddingTop) || 0;
+        const paddingBottom = Number.parseFloat(style.paddingBottom) || 0;
+        const contentBottom = containerRect.bottom - paddingBottom;
+        const overflowBottom = termRect.bottom - contentBottom;
+        const overflowTop = (containerRect.top + paddingTop) - termRect.top;
+
+        if ((overflowBottom > 0.5 || overflowTop > 0.5) && term.rows > 1) {
+          term.resize(term.cols, term.rows - 1);
+        }
+      }
+
       window.terminal.resize(tileId, term.cols, term.rows);
+    };
+
+    const scheduleFitAndResize = () => {
+      if (disposed) return;
+      if (rafId !== null) cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(() => {
+        rafId = null;
+        fitAndResize();
+      });
+    };
+
+    const resizeObserver = new ResizeObserver(() => {
+      scheduleFitAndResize();
     });
     resizeObserver.observe(containerRef.current);
 
+    scheduleFitAndResize();
+
+    document.fonts?.ready.then(() => {
+      scheduleFitAndResize();
+    });
+
     return () => {
+      disposed = true;
+      if (rafId !== null) cancelAnimationFrame(rafId);
       resizeObserver.disconnect();
       unsubscribe();
       window.terminal.destroy(tileId);
@@ -81,7 +122,7 @@ export function TerminalTile({ tileId, cwd, isFocused, onFocus }: TerminalTilePr
     };
   }, [tileId, cwd]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (isFocused && terminalRef.current) {
       terminalRef.current.focus();
     }
