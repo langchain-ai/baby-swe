@@ -41,7 +41,7 @@ registerCommand({
       '• `Cmd/Ctrl+1-9` - Switch to tab 1-9',
       '• `Cmd/Ctrl+Alt+←/→` - Switch to prev/next tab',
       '• `Escape` - Cancel current operation',
-      '• `Shift+Tab` - Toggle Agent/Plan mode',
+      '• `Shift+Tab` - Cycle Agent/Plan/Yolo mode',
       '• `Shift+Enter` - New line in prompt',
       '• `Cmd/Ctrl+O` - Open folder',
     ].join('\n');
@@ -77,24 +77,6 @@ registerCommand({
   category: 'Navigation',
   execute: (ctx) => {
     ctx.createSession();
-  },
-});
-
-registerCommand({
-  name: 'yolo',
-  description: 'Toggle YOLO mode (bypass all tool approvals)',
-  category: 'Actions',
-  execute: async (ctx) => {
-    const settings = await window.storage.getSettings();
-    const newYoloMode = !settings.yoloMode;
-    await window.storage.saveSettings({ ...settings, yoloMode: newYoloMode });
-
-    const statusText = newYoloMode
-      ? '**YOLO mode enabled** - All tool executions will be auto-approved'
-      : '**YOLO mode disabled** - Tool executions will require approval';
-
-    const sessionId = ctx.sessionId || ctx.createSession();
-    ctx.addSystemMessage(sessionId, [{ kind: 'text', text: statusText }]);
   },
 });
 

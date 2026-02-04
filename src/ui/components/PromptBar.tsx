@@ -72,7 +72,8 @@ export function PromptBar({ onSubmit, busy, projectPath, sessionId, isFocused }:
       if (!isFocused) return;
       if (e.shiftKey && e.key === 'Tab') {
         e.preventDefault();
-        setSessionMode(sessionId, mode === 'agent' ? 'plan' : 'agent');
+        const nextMode = mode === 'agent' ? 'plan' : mode === 'plan' ? 'yolo' : 'agent';
+        setSessionMode(sessionId, nextMode);
       }
     }
     document.addEventListener('keydown', handleKeyDown);
@@ -282,7 +283,7 @@ export function PromptBar({ onSubmit, busy, projectPath, sessionId, isFocused }:
 
       <div className="mt-2 text-xs text-gray-600">
         <span className="text-gray-500">▸▸</span>
-        <span className={mode === 'agent' ? 'text-[#87CEEB] ml-1' : 'text-purple-400 ml-1'}>
+        <span className={`ml-1 ${mode === 'agent' ? 'text-[#87CEEB]' : mode === 'plan' ? 'text-purple-400' : 'text-red-500'}`}>
           {mode} mode
         </span>
         <span className="text-gray-600 ml-1">(shift+tab to cycle)</span>

@@ -67,7 +67,7 @@ declare global {
     };
     agent: {
       invoke: (message: string) => Promise<{ content: string }>;
-      stream: (sessionId: string, tileId: string, messages: ChatMessage[], modelConfig: ModelConfig) => void;
+      stream: (sessionId: string, tileId: string, messages: ChatMessage[], modelConfig: ModelConfig, mode: Mode) => void;
       cancel: (sessionId: string) => void;
       onStreamEvent: (callback: (event: StreamEvent) => void) => () => void;
       respondToApproval: (response: ApprovalResponse) => void;
@@ -170,7 +170,7 @@ export interface Message {
   chunks: Chunk[];
 }
 
-export type Mode = 'agent' | 'plan';
+export type Mode = 'agent' | 'plan' | 'yolo';
 
 export interface ModelConfig {
   name: string;

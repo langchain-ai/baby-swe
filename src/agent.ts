@@ -8,7 +8,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { execSync } from "child_process";
 import "dotenv/config";
-import type { ApprovalDecision, ApprovalResponse, ChatMessage, DiffData, TodoItem, ModelConfig, ApiKeys } from "./types";
+import type { ApprovalDecision, ApprovalResponse, ChatMessage, DiffData, TodoItem, ModelConfig, ApiKeys, Mode } from "./types";
 import { loadAgentMemory } from "./memory/agents";
 import { tool } from "@langchain/core/tools";
 import { z } from "zod";
@@ -457,7 +457,7 @@ export function setupAgentIPC(mainWindow: BrowserWindow, getTileProject: (tileId
     }
   });
 
-  ipcMain.on("agent:stream", async (_event, sessionId: string, tileId: string, messages: ChatMessage[], modelConfig: ModelConfig) => {
+  ipcMain.on("agent:stream", async (_event, sessionId: string, tileId: string, messages: ChatMessage[], modelConfig: ModelConfig, mode: Mode) => {
     const controller = new AbortController();
     sessionControllers.set(sessionId, controller);
 
@@ -532,8 +532,7 @@ export function setupAgentIPC(mainWindow: BrowserWindow, getTileProject: (tileId
 
           toolTimers.set(toolCallId, Date.now());
 
-          const settings = loadSettings();
-          const requiresApproval = TOOLS_REQUIRING_APPROVAL.includes(toolName) && !settings.yoloMode;
+          const requiresApproval = TOOLS_REQUIRING_APPROVAL.includes(toolName) && mode !== 'yolo';
           const approvalRequestId = requiresApproval ? uuidv4() : undefined;
 
           let diffData: DiffData | undefined;
