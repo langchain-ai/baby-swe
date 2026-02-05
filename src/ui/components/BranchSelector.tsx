@@ -96,7 +96,7 @@ export function BranchSelector({ projectPath, currentBranch }: BranchSelectorPro
     <div className="relative" onKeyDown={handleKeyDown}>
       <button
         onClick={isOpen ? handleClose : handleOpen}
-        className="text-[#5a9bc7] hover:text-[#7ab8de] transition-colors cursor-pointer"
+        className="text-[#5a9bc7] hover:text-[#7ab8de] transition-colors cursor-pointer truncate block max-w-full"
       >
         {currentBranch}
       </button>

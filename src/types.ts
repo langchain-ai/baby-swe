@@ -40,9 +40,13 @@ export interface Workspace {
   focusedTileId: string | null;
 }
 
+export type ChatMessageContentBlock =
+  | { type: 'text'; text: string }
+  | { type: 'image_url'; image_url: { url: string } };
+
 export interface ChatMessage {
   role: 'user' | 'assistant';
-  content: string;
+  content: string | ChatMessageContentBlock[];
 }
 
 export interface ApiKeys {
@@ -104,7 +108,7 @@ declare global {
 
 export type Author = 'user' | 'agent' | 'system' | 'tool';
 
-export type ChunkKind = 'text' | 'code' | 'error' | 'list' | 'tool-execution' | 'todo';
+export type ChunkKind = 'text' | 'code' | 'error' | 'list' | 'tool-execution' | 'todo' | 'image';
 
 export type TodoStatus = 'pending' | 'in_progress' | 'completed';
 
@@ -163,7 +167,14 @@ export interface TodoChunk {
   todos: TodoItem[];
 }
 
-export type Chunk = TextChunk | CodeChunk | ErrorChunk | ListChunk | ToolExecutionChunk | TodoChunk;
+export interface ImageChunk {
+  kind: 'image';
+  base64: string;
+  mimeType: string;
+  fileName?: string;
+}
+
+export type Chunk = TextChunk | CodeChunk | ErrorChunk | ListChunk | ToolExecutionChunk | TodoChunk | ImageChunk;
 
 export interface Message {
   id: string;

@@ -139,6 +139,14 @@ function ChunkRenderer({
           onAutoApprove={callbacks.onAutoApprove}
         />
       );
+    case "image":
+      return (
+        <img
+          src={`data:${chunk.mimeType};base64,${chunk.base64}`}
+          alt={chunk.fileName || "image"}
+          className="max-w-48 max-h-48 rounded border border-gray-600"
+        />
+      );
   }
 }
 
@@ -148,12 +156,32 @@ function UserMessage({ message }: { message: Message }) {
     .map((c) => (c as { kind: "text"; text: string }).text)
     .join("");
 
+  const images = message.chunks.filter((c) => c.kind === "image");
+
   return (
     <div className="flex items-start gap-2 my-4">
       <span className="text-gray-400 select-none">❯</span>
-      <span className="text-gray-100 bg-gray-800/50 px-2 py-0.5 rounded">
-        {text}
-      </span>
+      <div>
+        {images.length > 0 && (
+          <div className="flex gap-2 mb-1.5 flex-wrap">
+            {images.map((img, i) => (
+              img.kind === "image" && (
+                <img
+                  key={i}
+                  src={`data:${img.mimeType};base64,${img.base64}`}
+                  alt={img.fileName || "image"}
+                  className="max-w-48 max-h-48 rounded border border-gray-600"
+                />
+              )
+            ))}
+          </div>
+        )}
+        {text && (
+          <span className="text-gray-100 bg-gray-800/50 px-2 py-0.5 rounded">
+            {text}
+          </span>
+        )}
+      </div>
     </div>
   );
 }

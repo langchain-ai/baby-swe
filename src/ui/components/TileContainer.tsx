@@ -1,4 +1,4 @@
-import { useCallback, useRef, useEffect } from "react";
+import { useCallback, useRef, useEffect, useState } from "react";
 import { useStore } from "../../store";
 import { HeaderBar } from "./HeaderBar";
 import { MessageView } from "./MessageView";
@@ -6,27 +6,47 @@ import { PromptBar } from "./PromptBar";
 import { Logo } from "./Logo";
 import { TerminalTile } from "./TerminalTile";
 import { executeCommand } from "../../commands";
-import type { Message, ChatMessage, Project } from "../../types";
+import type { Message, ChatMessage, ChatMessageContentBlock, Project, ImageChunk } from "../../types";
 
 function messagesToChatMessages(messages: Message[]): ChatMessage[] {
   const chatMessages: ChatMessage[] = [];
   for (const msg of messages) {
     if (msg.author === "user" || msg.author === "agent") {
-      const textContent = msg.chunks
-        .map((c) => {
-          if (c.kind === "text") return c.text;
-          if (c.kind === "code") {
-            const language = c.language ? c.language : "";
-            return `\n\`\`\`${language}\n${c.text}\n\`\`\`\n`;
+      const role = msg.author === "user" ? "user" as const : "assistant" as const;
+      const hasImages = msg.chunks.some((c) => c.kind === "image");
+
+      if (hasImages) {
+        const blocks: ChatMessageContentBlock[] = [];
+        for (const c of msg.chunks) {
+          if (c.kind === "image") {
+            blocks.push({
+              type: "image_url",
+              image_url: { url: `data:${c.mimeType};base64,${c.base64}` },
+            });
+          } else if (c.kind === "text") {
+            blocks.push({ type: "text", text: c.text });
+          } else if (c.kind === "code") {
+            const lang = c.language || "";
+            blocks.push({ type: "text", text: `\n\`\`\`${lang}\n${c.text}\n\`\`\`\n` });
           }
-          return "";
-        })
-        .join("");
-      if (textContent) {
-        chatMessages.push({
-          role: msg.author === "user" ? "user" : "assistant",
-          content: textContent,
-        });
+        }
+        if (blocks.length > 0) {
+          chatMessages.push({ role, content: blocks });
+        }
+      } else {
+        const textContent = msg.chunks
+          .map((c) => {
+            if (c.kind === "text") return c.text;
+            if (c.kind === "code") {
+              const language = c.language ? c.language : "";
+              return `\n\`\`\`${language}\n${c.text}\n\`\`\`\n`;
+            }
+            return "";
+          })
+          .join("");
+        if (textContent) {
+          chatMessages.push({ role, content: textContent });
+        }
       }
     }
   }
@@ -47,6 +67,8 @@ export function TileContainer({
   onFocus,
 }: TileContainerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const [pendingImages, setPendingImages] = useState<ImageChunk[]>([]);
+  const [isDragOver, setIsDragOver] = useState(false);
 
   const {
     workspaces,
@@ -124,6 +146,51 @@ export function TileContainer({
     [session, setAutoApproveSession],
   );
 
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(true);
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(false);
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(false);
+
+    const files = Array.from(e.dataTransfer.files).filter(
+      (f) => f.type === "image/png" || f.type === "image/jpeg"
+    );
+
+    for (const file of files) {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const dataUrl = reader.result as string;
+        const base64 = dataUrl.split(",")[1];
+        setPendingImages((prev) => [
+          ...prev,
+          { kind: "image", base64, mimeType: file.type, fileName: file.name },
+        ]);
+      };
+      reader.readAsDataURL(file);
+    }
+  }, []);
+
+  const handleRemoveImage = useCallback((index: number) => {
+    setPendingImages((prev) => prev.filter((_, i) => i !== index));
+  }, []);
+
+  const dragProps = {
+    onDragOver: handleDragOver,
+    onDragLeave: handleDragLeave,
+    onDrop: handleDrop,
+  };
+
   const handleSubmit = useCallback(
     async (query: string) => {
       if (!tile) return;
@@ -152,10 +219,31 @@ export function TileContainer({
       const freshSession = useStore.getState().sessions[session.id];
       if (!freshSession) return;
 
+      const images = pendingImages;
+      setPendingImages([]);
+
+      const chunks = [
+        ...images,
+        { kind: "text" as const, text: query },
+      ];
+
       const existingMessages = freshSession.messages;
       const chatHistory = messagesToChatMessages(existingMessages);
-      chatHistory.push({ role: "user", content: query });
-      addMessageToSession(session.id, "user", [{ kind: "text", text: query }]);
+
+      if (images.length > 0) {
+        const blocks: ChatMessageContentBlock[] = [
+          ...images.map((img) => ({
+            type: "image_url" as const,
+            image_url: { url: `data:${img.mimeType};base64,${img.base64}` },
+          })),
+          { type: "text" as const, text: query },
+        ];
+        chatHistory.push({ role: "user", content: blocks });
+      } else {
+        chatHistory.push({ role: "user", content: query });
+      }
+
+      addMessageToSession(session.id, "user", chunks);
       startStreaming(session.id);
       window.agent.stream(
         session.id,
@@ -169,6 +257,7 @@ export function TileContainer({
       tile,
       session,
       tileId,
+      pendingImages,
       addMessageToSession,
       startStreaming,
       finalizeStream,
@@ -200,12 +289,19 @@ export function TileContainer({
     );
   }
 
+  const handleContainerClick = useCallback(() => {
+    onFocus();
+    const textarea = containerRef.current?.querySelector("textarea");
+    if (textarea) textarea.focus();
+  }, [onFocus]);
+
   if (!tile.project) {
     return (
       <div
         ref={containerRef}
         className="relative flex flex-col h-full bg-[#1a2332] text-gray-100"
-        onClick={onFocus}
+        onClick={handleContainerClick}
+        {...dragProps}
       >
         {isFocused && (
           <div
@@ -228,14 +324,20 @@ export function TileContainer({
     return (
       <div
         ref={containerRef}
-        className="relative flex flex-col h-full bg-[#1a2332] text-gray-100"
-        onClick={onFocus}
+        className={`relative flex flex-col h-full bg-[#1a2332] text-gray-100 ${isDragOver ? "ring-2 ring-[#5a9bc7] ring-inset" : ""}`}
+        onClick={handleContainerClick}
+        {...dragProps}
       >
-        {isFocused && (
+        {isFocused && !isDragOver && (
           <div
             aria-hidden
             className="pointer-events-none absolute inset-0 ring-2 ring-[#5a9bc7] ring-inset z-20"
           />
+        )}
+        {isDragOver && (
+          <div className="pointer-events-none absolute inset-0 bg-[#5a9bc7]/10 border-2 border-dashed border-[#5a9bc7] z-30 flex items-center justify-center">
+            <span className="text-[#5a9bc7] text-sm font-medium">Drop images here</span>
+          </div>
         )}
         <HeaderBar compact />
         <div className="flex-1 flex flex-col items-center justify-center px-4">
@@ -246,6 +348,8 @@ export function TileContainer({
               projectPath={tile.project.path}
               sessionId={tile.sessionId}
               isFocused={isFocused}
+              pendingImages={pendingImages}
+              onRemoveImage={handleRemoveImage}
             />
           </div>
         </div>
@@ -256,14 +360,20 @@ export function TileContainer({
   return (
     <div
       ref={containerRef}
-      className="relative flex flex-col h-full bg-[#1a2332] text-gray-100 overflow-hidden"
-      onClick={onFocus}
+      className={`relative flex flex-col h-full bg-[#1a2332] text-gray-100 overflow-hidden ${isDragOver ? "ring-2 ring-[#5a9bc7] ring-inset" : ""}`}
+      onClick={handleContainerClick}
+      {...dragProps}
     >
-      {isFocused && (
+      {isFocused && !isDragOver && (
         <div
           aria-hidden
           className="pointer-events-none absolute inset-0 ring-2 ring-[#5a9bc7] ring-inset z-20"
         />
+      )}
+      {isDragOver && (
+        <div className="pointer-events-none absolute inset-0 bg-[#5a9bc7]/10 border-2 border-dashed border-[#5a9bc7] z-30 flex items-center justify-center">
+          <span className="text-[#5a9bc7] text-sm font-medium">Drop images here</span>
+        </div>
       )}
       <MessageView
         messages={session.messages}
@@ -282,6 +392,8 @@ export function TileContainer({
           projectPath={tile.project.path}
           sessionId={tile.sessionId}
           isFocused={isFocused}
+          pendingImages={pendingImages}
+          onRemoveImage={handleRemoveImage}
         />
       </div>
     </div>

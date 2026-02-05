@@ -4,6 +4,7 @@ import { CommandAutocomplete, getFilteredCommandCount, getCommandAtIndex } from 
 import { FileAutocomplete, fuzzySearch, getFileAtIndex } from './FileAutocomplete';
 import { ModelAutocomplete, getModelCount, getModelAtIndex, type ModelOption } from './ModelAutocomplete';
 import type { Command } from '../../commands';
+import type { ImageChunk } from '../../types';
 
 const MODELS: Record<string, string> = {
   'claude-opus-4-6': 'Opus 4.6',
@@ -18,9 +19,11 @@ interface PromptBarProps {
   projectPath?: string;
   sessionId: string;
   isFocused: boolean;
+  pendingImages?: ImageChunk[];
+  onRemoveImage?: (index: number) => void;
 }
 
-export function PromptBar({ onSubmit, busy, projectPath, sessionId, isFocused }: PromptBarProps) {
+export function PromptBar({ onSubmit, busy, projectPath, sessionId, isFocused, pendingImages, onRemoveImage }: PromptBarProps) {
   const [query, setQuery] = useState('');
   const { sessions, setSessionMode, modelConfig, setModelConfig } = useStore();
   const session = sessions[sessionId];
@@ -286,6 +289,27 @@ export function PromptBar({ onSubmit, busy, projectPath, sessionId, isFocused }:
           selectedIndex={fileSelectedIndex}
           onSelect={handleFileSelect}
         />
+      )}
+
+      {pendingImages && pendingImages.length > 0 && (
+        <div className="flex gap-2 mb-2 flex-wrap">
+          {pendingImages.map((img, i) => (
+            <div key={i} className="relative group">
+              <img
+                src={`data:${img.mimeType};base64,${img.base64}`}
+                alt={img.fileName || "pending image"}
+                className="w-16 h-16 object-cover rounded border border-gray-600"
+              />
+              <button
+                type="button"
+                onClick={() => onRemoveImage?.(i)}
+                className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-gray-700 hover:bg-red-600 rounded-full flex items-center justify-center text-gray-300 text-xs leading-none opacity-0 group-hover:opacity-100 transition-opacity"
+              >
+                ×
+              </button>
+            </div>
+          ))}
+        </div>
       )}
 
       <div className="flex items-start gap-2">

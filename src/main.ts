@@ -315,6 +315,9 @@ function createWindow(): void {
     minWidth: 450,
     minHeight: 600,
     title: 'Baby SWE',
+    titleBarStyle: 'hiddenInset',
+    trafficLightPosition: { x: 12, y: 12 },
+    backgroundColor: '#1a2332',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
