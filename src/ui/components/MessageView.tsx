@@ -275,7 +275,7 @@ export function MessageView({
   return (
     <div
       ref={scrollRef}
-      className="flex-1 min-h-0 min-w-0 overflow-y-auto px-4 py-4 text-sm leading-relaxed"
+      className="flex-1 min-h-0 min-w-0 overflow-y-auto px-2 py-4 text-sm leading-relaxed"
     >
       {showHeader && <HeaderBar project={project} compact />}
       {todos && todos.length > 0 && <TodoList todos={todos} />}
