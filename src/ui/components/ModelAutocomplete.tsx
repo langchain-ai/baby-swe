@@ -7,6 +7,7 @@ export interface ModelOption {
 }
 
 export const AVAILABLE_MODELS: ModelOption[] = [
+  { id: 'claude-opus-4-6', name: 'Opus 4.6' },
   { id: 'claude-opus-4-5', name: 'Opus 4.5' },
   { id: 'claude-sonnet-4-5', name: 'Sonnet 4.5' },
   { id: 'gpt-5.2', name: 'GPT-5.2 Fast', effort: 'low' },
@@ -14,6 +15,7 @@ export const AVAILABLE_MODELS: ModelOption[] = [
   { id: 'gpt-5.2', name: 'GPT-5.2 High Fast', effort: 'medium-fast' },
   { id: 'gpt-5.2', name: 'GPT-5.2 Extra High', effort: 'high' },
   { id: 'gpt-5.2', name: 'GPT-5.2 Extra High Fast', effort: 'high-fast' },
+  { id: 'gpt-5.3-codex', name: 'GPT-5.3 Codex' },
   { id: 'gpt-5.2-codex', name: 'GPT-5.2 Codex' },
 ];
 
