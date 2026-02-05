@@ -25,6 +25,9 @@ contextBridge.exposeInMainWorld('agent', {
   respondToApproval: (response: ApprovalResponse) => {
     ipcRenderer.send('agent:approval-response', response);
   },
+  setMode: (sessionId: string, mode: Mode) => {
+    ipcRenderer.send('agent:set-mode', sessionId, mode);
+  },
 });
 
 contextBridge.exposeInMainWorld('storage', {

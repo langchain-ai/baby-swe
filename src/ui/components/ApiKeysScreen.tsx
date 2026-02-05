@@ -12,21 +12,24 @@ interface ApiKeysScreenProps {
 export function ApiKeysScreen({ initialKeys, onSave, onCancel, isStartup }: ApiKeysScreenProps) {
   const [anthropic, setAnthropic] = useState(initialKeys?.anthropic || '');
   const [openai, setOpenai] = useState(initialKeys?.openai || '');
+  const [baseten, setBaseten] = useState(initialKeys?.baseten || '');
   const [tavily, setTavily] = useState(initialKeys?.tavily || '');
   const [showAnthropic, setShowAnthropic] = useState(false);
   const [showOpenai, setShowOpenai] = useState(false);
+  const [showBaseten, setShowBaseten] = useState(false);
   const [showTavily, setShowTavily] = useState(false);
   const [error, setError] = useState('');
 
   const handleSave = () => {
-    if (!anthropic.trim() && !openai.trim()) {
-      setError('At least one LLM API key (Anthropic or OpenAI) is required');
+    if (!anthropic.trim() && !openai.trim() && !baseten.trim()) {
+      setError('At least one LLM API key is required');
       return;
     }
 
     const keys: ApiKeys = {};
     if (anthropic.trim()) keys.anthropic = anthropic.trim();
     if (openai.trim()) keys.openai = openai.trim();
+    if (baseten.trim()) keys.baseten = baseten.trim();
     if (tavily.trim()) keys.tavily = tavily.trim();
 
     onSave(keys);
@@ -81,6 +84,28 @@ export function ApiKeysScreen({ initialKeys, onSave, onCancel, isStartup }: ApiK
                   className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 text-gray-400 hover:text-gray-300"
                 >
                   {showOpenai ? <EyeOffIcon /> : <EyeIcon />}
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm text-gray-400 mb-1.5">
+                Baseten API Key <span className="text-gray-500">(for Kimi K2.5)</span>
+              </label>
+              <div className="relative">
+                <input
+                  type={showBaseten ? 'text' : 'password'}
+                  value={baseten}
+                  onChange={(e) => setBaseten(e.target.value)}
+                  placeholder="..."
+                  className="w-full px-3 py-2.5 bg-gray-800/50 border border-gray-700 rounded-lg text-gray-200 placeholder-gray-500 focus:outline-none focus:border-[#5a9bc7] pr-10"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowBaseten(!showBaseten)}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 text-gray-400 hover:text-gray-300"
+                >
+                  {showBaseten ? <EyeOffIcon /> : <EyeIcon />}
                 </button>
               </div>
             </div>

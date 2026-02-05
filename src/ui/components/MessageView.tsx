@@ -277,7 +277,7 @@ export function MessageView({
       ref={scrollRef}
       className="flex-1 min-h-0 min-w-0 overflow-y-auto px-2 py-4 text-sm leading-relaxed"
     >
-      {showHeader && <HeaderBar project={project} compact />}
+      {showHeader && <HeaderBar compact />}
       {todos && todos.length > 0 && <TodoList todos={todos} />}
       {messages.map((message, index) => (
         <MessageBubble

@@ -177,7 +177,7 @@ export function App() {
   const focusedTile = focusedTileId ? tiles[focusedTileId] : null;
   const project = focusedTile?.project;
 
-  const needsApiKeys = apiKeys === null || (!apiKeys.anthropic && !apiKeys.openai);
+  const needsApiKeys = apiKeys === null || (!apiKeys.anthropic && !apiKeys.openai && !apiKeys.baseten);
   const shouldShowApiKeysScreen = showApiKeysScreen || (needsApiKeys && isEmpty);
 
   const handleSaveApiKeys = useCallback(async (keys: Parameters<typeof saveApiKeys>[0]) => {
@@ -208,15 +208,22 @@ export function App() {
     <div className="flex flex-col h-screen bg-[#1a2332] text-gray-100">
       <WorkspaceBar project={project} />
       <div className="flex-1 min-h-0">
-        {isEmpty ? (
+        {isEmpty && (
           <FolderSelectScreen
             onOpenFolder={handleOpenFolder}
             onSelectRecent={handleSelectRecent}
             recentProjects={recentProjects}
           />
-        ) : (
-          <TilingLayout node={layout} />
         )}
+        {workspaces.map((ws, idx) => {
+          if (!ws.layout || Object.keys(ws.tiles).length === 0) return null;
+          const isActive = idx === activeWorkspaceIndex;
+          return (
+            <div key={ws.id} className={isActive ? 'h-full w-full' : 'hidden'}>
+              <TilingLayout node={ws.layout} workspaceIndex={idx} />
+            </div>
+          );
+        })}
       </div>
     </div>
   );

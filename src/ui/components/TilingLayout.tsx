@@ -5,17 +5,20 @@ import type { LayoutNode } from '../../types';
 
 interface TilingLayoutProps {
   node: LayoutNode;
+  workspaceIndex: number;
 }
 
-export function TilingLayout({ node }: TilingLayoutProps) {
+export function TilingLayout({ node, workspaceIndex }: TilingLayoutProps) {
   const { workspaces, activeWorkspaceIndex, focusTile } = useStore();
-  const focusedTileId = workspaces[activeWorkspaceIndex].focusedTileId;
+  const isActiveWorkspace = workspaceIndex === activeWorkspaceIndex;
+  const focusedTileId = workspaces[workspaceIndex].focusedTileId;
 
   if (node.type === 'tile') {
     return (
       <TileContainer
         tileId={node.tileId}
-        isFocused={focusedTileId === node.tileId}
+        workspaceIndex={workspaceIndex}
+        isFocused={isActiveWorkspace && focusedTileId === node.tileId}
         onFocus={() => focusTile(node.tileId)}
       />
     );
@@ -35,7 +38,7 @@ export function TilingLayout({ node }: TilingLayoutProps) {
         }}
         className="min-w-0 min-h-0 overflow-hidden"
       >
-        <TilingLayout node={first} />
+        <TilingLayout node={first} workspaceIndex={workspaceIndex} />
       </div>
       <SplitResizer direction={direction} />
       <div
@@ -45,7 +48,7 @@ export function TilingLayout({ node }: TilingLayoutProps) {
         }}
         className="min-w-0 min-h-0 overflow-hidden"
       >
-        <TilingLayout node={second} />
+        <TilingLayout node={second} workspaceIndex={workspaceIndex} />
       </div>
     </div>
   );

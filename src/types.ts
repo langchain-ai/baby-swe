@@ -48,6 +48,7 @@ export interface ChatMessage {
 export interface ApiKeys {
   anthropic?: string;
   openai?: string;
+  baseten?: string;
   tavily?: string;
 }
 
@@ -71,6 +72,7 @@ declare global {
       cancel: (sessionId: string) => void;
       onStreamEvent: (callback: (event: StreamEvent) => void) => () => void;
       respondToApproval: (response: ApprovalResponse) => void;
+      setMode: (sessionId: string, mode: Mode) => void;
     };
     storage: {
       getSettings: () => Promise<GlobalSettings>;

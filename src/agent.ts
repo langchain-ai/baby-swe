@@ -6,6 +6,7 @@ import { ipcMain, BrowserWindow } from "electron";
 import { v4 as uuidv4 } from "uuid";
 import * as fs from "fs";
 import * as path from "path";
+import { setMaxListeners } from "events";
 import "dotenv/config";
 import type { ApprovalDecision, ApprovalResponse, ChatMessage, DiffData, TodoItem, ModelConfig, ApiKeys, Mode } from "./types";
 import { loadAgentMemory } from "./memory/agents";
@@ -18,6 +19,7 @@ import type { BaseChatModel } from "@langchain/core/language_models/chat_models"
 import { buildSystemPrompt } from "./prompts";
 
 const sessionControllers = new Map<string, AbortController>();
+const sessionModes = new Map<string, Mode>();
 const pendingApprovals = new Map<string, { resolve: (decision: ApprovalDecision) => void }>();
 
 const TOOLS_REQUIRING_APPROVAL = ['execute', 'write_file', 'edit_file', 'web_search', 'task'];
@@ -225,6 +227,18 @@ function computeDiffData(
 function createModel(modelConfig: ModelConfig, apiKeys?: ApiKeys): BaseChatModel {
   const { name, effort } = modelConfig;
 
+  if (name === 'kimi-k2.5') {
+    const basetenApiKey = apiKeys?.baseten || process.env.BASETEN_API_KEY;
+    return new ChatOpenAI({
+      model: 'moonshotai/Kimi-K2.5',
+      streaming: true,
+      configuration: {
+        apiKey: basetenApiKey,
+        baseURL: 'https://inference.baseten.co/v1',
+      },
+    });
+  }
+
   if (name.startsWith('gpt-')) {
     const openaiApiKey = apiKeys?.openai || process.env.OPENAI_API_KEY;
     const openaiConfig: ConstructorParameters<typeof ChatOpenAI>[0] = {
@@ -312,9 +326,20 @@ export function setupAgentIPC(mainWindow: BrowserWindow, getTileProject: (tileId
     }
   });
 
+  ipcMain.on("agent:set-mode", (_event, sessionId: string, mode: Mode) => {
+    sessionModes.set(sessionId, mode);
+  });
+
   ipcMain.on("agent:stream", async (_event, sessionId: string, tileId: string, messages: ChatMessage[], modelConfig: ModelConfig, mode: Mode) => {
+    const existing = sessionControllers.get(sessionId);
+    if (existing) {
+      existing.abort();
+    }
+
     const controller = new AbortController();
+    setMaxListeners(50, controller.signal);
     sessionControllers.set(sessionId, controller);
+    sessionModes.set(sessionId, mode);
 
     const toolTimers = new Map<string, number>();
 
@@ -387,7 +412,8 @@ export function setupAgentIPC(mainWindow: BrowserWindow, getTileProject: (tileId
 
           toolTimers.set(toolCallId, Date.now());
 
-          const requiresApproval = TOOLS_REQUIRING_APPROVAL.includes(toolName) && mode !== 'yolo';
+          const currentMode = sessionModes.get(sessionId) || mode;
+          const requiresApproval = TOOLS_REQUIRING_APPROVAL.includes(toolName) && currentMode !== 'yolo';
           const approvalRequestId = requiresApproval ? uuidv4() : undefined;
 
           let diffData: DiffData | undefined;
@@ -500,7 +526,9 @@ export function setupAgentIPC(mainWindow: BrowserWindow, getTileProject: (tileId
         });
       }
     } finally {
-      sessionControllers.delete(sessionId);
+      if (sessionControllers.get(sessionId) === controller) {
+        sessionControllers.delete(sessionId);
+      }
     }
   });
 

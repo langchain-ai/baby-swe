@@ -35,12 +35,14 @@ function messagesToChatMessages(messages: Message[]): ChatMessage[] {
 
 interface TileContainerProps {
   tileId: string;
+  workspaceIndex: number;
   isFocused: boolean;
   onFocus: () => void;
 }
 
 export function TileContainer({
   tileId,
+  workspaceIndex,
   isFocused,
   onFocus,
 }: TileContainerProps) {
@@ -48,7 +50,6 @@ export function TileContainer({
 
   const {
     workspaces,
-    activeWorkspaceIndex,
     sessions,
     recentProjects,
     loadRecentProjects,
@@ -57,6 +58,7 @@ export function TileContainer({
     clearSession,
     addMessageToSession,
     startStreaming,
+    finalizeStream,
     setAutoApproveSession,
     tokenUsage,
     modelConfig,
@@ -64,13 +66,19 @@ export function TileContainer({
     setShowApiKeysScreen,
   } = useStore();
 
-  const tiles = workspaces[activeWorkspaceIndex].tiles;
+  const tiles = workspaces[workspaceIndex].tiles;
   const tile = tiles[tileId];
   const session = tile ? sessions[tile.sessionId] : null;
 
   useEffect(() => {
     loadRecentProjects();
   }, [loadRecentProjects]);
+
+  useEffect(() => {
+    if (session) {
+      window.agent.setMode(session.id, session.mode);
+    }
+  }, [session?.id, session?.mode]);
 
   const handleOpenFolder = useCallback(async () => {
     const project = await window.tile.openProject(tileId);
@@ -136,7 +144,15 @@ export function TileContainer({
 
       if (!session) return;
 
-      const existingMessages = session.messages;
+      if (session.isStreaming || session.busy) {
+        window.agent.cancel(session.id);
+        finalizeStream(session.id);
+      }
+
+      const freshSession = useStore.getState().sessions[session.id];
+      if (!freshSession) return;
+
+      const existingMessages = freshSession.messages;
       const chatHistory = messagesToChatMessages(existingMessages);
       chatHistory.push({ role: "user", content: query });
       addMessageToSession(session.id, "user", [{ kind: "text", text: query }]);
@@ -146,7 +162,7 @@ export function TileContainer({
         tileId,
         chatHistory,
         modelConfig,
-        session.mode,
+        freshSession.mode,
       );
     },
     [
@@ -155,6 +171,7 @@ export function TileContainer({
       tileId,
       addMessageToSession,
       startStreaming,
+      finalizeStream,
       createSession,
       clearSession,
       tokenUsage,
@@ -220,7 +237,7 @@ export function TileContainer({
             className="pointer-events-none absolute inset-0 ring-2 ring-[#5a9bc7] ring-inset z-20"
           />
         )}
-        <HeaderBar project={tile.project} compact />
+        <HeaderBar compact />
         <div className="flex-1 flex flex-col items-center justify-center px-4">
           <div className="w-full max-w-2xl">
             <PromptBar

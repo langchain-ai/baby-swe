@@ -117,6 +117,12 @@ export function TerminalTile({
       scheduleFitAndResize();
     });
 
+    if (isFocused) {
+      requestAnimationFrame(() => {
+        if (!disposed) term.focus();
+      });
+    }
+
     return () => {
       disposed = true;
       if (rafId !== null) cancelAnimationFrame(rafId);

@@ -1,9 +1,16 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react';
 import { useStore } from '../../store';
 import { CommandAutocomplete, getFilteredCommandCount, getCommandAtIndex } from './CommandAutocomplete';
 import { FileAutocomplete, fuzzySearch, getFileAtIndex } from './FileAutocomplete';
 import { ModelAutocomplete, getModelCount, getModelAtIndex, type ModelOption } from './ModelAutocomplete';
 import type { Command } from '../../commands';
+
+const MODELS: Record<string, string> = {
+  'claude-opus-4-6': 'Opus 4.6',
+  'claude-sonnet-4-5': 'Sonnet 4.5',
+  'gpt-5.3-codex': 'GPT-5.3 Codex',
+  'kimi-k2.5': 'Kimi K2.5',
+};
 
 interface PromptBarProps {
   onSubmit: (query: string) => void;
@@ -18,7 +25,7 @@ export function PromptBar({ onSubmit, busy, projectPath, sessionId, isFocused }:
   const { sessions, setSessionMode, modelConfig, setModelConfig } = useStore();
   const session = sessions[sessionId];
   const mode = session?.mode ?? 'agent';
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const [commandSelectedIndex, setCommandSelectedIndex] = useState(0);
   const [fileSelectedIndex, setFileSelectedIndex] = useState(0);
   const [modelSelectedIndex, setModelSelectedIndex] = useState(0);
@@ -46,6 +53,21 @@ export function PromptBar({ onSubmit, busy, projectPath, sessionId, isFocused }:
   useEffect(() => {
     inputRef.current?.focus();
   }, [busy]);
+
+  useLayoutEffect(() => {
+    if (isFocused) {
+      inputRef.current?.focus();
+    }
+  }, [isFocused]);
+
+  useLayoutEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    const clamped = Math.min(el.scrollHeight, 200);
+    el.style.height = `${clamped}px`;
+    el.style.overflowY = el.scrollHeight > 200 ? 'auto' : 'hidden';
+  }, [query]);
 
   useEffect(() => {
     setCommandSelectedIndex(0);
@@ -109,16 +131,16 @@ export function PromptBar({ onSubmit, busy, projectPath, sessionId, isFocused }:
     inputRef.current?.focus();
   };
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setQuery(e.target.value);
     setCursorPosition(e.target.selectionStart || 0);
   };
 
-  const handleInputSelect = (e: React.SyntheticEvent<HTMLInputElement>) => {
-    setCursorPosition((e.target as HTMLInputElement).selectionStart || 0);
+  const handleInputSelect = (e: React.SyntheticEvent<HTMLTextAreaElement>) => {
+    setCursorPosition((e.target as HTMLTextAreaElement).selectionStart || 0);
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (showModelAutocomplete) {
       const count = getModelCount();
 
@@ -234,7 +256,7 @@ export function PromptBar({ onSubmit, busy, projectPath, sessionId, isFocused }:
       }
     }
 
-    if (e.key === 'Enter' && query.trim() && !busy) {
+    if (e.key === 'Enter' && !e.shiftKey && query.trim()) {
       e.preventDefault();
       onSubmit(query.trim());
       setQuery('');
@@ -266,27 +288,34 @@ export function PromptBar({ onSubmit, busy, projectPath, sessionId, isFocused }:
         />
       )}
 
-      <div className="flex items-center gap-2">
-        <span className="text-gray-400 select-none">❯</span>
-        <input
+      <div className="flex items-start gap-2">
+        <span className="text-gray-400 select-none leading-[1.5]">❯</span>
+        <textarea
           ref={inputRef}
-          type="text"
+          rows={1}
           value={query}
           onChange={handleInputChange}
           onSelect={handleInputSelect}
           onKeyDown={handleKeyDown}
-          disabled={busy}
-          placeholder={busy ? 'Working...' : ''}
-          className="flex-1 bg-transparent text-gray-200 outline-none placeholder-gray-600"
+          placeholder={busy ? 'Send a message to interrupt...' : ''}
+          className="flex-1 bg-transparent text-gray-200 outline-none placeholder-gray-600 resize-none overflow-hidden leading-[1.5]"
+          style={{ maxHeight: 200 }}
         />
       </div>
 
-      <div className="mt-2 text-xs text-gray-600">
+      <div className="mt-2 text-xs text-gray-600 flex items-center gap-1.5">
         <span className="text-gray-500">▸▸</span>
-        <span className={`ml-1 ${mode === 'agent' ? 'text-[#87CEEB]' : mode === 'plan' ? 'text-purple-400' : 'text-red-500'}`}>
-          {mode} mode
+        <span className={mode === 'agent' ? 'text-[#87CEEB]' : mode === 'plan' ? 'text-purple-400' : 'text-red-500'}>
+          {mode}
         </span>
-        <span className="text-gray-600 ml-1">(shift+tab to cycle)</span>
+        <span>·</span>
+        <span className="text-gray-500">{MODELS[modelConfig.name] || modelConfig.name}</span>
+        {projectPath && (
+          <>
+            <span>·</span>
+            <span className="text-gray-500 truncate">{projectPath.replace(/^\/Users\/[^/]+/, '~')}</span>
+          </>
+        )}
       </div>
     </div>
   );
