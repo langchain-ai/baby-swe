@@ -3,6 +3,7 @@ import { useStore } from "../../store";
 import { HeaderBar } from "./HeaderBar";
 import { MessageView } from "./MessageView";
 import { PromptBar } from "./PromptBar";
+import { TodoList } from "./TodoList";
 import { Logo } from "./Logo";
 import { TerminalTile } from "./TerminalTile";
 import { executeCommand } from "../../commands";
@@ -378,13 +379,17 @@ export function TileContainer({
       <MessageView
         messages={session.messages}
         isStreaming={session.isStreaming}
-        todos={session.todos}
         onApprove={handleApprove}
         onReject={handleReject}
         onAutoApprove={handleAutoApprove}
         showHeader
         project={tile.project}
       />
+      {session.todos && session.todos.length > 0 && (
+        <div className="px-4 shrink-0">
+          <TodoList todos={session.todos} />
+        </div>
+      )}
       <div className="px-4 pb-4 shrink-0">
         <PromptBar
           onSubmit={handleSubmit}

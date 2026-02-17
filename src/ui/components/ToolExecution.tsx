@@ -238,7 +238,7 @@ export function ToolExecution({
 
   return (
     <div className="my-1 font-mono text-sm">
-      <div className="flex items-center gap-2">
+      <div className="flex items-start gap-2">
         {statusIcon}
         <span className="text-gray-300">{displayName}</span>
         {elapsedMs && status !== "running" && (

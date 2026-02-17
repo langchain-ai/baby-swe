@@ -3,13 +3,11 @@ import { CodeBlock } from "./CodeBlock";
 import { Markdown } from "./Markdown";
 import { ToolExecution } from "./ToolExecution";
 import { ToolGroup } from "./ToolGroup";
-import { TodoList } from "./TodoList";
 import { HeaderBar } from "./HeaderBar";
 import type {
   Chunk,
   Message,
   ToolExecutionChunk,
-  TodoItem,
   Project,
 } from "../../types";
 
@@ -100,7 +98,6 @@ interface ApprovalCallbacks {
 interface MessageViewProps extends ApprovalCallbacks {
   messages: Message[];
   isStreaming: boolean;
-  todos?: TodoItem[];
   showHeader?: boolean;
   project?: Project | null;
 }
@@ -269,7 +266,6 @@ function MessageBubble({
 export function MessageView({
   messages,
   isStreaming,
-  todos,
   showHeader,
   project,
   onApprove,
@@ -298,15 +294,14 @@ export function MessageView({
     if (isNearBottomRef.current && scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [messages, isStreaming, todos]);
+  }, [messages, isStreaming]);
 
   return (
     <div
       ref={scrollRef}
-      className="flex-1 min-h-0 min-w-0 overflow-y-auto px-2 py-4 text-sm leading-relaxed"
+      className="flex-1 min-h-0 min-w-0 overflow-y-auto px-4 py-4 text-sm leading-relaxed"
     >
       {showHeader && <HeaderBar compact />}
-      {todos && todos.length > 0 && <TodoList todos={todos} />}
       {messages.map((message, index) => (
         <MessageBubble
           key={message.id}

@@ -1,3 +1,4 @@
+import { useRef, useEffect } from 'react';
 import type { TodoItem } from '../../types';
 
 interface TodoListProps {
@@ -15,7 +16,21 @@ function StatusIcon({ status }: { status: TodoItem['status'] }) {
   }
 }
 
+const ITEM_HEIGHT = 24;
+const MAX_VISIBLE = 5;
+
 export function TodoList({ todos }: TodoListProps) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const firstActive = todos.findIndex(t => t.status === 'in_progress');
+    const targetIndex = firstActive !== -1 ? firstActive : todos.length - 1;
+    const scrollTo = Math.max(0, (targetIndex - MAX_VISIBLE + 2) * ITEM_HEIGHT);
+    el.scrollTop = scrollTo;
+  }, [todos]);
+
   if (todos.length === 0) return null;
 
   const completed = todos.filter(t => t.status === 'completed').length;
@@ -33,7 +48,11 @@ export function TodoList({ todos }: TodoListProps) {
         <span>Tasks</span>
         <span className="text-gray-600 text-xs">({statusParts.join(' · ')})</span>
       </div>
-      <div className="ml-3 border-l border-gray-700 pl-3 space-y-1">
+      <div
+        ref={scrollRef}
+        className="ml-3 border-l border-gray-700 pl-3 space-y-1 overflow-y-hidden"
+        style={{ maxHeight: MAX_VISIBLE * ITEM_HEIGHT }}
+      >
         {todos.map((todo, index) => (
           <div
             key={index}
