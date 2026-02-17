@@ -8,8 +8,8 @@ import type { ImageChunk } from '../../types';
 
 const MODELS: Record<string, string> = {
   'claude-opus-4-6': 'Opus 4.6',
-  'claude-sonnet-4-5': 'Sonnet 4.5',
-  'gpt-5.3-codex': 'GPT-5.3 Codex',
+  'claude-sonnet-4-6': 'Sonnet 4.6',
+  'gpt-5.2-2025-12-11': 'GPT-5.2',
   'kimi-k2.5': 'Kimi K2.5',
 };
 

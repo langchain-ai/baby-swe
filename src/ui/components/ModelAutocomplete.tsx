@@ -8,8 +8,10 @@ export interface ModelOption {
 
 export const AVAILABLE_MODELS: ModelOption[] = [
   { id: 'claude-opus-4-6', name: 'Opus 4.6' },
-  { id: 'claude-sonnet-4-5', name: 'Sonnet 4.5' },
-  { id: 'gpt-5.3-codex', name: 'GPT-5.3 Codex' },
+  { id: 'claude-sonnet-4-6', name: 'Sonnet 4.6' },
+  { id: 'gpt-5.2-2025-12-11', name: 'GPT-5.2 Medium', effort: 'medium' },
+  { id: 'gpt-5.2-2025-12-11', name: 'GPT-5.2 High', effort: 'high' },
+  { id: 'gpt-5.2-2025-12-11', name: 'GPT-5.2 Extra High', effort: 'extra-high' },
   { id: 'kimi-k2.5', name: 'Kimi K2.5' },
 ];
 

@@ -254,6 +254,7 @@ function createModel(modelConfig: ModelConfig, apiKeys?: ApiKeys): BaseChatModel
         'medium-fast': 'medium',
         'high': 'high',
         'high-fast': 'high',
+        'extra-high': 'xhigh',
       };
       const reasoningEffort = effortMap[effort];
       if (reasoningEffort) {
@@ -275,7 +276,7 @@ function createModel(modelConfig: ModelConfig, apiKeys?: ApiKeys): BaseChatModel
 }
 
 function createAgent(rootDir?: string, modelConfig?: ModelConfig, apiKeys?: ApiKeys) {
-  const modelCfg = modelConfig || { name: 'claude-sonnet-4-5', provider: 'anthropic', effort: 'default' };
+  const modelCfg = modelConfig || { name: 'claude-sonnet-4-6', provider: 'anthropic', effort: 'default' };
   const model = createModel(modelCfg, apiKeys);
   const agentMemory = rootDir ? loadAgentMemory(rootDir) || undefined : undefined;
   const systemPrompt = buildSystemPrompt(rootDir, agentMemory);

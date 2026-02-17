@@ -96,7 +96,7 @@ export const useStore = create<AppState>((set, get) => ({
   sessions: {},
   mode: 'agent',
   modelConfig: {
-    name: 'claude-sonnet-4-5',
+    name: 'claude-sonnet-4-6',
     provider: 'anthropic',
     effort: 'medium',
   },
