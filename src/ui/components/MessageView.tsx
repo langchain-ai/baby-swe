@@ -305,7 +305,7 @@ export function MessageView({
       ref={scrollRef}
       className="flex-1 min-h-0 min-w-0 overflow-y-auto px-4 py-4 text-sm leading-relaxed"
     >
-      {showHeader && <div className="flex justify-center pb-4"><Logo /></div>}
+      {showHeader && <div className="flex justify-start pb-4"><Logo /></div>}
       {messages.map((message, index) => (
         <MessageBubble
           key={message.id}
