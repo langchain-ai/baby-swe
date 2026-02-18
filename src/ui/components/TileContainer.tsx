@@ -1,6 +1,5 @@
 import { useCallback, useRef, useEffect, useState } from "react";
 import { useStore } from "../../store";
-import { HeaderBar } from "./HeaderBar";
 import { MessageView } from "./MessageView";
 import { PromptBar } from "./PromptBar";
 import { TodoList } from "./TodoList";
@@ -340,9 +339,10 @@ export function TileContainer({
             <span className="text-[#5a9bc7] text-sm font-medium">Drop images here</span>
           </div>
         )}
-        <HeaderBar compact />
         <div className="flex-1 flex flex-col items-center justify-center px-4">
-          <div className="w-full max-w-2xl">
+          <div className="w-full max-w-2xl flex flex-col items-center gap-6">
+            <Logo />
+            <div className="w-full">
             <PromptBar
               onSubmit={handleSubmit}
               busy={session?.busy ?? false}
@@ -352,6 +352,7 @@ export function TileContainer({
               pendingImages={pendingImages}
               onRemoveImage={handleRemoveImage}
             />
+            </div>
           </div>
         </div>
       </div>

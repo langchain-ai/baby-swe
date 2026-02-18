@@ -14,7 +14,7 @@ export function Logo() {
 `.trim();
 
   return (
-    <pre className="text-[#87CEEB] text-xs leading-none font-mono">
+    <pre className="text-[#87CEEB] text-[6px] leading-none font-mono">
       {ascii}
     </pre>
   );
