@@ -59,6 +59,12 @@ export function App() {
           break;
         case 'tool-start':
           addToolStart(event.sessionId, event.toolCallId, event.toolName, event.toolArgs, event.approvalRequestId, event.diffData);
+          if (event.approvalRequestId) {
+            const currentSession = useStore.getState().sessions[event.sessionId];
+            if (currentSession?.autoApproveSession) {
+              window.agent.respondToApproval({ requestId: event.approvalRequestId, decision: 'approve' });
+            }
+          }
           break;
         case 'tool-end':
           updateToolEnd(event.sessionId, event.toolCallId, event.output, event.error, event.elapsedMs);
