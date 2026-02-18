@@ -1,6 +1,5 @@
 import type { ReactNode } from 'react';
 import ReactMarkdown from 'react-markdown';
-import remarkBreaks from 'remark-breaks';
 import remarkGfm from 'remark-gfm';
 
 interface MarkdownProps {
@@ -18,7 +17,7 @@ export function Markdown({ content }: MarkdownProps) {
   return (
     <div className="leading-relaxed">
       <ReactMarkdown
-        remarkPlugins={[remarkGfm, remarkBreaks]}
+        remarkPlugins={[remarkGfm]}
         components={{
           h1: ({ children }) => <div className="text-gray-100 font-bold mt-3 mb-1">{children}</div>,
           h2: ({ children }) => <div className="text-gray-100 font-bold mt-3 mb-1">{children}</div>,
