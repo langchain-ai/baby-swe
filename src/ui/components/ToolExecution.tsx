@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ToolExecutionChunk } from "../../types";
 import { DiffView } from "./DiffView";
 
@@ -163,6 +163,20 @@ function KeyboardApproval({
   onAutoApprove?: (id: string) => void;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const [selectedIndex, setSelectedIndex] = useState(0);
+
+  const action =
+    toolName === "execute"
+      ? "Run command"
+      : toolName === "task"
+        ? "Delegate task"
+        : "Make this edit";
+
+  const options = [
+    { label: "Yes", handler: () => onApprove?.(approvalRequestId) },
+    { label: "Yes, allow all during this session", handler: () => onAutoApprove?.(approvalRequestId) },
+    { label: "No", handler: () => onReject?.(approvalRequestId) },
+  ];
 
   useEffect(() => {
     containerRef.current?.focus();
@@ -170,33 +184,36 @@ function KeyboardApproval({
 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
-      if (e.key === "y" || e.key === "Enter") {
+      if (e.key === "ArrowUp") {
         e.preventDefault();
-        onApprove?.(approvalRequestId);
-      } else if (e.key === "n") {
+        setSelectedIndex((i) => (i - 1 + options.length) % options.length);
+      } else if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setSelectedIndex((i) => (i + 1) % options.length);
+      } else if (e.key === "Enter") {
+        e.preventDefault();
+        options[selectedIndex].handler();
+      } else if (e.key === "Escape") {
         e.preventDefault();
         onReject?.(approvalRequestId);
-      } else if (e.key === "a") {
-        e.preventDefault();
-        onAutoApprove?.(approvalRequestId);
       }
     }
 
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [approvalRequestId, onApprove, onReject, onAutoApprove]);
-
-  const action =
-    toolName === "execute"
-      ? "Run command"
-      : toolName === "task"
-        ? "Delegate task"
-        : "Approve";
+  }, [approvalRequestId, selectedIndex, onApprove, onReject, onAutoApprove]);
 
   return (
-    <div ref={containerRef} tabIndex={0} className="outline-none">
-      <span className="text-yellow-400">{action}?</span>
-      <span className="text-gray-500 ml-2">[y]es / [n]o / [a]lways</span>
+    <div ref={containerRef} tabIndex={0} className="outline-none mt-2">
+      <div className="text-gray-400 mb-1">Do you want to <span className="text-gray-300">{action.toLowerCase()}</span>?</div>
+      {options.map((option, idx) => (
+        <div key={idx} className="flex items-center gap-1">
+          <span className={idx === selectedIndex ? "text-[#87CEEB]" : "text-transparent"}>›</span>
+          <span className={idx === selectedIndex ? "text-[#87CEEB]" : "text-gray-500"}>
+            {option.label}
+          </span>
+        </div>
+      ))}
     </div>
   );
 }
