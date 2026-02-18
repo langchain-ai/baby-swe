@@ -2,6 +2,7 @@ import { useCallback, useEffect } from 'react';
 import { useStore } from '../store';
 import { TilingLayout } from './components/TilingLayout';
 import { WorkspaceBar } from './components/WorkspaceBar';
+import { StatusBar } from './components/StatusBar';
 import { FolderSelectScreen } from './components';
 import { ApiKeysScreen } from './components/ApiKeysScreen';
 
@@ -200,6 +201,7 @@ export function App() {
             isStartup={needsApiKeys && isEmpty}
           />
         </div>
+        <StatusBar project={project} />
       </div>
     );
   }
@@ -225,6 +227,7 @@ export function App() {
           );
         })}
       </div>
+      <StatusBar project={project} />
     </div>
   );
 }
