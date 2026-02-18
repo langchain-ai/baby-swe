@@ -201,7 +201,7 @@ export function TileContainer({
           sessionId: session?.id || null,
           createSession: () => createSession(tileId),
           clearSession,
-          addSystemMessage: addMessageToSession,
+          addSystemMessage: (sessionId, chunks) => addMessageToSession(sessionId, 'system', chunks),
           tokenUsage,
           modelConfig,
           setModelConfig,
@@ -391,6 +391,7 @@ export function TileContainer({
         </div>
       )}
       <div className="px-4 pb-4 shrink-0">
+        <BinarySpinner isStreaming={session.isStreaming} />
         <PromptBar
           onSubmit={handleSubmit}
           busy={session.busy}
@@ -458,6 +459,84 @@ function TileFolderSelect({
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+const BINARY_FRAMES = [
+  "010010", "001100", "100101", "111010", "111101",
+  "010111", "101011", "111000", "110011", "110101",
+];
+
+const BUSY_TEXTS: { present: string; past: string }[] = [
+  { present: "vibing...",               past: "Vibed" },
+  { present: "noodling...",             past: "Noodled" },
+  { present: "pondering...",            past: "Pondered" },
+  { present: "thinking really hard...", past: "Thought really hard" },
+  { present: "spinning up...",          past: "Spun up" },
+  { present: "connecting the dots...", past: "Connected the dots" },
+  { present: "brewing ideas...",        past: "Brewed ideas" },
+  { present: "cooking...",              past: "Cooked" },
+  { present: "crunching...",            past: "Crunched" },
+  { present: "scheming...",             past: "Schemed" },
+  { present: "processing...",           past: "Processed" },
+];
+
+function formatElapsed(ms: number): string {
+  const secs = Math.round(ms / 1000);
+  return secs < 60 ? `${secs}s` : `${Math.floor(secs / 60)}m ${secs % 60}s`;
+}
+
+function BinarySpinner({ isStreaming }: { isStreaming: boolean }) {
+  const [frame, setFrame] = useState(0);
+  const [textIdx, setTextIdx] = useState(0);
+  const [done, setDone] = useState<{ past: string; elapsed: string } | null>(null);
+  const startTimeRef = useRef(0);
+  const textIdxRef = useRef(textIdx);
+  const wasStreamingRef = useRef(false);
+  textIdxRef.current = textIdx;
+
+  useEffect(() => {
+    if (isStreaming) {
+      wasStreamingRef.current = true;
+      startTimeRef.current = Date.now();
+      setTextIdx(Math.floor(Math.random() * BUSY_TEXTS.length));
+      setDone(null);
+    } else if (wasStreamingRef.current) {
+      setDone({
+        past: BUSY_TEXTS[textIdxRef.current].past,
+        elapsed: formatElapsed(Date.now() - startTimeRef.current),
+      });
+    }
+  }, [isStreaming]);
+
+  useEffect(() => {
+    if (!isStreaming) return;
+    const id = setInterval(() => setFrame(f => (f + 1) % BINARY_FRAMES.length), 80);
+    return () => clearInterval(id);
+  }, [isStreaming]);
+
+  useEffect(() => {
+    if (!isStreaming) return;
+    const id = setInterval(() => setTextIdx(i => (i + 1) % BUSY_TEXTS.length), 12000);
+    return () => clearInterval(id);
+  }, [isStreaming]);
+
+  if (!isStreaming && !done) return null;
+
+  if (done) {
+    return (
+      <div className="flex items-center gap-2 pb-2">
+        <span className="font-mono text-xs text-gray-600 select-none">*</span>
+        <span className="text-xs text-gray-600">{done.past} for {done.elapsed}</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-2 pb-2">
+      <span className="font-mono text-xs text-[#87CEEB] select-none">{BINARY_FRAMES[frame]}</span>
+      <span className="shimmer-text text-xs">{BUSY_TEXTS[textIdx].present}</span>
     </div>
   );
 }

@@ -17,6 +17,7 @@ type ToolGroupType =
   | "write"
   | "execute"
   | "explore"
+  | "tasks"
   | "other";
 
 type GroupedItem =
@@ -35,6 +36,7 @@ function getToolGroupType(toolName: string): ToolGroupType {
     case "search":
     case "grep":
     case "list_dir":
+    case "ls":
       return "search";
     case "write_file":
     case "edit_file":
@@ -43,6 +45,8 @@ function getToolGroupType(toolName: string): ToolGroupType {
       return "execute";
     case "task":
       return "explore";
+    case "write_todos":
+      return "tasks";
     default:
       return "other";
   }
