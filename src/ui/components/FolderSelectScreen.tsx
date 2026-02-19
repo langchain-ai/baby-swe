@@ -11,7 +11,7 @@ export function FolderSelectScreen({ onOpenFolder, onSelectRecent, recentProject
   const displayedProjects = recentProjects.slice(0, 4);
 
   return (
-    <div className="flex flex-col items-center justify-center h-full bg-[#1a2332] text-gray-100">
+    <div className="relative flex flex-col items-center justify-center h-full bg-[#1a2332] text-gray-100">
       <div className="flex flex-col items-center gap-8">
         <Logo />
         <div className="flex flex-col items-center">
@@ -46,9 +46,14 @@ export function FolderSelectScreen({ onOpenFolder, onSelectRecent, recentProject
           </div>
         )}
 
-        <p className="text-gray-600 text-sm mt-4">
-          Or use File {'>'} Open Folder from the menu bar
-        </p>
+      </div>
+
+      <div className="absolute bottom-8 flex flex-col items-center">
+        <img
+          src="./assets/Light Blue/LangChain_Lockup_LightBlue.png"
+          alt="LangChain"
+          className="h-6 opacity-90"
+        />
       </div>
     </div>
   );
