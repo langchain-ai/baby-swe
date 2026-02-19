@@ -71,4 +71,5 @@ contextBridge.exposeInMainWorld('git', {
     ipcRenderer.invoke('git:switchBranch', projectPath, branchName),
   createBranch: (projectPath: string, branchName: string) =>
     ipcRenderer.invoke('git:createBranch', projectPath, branchName),
+  getPR: (projectPath: string) => ipcRenderer.invoke('git:getPR', projectPath),
 });

@@ -1,3 +1,13 @@
+export interface GithubPR {
+  number: number;
+  title: string;
+  url: string;
+  state: string;
+  author: string;
+  baseRef: string;
+  headRef: string;
+}
+
 export interface Project {
   id: string;
   path: string;
@@ -5,6 +15,7 @@ export interface Project {
   createdAt: number;
   lastOpenedAt: number;
   gitBranch?: string;
+  githubPR?: GithubPR | null;
 }
 
 export type TileType = 'agent' | 'terminal';
@@ -102,6 +113,7 @@ declare global {
       listBranches: (projectPath: string) => Promise<{ branches: string[]; current: string | null }>;
       switchBranch: (projectPath: string, branchName: string) => Promise<{ success: boolean; error?: string }>;
       createBranch: (projectPath: string, branchName: string) => Promise<{ success: boolean; error?: string }>;
+      getPR: (projectPath: string) => Promise<GithubPR | null>;
     };
   }
 }

@@ -8,7 +8,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { setMaxListeners } from "events";
 import "dotenv/config";
-import type { ApprovalDecision, ApprovalResponse, ChatMessage, DiffData, TodoItem, ModelConfig, ApiKeys, Mode } from "./types";
+import type { ApprovalDecision, ApprovalResponse, ChatMessage, DiffData, TodoItem, ModelConfig, ApiKeys, Mode, GithubPR, Project } from "./types";
 import { loadAgentMemory } from "./memory/agents";
 import { tool } from "@langchain/core/tools";
 import { z } from "zod";
@@ -275,11 +275,11 @@ function createModel(modelConfig: ModelConfig, apiKeys?: ApiKeys): BaseChatModel
   });
 }
 
-function createAgent(rootDir?: string, modelConfig?: ModelConfig, apiKeys?: ApiKeys) {
+function createAgent(rootDir?: string, modelConfig?: ModelConfig, apiKeys?: ApiKeys, githubPR?: GithubPR | null) {
   const modelCfg = modelConfig || { name: 'claude-sonnet-4-6', provider: 'anthropic', effort: 'default' };
   const model = createModel(modelCfg, apiKeys);
   const agentMemory = rootDir ? loadAgentMemory(rootDir) || undefined : undefined;
-  const systemPrompt = buildSystemPrompt(rootDir, agentMemory);
+  const systemPrompt = buildSystemPrompt(rootDir, agentMemory, githubPR);
 
   const config: Parameters<typeof createDeepAgent>[0] = {
     model,
@@ -305,7 +305,7 @@ export interface AgentResponse {
   }>;
 }
 
-export function setupAgentIPC(mainWindow: BrowserWindow, getTileProject: (tileId: string) => string | null) {
+export function setupAgentIPC(mainWindow: BrowserWindow, getTileProject: (tileId: string) => string | null, getTileProjectData?: (tileId: string) => Project | null) {
   ipcMain.handle("agent:invoke", async (_event, userMessage: string): Promise<AgentResponse> => {
     try {
       const settings = loadSettings();
@@ -346,9 +346,10 @@ export function setupAgentIPC(mainWindow: BrowserWindow, getTileProject: (tileId
 
     try {
       const folder = getTileProject(tileId);
+      const projectData = getTileProjectData ? getTileProjectData(tileId) : null;
       const settings = loadSettings();
       const apiKeys = settings.apiKeys;
-      const streamAgent = createAgent(folder || undefined, modelConfig, apiKeys);
+      const streamAgent = createAgent(folder || undefined, modelConfig, apiKeys, projectData?.githubPR);
 
       console.log(`[agent:stream] Starting stream for session ${sessionId}, tile: ${tileId}, folder: ${folder}, model: ${modelConfig.name}, effort: ${modelConfig.effort}, messages: ${messages.length}`);
 

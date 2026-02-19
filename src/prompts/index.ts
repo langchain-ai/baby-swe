@@ -4,6 +4,16 @@ import { execSync } from 'child_process';
 
 const PROMPTS_DIR = path.join(__dirname);
 
+interface GithubPR {
+  number: number;
+  title: string;
+  url: string;
+  state: string;
+  author: string;
+  baseRef: string;
+  headRef: string;
+}
+
 interface PromptVariables {
   rootDir?: string;
   gitBranch?: string;
@@ -15,6 +25,7 @@ interface PromptVariables {
   platform?: string;
   osVersion?: string;
   todayDate?: string;
+  githubPR?: GithubPR | null;
 }
 
 function loadPrompt(filename: string): string {
@@ -218,7 +229,19 @@ Use the gh command for GitHub-related tasks.
 2. Check if the branch tracks a remote and is up to date
 3. Run git log and git diff [base-branch]...HEAD to understand full commit history
 4. Analyze all commits and draft a PR summary
-5. Push to remote if needed, create PR using gh pr create`;
+5. Push to remote if needed, create PR using gh pr create
+
+## GitHub CLI (gh)
+The \`gh\` CLI is available for all GitHub operations. Use it freely for tasks like:
+- \`gh pr view\` — view the current PR details
+- \`gh pr diff\` — get the full diff of the current PR
+- \`gh pr checks\` — check CI status
+- \`gh pr review\` — submit a review
+- \`gh pr comment\` — add a comment to the PR
+- \`gh issue view <number>\` — view an issue
+- \`gh issue list\` — list issues
+- \`gh repo view\` — view repo info
+- \`gh run list\` / \`gh run view\` — view GitHub Actions runs`;
 }
 
 function buildBashToolDescription(): string {
@@ -356,7 +379,23 @@ function buildAgentMemory(vars: PromptVariables): string {
 ${vars.agentMemory}`;
 }
 
-export function buildSystemPrompt(rootDir?: string, agentMemory?: string): string {
+function buildGithubPR(vars: PromptVariables): string {
+  if (!vars.githubPR) return '';
+
+  const pr = vars.githubPR;
+  return `# GitHub Pull Request
+The current branch has an open pull request:
+- PR #${pr.number}: ${pr.title}
+- URL: ${pr.url}
+- State: ${pr.state}
+- Author: ${pr.author}
+- Base branch: ${pr.baseRef}
+- Head branch: ${pr.headRef}
+
+You can use \`gh pr diff\` to view the full PR diff, \`gh pr checks\` to check CI status, and other \`gh pr\` subcommands to interact with this PR.`;
+}
+
+export function buildSystemPrompt(rootDir?: string, agentMemory?: string, githubPR?: GithubPR | null): string {
   const sections: string[] = [];
 
   sections.push(`You are baby-swe, an AI software engineering assistant built with Claude.`);
@@ -387,6 +426,10 @@ export function buildSystemPrompt(rootDir?: string, agentMemory?: string): strin
       vars.agentMemory = agentMemory;
     }
 
+    if (githubPR) {
+      vars.githubPR = githubPR;
+    }
+
     sections.push(buildEnvironmentInfo(vars));
 
     if (vars.gitStatus) {
@@ -399,6 +442,10 @@ export function buildSystemPrompt(rootDir?: string, agentMemory?: string): strin
 
     if (vars.agentMemory) {
       sections.push(buildAgentMemory(vars));
+    }
+
+    if (vars.githubPR) {
+      sections.push(buildGithubPR(vars));
     }
   } else {
     sections.push(`# Environment

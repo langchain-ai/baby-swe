@@ -1,4 +1,5 @@
 import type { Project } from '../../types';
+import { useEffect, useState } from 'react';
 
 interface StatusBarProps {
   project?: Project | null;
@@ -15,6 +16,17 @@ function GitBranchIcon() {
   );
 }
 
+function PullRequestIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="18" cy="18" r="3" />
+      <circle cx="6" cy="6" r="3" />
+      <path d="M13 6h3a2 2 0 0 1 2 2v7" />
+      <line x1="6" y1="9" x2="6" y2="21" />
+    </svg>
+  );
+}
+
 function FolderIcon() {
   return (
     <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
@@ -24,6 +36,18 @@ function FolderIcon() {
 }
 
 export function StatusBar({ project }: StatusBarProps) {
+  const [pr, setPr] = useState(project?.githubPR ?? null);
+
+  useEffect(() => {
+    setPr(project?.githubPR ?? null);
+  }, [project?.githubPR]);
+
+  const refreshPR = async () => {
+    if (!project?.path) return;
+    const result = await window.git.getPR(project.path);
+    setPr(result);
+  };
+
   return (
     <div className="h-6 flex items-center gap-0 bg-[#151b26] border-t border-gray-800 text-[11px] font-mono select-none shrink-0">
       {project ? (
@@ -33,6 +57,26 @@ export function StatusBar({ project }: StatusBarProps) {
               <GitBranchIcon />
               <span>{project.gitBranch}</span>
             </div>
+          )}
+          {pr ? (
+            <button
+              type="button"
+              title={`PR #${pr.number}: ${pr.title}\n${pr.url}`}
+              onClick={() => window.open(pr.url, '_blank')}
+              className="flex items-center gap-1.5 px-3 h-full text-blue-400 hover:bg-white/5 transition-colors cursor-pointer border-none bg-transparent"
+            >
+              <PullRequestIcon />
+              <span>#{pr.number}</span>
+            </button>
+          ) : project.path && (
+            <button
+              type="button"
+              title="No PR for this branch. Click to check."
+              onClick={refreshPR}
+              className="flex items-center gap-1.5 px-3 h-full text-gray-600 hover:text-gray-400 hover:bg-white/5 transition-colors cursor-pointer border-none bg-transparent"
+            >
+              <PullRequestIcon />
+            </button>
           )}
           <div className="flex items-center gap-1.5 px-3 h-full text-gray-500 hover:bg-white/5 transition-colors cursor-default">
             <FolderIcon />

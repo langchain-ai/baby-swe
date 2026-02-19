@@ -5,7 +5,7 @@ import * as fs from 'fs';
 import * as pty from 'node-pty';
 import { setupAgentIPC } from './agent';
 import * as storage from './storage';
-import type { Project } from './types';
+import type { Project, GithubPR } from './types';
 
 const terminals = new Map<string, pty.IPty>();
 
@@ -24,6 +24,32 @@ function getGitBranch(projectPath: string): string | undefined {
     return result.trim() || undefined;
   } catch {
     return undefined;
+  }
+}
+
+function getGithubPR(projectPath: string): GithubPR | null {
+  try {
+    const result = execSync(
+      'gh pr view --json number,title,url,state,author,baseRefName,headRefName',
+      {
+        cwd: projectPath,
+        encoding: 'utf-8',
+        timeout: 8000,
+        stdio: ['pipe', 'pipe', 'pipe'],
+      }
+    );
+    const data = JSON.parse(result.trim());
+    return {
+      number: data.number,
+      title: data.title,
+      url: data.url,
+      state: data.state,
+      author: data.author?.login ?? data.author ?? '',
+      baseRef: data.baseRefName,
+      headRef: data.headRefName,
+    };
+  } catch {
+    return null;
   }
 }
 
@@ -259,7 +285,8 @@ function setupStorageIPC(): void {
     const project = storage.getOrCreateProject(folderPath);
     storage.migrateFromFolderStorage(project);
     const gitBranch = getGitBranch(folderPath);
-    const projectWithBranch = { ...project, gitBranch };
+    const githubPR = getGithubPR(folderPath);
+    const projectWithBranch = { ...project, gitBranch, githubPR };
     tileProjects.set(tileId, projectWithBranch);
     mainWindow?.webContents.send('tile:projectChanged', tileId, projectWithBranch);
     return projectWithBranch;
@@ -293,6 +320,10 @@ function setupStorageIPC(): void {
     return result;
   });
 
+  ipcMain.handle('git:getPR', (_event, projectPath: string) => {
+    return getGithubPR(projectPath);
+  });
+
   ipcMain.handle('git:createBranch', (_event, projectPath: string, branchName: string) => {
     const result = createGitBranch(projectPath, branchName);
     if (result.success) {
@@ -318,6 +349,7 @@ function createWindow(): void {
     titleBarStyle: 'hiddenInset',
     trafficLightPosition: { x: 12, y: 12 },
     backgroundColor: '#1a2332',
+    icon: path.join(__dirname, 'assets', 'icon.icns'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -334,7 +366,11 @@ app.whenReady().then(() => {
   setupStorageIPC();
   setupTerminalIPC();
   createWindow();
-  setupAgentIPC(mainWindow!, (tileId: string) => tileProjects.get(tileId)?.path || null);
+  setupAgentIPC(
+    mainWindow!,
+    (tileId: string) => tileProjects.get(tileId)?.path || null,
+    (tileId: string) => tileProjects.get(tileId) || null,
+  );
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
