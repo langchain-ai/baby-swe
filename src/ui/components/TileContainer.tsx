@@ -424,13 +424,15 @@ export function TileContainer({
         showHeader
         project={tile.project}
       />
+      <div className="px-4 shrink-0">
+        <BinarySpinner isStreaming={session.isStreaming} />
+      </div>
       {session.todos && session.todos.length > 0 && (
         <div className="px-4 shrink-0">
           <TodoList todos={session.todos} />
         </div>
       )}
       <div className="px-4 pb-4 shrink-0">
-        <BinarySpinner isStreaming={session.isStreaming} />
         <PromptBar
           onSubmit={handleSubmit}
           busy={session.busy}

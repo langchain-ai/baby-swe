@@ -44,7 +44,7 @@ export function TodoList({ todos }: TodoListProps) {
   if (pending > 0) statusParts.push(`${pending} pending`);
 
   return (
-    <div className="my-3 font-mono text-sm">
+    <div className="mt-1 mb-3 font-mono text-sm">
       <div
         className="flex items-center gap-2 text-gray-400 mb-1 cursor-pointer select-none"
         onClick={() => setCollapsed(c => !c)}
