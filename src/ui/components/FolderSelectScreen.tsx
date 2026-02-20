@@ -55,7 +55,7 @@ export function FolderSelectScreen({ onOpenFolder, onSelectRecent, recentProject
         <img
           src="./assets/light-blue/LangChain_Wordmark_LightBlue.png"
           alt="LangChain"
-          className="h-6 w-auto opacity-40 mt-10"
+          className="h-6 w-auto mt-10 opacity-80"
         />
       </div>
     </div>

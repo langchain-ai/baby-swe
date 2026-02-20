@@ -56,7 +56,7 @@ export function Markdown({ content }: MarkdownProps) {
                 </pre>
               );
             }
-            return <code className="text-[#a8d8ea]">`{text}`</code>;
+            return <code className="text-[#a8d8ea]">{text}</code>;
           },
           pre: ({ children }) => <>{children}</>,
         }}
