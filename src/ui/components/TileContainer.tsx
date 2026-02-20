@@ -122,8 +122,11 @@ export function TileContainer({
     const project = await window.tile.openProject(tileId);
     if (project) {
       setTileProject(tileId, project);
+      if (tile?.sessionId) {
+        clearSession(tile.sessionId);
+      }
     }
-  }, [tileId, setTileProject]);
+  }, [tileId, setTileProject, clearSession, tile?.sessionId]);
 
   const handleSelectRecent = useCallback(
     async (path: string) => {
@@ -360,6 +363,7 @@ export function TileContainer({
               isFocused={isFocused}
               pendingImages={pendingImages}
               onRemoveImage={handleRemoveImage}
+              onChangeDirectory={handleOpenFolder}
               dropUp={false}
             />
             </div>
@@ -422,6 +426,7 @@ export function TileContainer({
           isFocused={isFocused}
           pendingImages={pendingImages}
           onRemoveImage={handleRemoveImage}
+          onChangeDirectory={handleOpenFolder}
         />
       </div>
       {showThreadPicker && tile.project && (

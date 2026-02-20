@@ -24,10 +24,11 @@ interface PromptBarProps {
   isFocused: boolean;
   pendingImages?: ImageChunk[];
   onRemoveImage?: (index: number) => void;
+  onChangeDirectory?: () => void;
   dropUp?: boolean;
 }
 
-export const PromptBar = memo(function PromptBar({ onSubmit, busy, projectPath, gitBranch, githubPR, sessionId, isFocused, pendingImages, onRemoveImage, dropUp = true }: PromptBarProps) {
+export const PromptBar = memo(function PromptBar({ onSubmit, busy, projectPath, gitBranch, githubPR, sessionId, isFocused, pendingImages, onRemoveImage, onChangeDirectory, dropUp = true }: PromptBarProps) {
   const [query, setQuery] = useState('');
   const mode = useStore(state => state.sessions[sessionId]?.mode ?? 'agent');
   const { setSessionMode, modelConfig, setModelConfig } = useStore(useShallow(state => ({
@@ -422,7 +423,13 @@ export const PromptBar = memo(function PromptBar({ onSubmit, busy, projectPath, 
         {projectPath && (
           <>
             <span>·</span>
-            <span className="text-gray-500 truncate">{projectPath.split('/').filter(Boolean).pop()}</span>
+            <button
+              type="button"
+              onClick={onChangeDirectory}
+              className="text-gray-500 truncate hover:text-gray-300 transition-colors cursor-pointer"
+            >
+              {projectPath.split('/').filter(Boolean).pop()}
+            </button>
           </>
         )}
         {gitBranch && projectPath && (
