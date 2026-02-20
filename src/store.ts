@@ -498,18 +498,24 @@ export const useStore = create<AppState>((set, get) => ({
       const session = state.sessions[sessionId];
       if (!session) return state;
 
-      const newMessages = session.messages.map((msg) => ({
-        ...msg,
-        chunks: msg.chunks.map((chunk) => {
-          if (chunk.kind !== 'tool-execution' || chunk.toolCallId !== toolCallId) return chunk;
-          return {
-            ...chunk,
-            status: error ? 'error' : 'success',
-            output,
-            elapsedMs,
-          } as Chunk;
-        }),
-      }));
+      const newMessages = session.messages.map((msg) => {
+        const hasTarget = msg.chunks.some(
+          (c) => c.kind === 'tool-execution' && c.toolCallId === toolCallId
+        );
+        if (!hasTarget) return msg;
+        return {
+          ...msg,
+          chunks: msg.chunks.map((chunk) => {
+            if (chunk.kind !== 'tool-execution' || chunk.toolCallId !== toolCallId) return chunk;
+            return {
+              ...chunk,
+              status: error ? 'error' : 'success',
+              output,
+              elapsedMs,
+            } as Chunk;
+          }),
+        };
+      });
 
       return {
         sessions: {
@@ -617,13 +623,19 @@ export const useStore = create<AppState>((set, get) => ({
       const session = state.sessions[sessionId];
       if (!session) return state;
 
-      const newMessages = session.messages.map((msg) => ({
-        ...msg,
-        chunks: msg.chunks.map((chunk) => {
-          if (chunk.kind !== 'tool-execution' || chunk.toolCallId !== toolCallId) return chunk;
-          return { ...chunk, status };
-        }),
-      }));
+      const newMessages = session.messages.map((msg) => {
+        const hasTarget = msg.chunks.some(
+          (c) => c.kind === 'tool-execution' && c.toolCallId === toolCallId
+        );
+        if (!hasTarget) return msg;
+        return {
+          ...msg,
+          chunks: msg.chunks.map((chunk) => {
+            if (chunk.kind !== 'tool-execution' || chunk.toolCallId !== toolCallId) return chunk;
+            return { ...chunk, status };
+          }),
+        };
+      });
 
       return {
         sessions: {

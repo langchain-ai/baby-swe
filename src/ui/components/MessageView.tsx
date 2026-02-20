@@ -1,4 +1,4 @@
-import { useRef, useEffect } from "react";
+import { useRef, useEffect, memo, useMemo } from "react";
 import { CodeBlock } from "./CodeBlock";
 import { Markdown } from "./Markdown";
 import { ToolExecution } from "./ToolExecution";
@@ -240,7 +240,7 @@ function AgentMessage({
   );
 }
 
-function MessageBubble({
+const MessageBubble = memo(function MessageBubble({
   message,
   isStreaming,
   projectPath,
@@ -261,9 +261,9 @@ function MessageBubble({
       {...callbacks}
     />
   );
-}
+});
 
-export function MessageView({
+export const MessageView = memo(function MessageView({
   messages,
   isStreaming,
   showHeader,
@@ -315,4 +315,4 @@ export function MessageView({
       ))}
     </div>
   );
-}
+});

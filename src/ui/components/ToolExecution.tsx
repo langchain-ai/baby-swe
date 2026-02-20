@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import type { ToolExecutionChunk } from "../../types";
 import { DiffView } from "./DiffView";
 
@@ -179,10 +179,6 @@ function KeyboardApproval({
   ];
 
   useEffect(() => {
-    containerRef.current?.focus();
-  }, []);
-
-  useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
       if (e.key === "ArrowUp") {
         e.preventDefault();
@@ -218,7 +214,7 @@ function KeyboardApproval({
   );
 }
 
-export function ToolExecution({
+export const ToolExecution = memo(function ToolExecution({
   chunk,
   projectPath,
   onApprove,
@@ -290,4 +286,4 @@ export function ToolExecution({
       )}
     </div>
   );
-}
+});

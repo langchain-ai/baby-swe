@@ -1,5 +1,6 @@
 import { useCallback, useEffect } from 'react';
 import { useStore } from '../store';
+import { useShallow } from 'zustand/react/shallow';
 import { TilingLayout } from './components/TilingLayout';
 import { WorkspaceBar } from './components/WorkspaceBar';
 import { StatusBar } from './components/StatusBar';
@@ -7,33 +8,41 @@ import { FolderSelectScreen } from './components';
 import { ApiKeysScreen } from './components/ApiKeysScreen';
 
 export function App() {
+  const workspaces = useStore(state => state.workspaces);
+  const activeWorkspaceIndex = useStore(state => state.activeWorkspaceIndex);
+  const recentProjects = useStore(state => state.recentProjects);
+  const showApiKeysScreen = useStore(state => state.showApiKeysScreen);
+  const apiKeys = useStore(state => state.apiKeys);
+
+  // Actions are stable references in Zustand - grouping them avoids individual subscriptions
+  const actions = useStore(useShallow(state => ({
+    createTile: state.createTile,
+    closeTile: state.closeTile,
+    navigateTile: state.navigateTile,
+    setTileProject: state.setTileProject,
+    switchWorkspace: state.switchWorkspace,
+    switchWorkspaceRelative: state.switchWorkspaceRelative,
+    loadRecentProjects: state.loadRecentProjects,
+    appendStreamToken: state.appendStreamToken,
+    addToolStart: state.addToolStart,
+    updateToolEnd: state.updateToolEnd,
+    updateToolStatus: state.updateToolStatus,
+    updateTokenUsage: state.updateTokenUsage,
+    updateTodos: state.updateTodos,
+    finalizeStream: state.finalizeStream,
+    abortStream: state.abortStream,
+    loadApiKeys: state.loadApiKeys,
+    saveApiKeys: state.saveApiKeys,
+    setShowApiKeysScreen: state.setShowApiKeysScreen,
+    loadModelConfig: state.loadModelConfig,
+  })));
   const {
-    workspaces,
-    activeWorkspaceIndex,
-    sessions,
-    recentProjects,
-    createTile,
-    closeTile,
-    navigateTile,
-    setTileProject,
-    switchWorkspace,
-    switchWorkspaceRelative,
-    loadRecentProjects,
-    appendStreamToken,
-    addToolStart,
-    updateToolEnd,
-    updateToolStatus,
-    updateTokenUsage,
-    updateTodos,
-    finalizeStream,
-    abortStream,
-    showApiKeysScreen,
-    apiKeys,
-    loadApiKeys,
-    saveApiKeys,
-    setShowApiKeysScreen,
-    loadModelConfig,
-  } = useStore();
+    createTile, closeTile, navigateTile, setTileProject,
+    switchWorkspace, switchWorkspaceRelative, loadRecentProjects,
+    appendStreamToken, addToolStart, updateToolEnd, updateToolStatus,
+    updateTokenUsage, updateTodos, finalizeStream, abortStream,
+    loadApiKeys, saveApiKeys, setShowApiKeysScreen, loadModelConfig,
+  } = actions;
 
   const workspace = workspaces[activeWorkspaceIndex];
   const { layout, tiles, focusedTileId } = workspace;
@@ -139,15 +148,19 @@ export function App() {
     // Close tile: Cmd+W
     if (isMod && e.key === 'w') {
       e.preventDefault();
-      if (focusedTileId) {
-        const tile = tiles[focusedTileId];
+      // Read fresh state at event time to avoid depending on sessions in the closure
+      const state = useStore.getState();
+      const ws = state.workspaces[state.activeWorkspaceIndex];
+      const fTileId = ws?.focusedTileId;
+      if (fTileId) {
+        const tile = ws.tiles[fTileId];
         if (tile) {
-          const session = sessions[tile.sessionId];
+          const session = state.sessions[tile.sessionId];
           if (session?.isStreaming) {
             window.agent.cancel(session.id);
           }
         }
-        closeTile(focusedTileId);
+        closeTile(fTileId);
       }
       return;
     }
@@ -161,18 +174,24 @@ export function App() {
     }
 
     // Cancel streaming: Escape
-    if (e.key === 'Escape' && focusedTileId) {
-      const tile = tiles[focusedTileId];
-      if (tile) {
-        const session = sessions[tile.sessionId];
-        if (session?.isStreaming || session?.busy) {
-          e.preventDefault();
-          window.agent.cancel(session.id);
+    if (e.key === 'Escape') {
+      // Read fresh state at event time
+      const state = useStore.getState();
+      const ws = state.workspaces[state.activeWorkspaceIndex];
+      const fTileId = ws?.focusedTileId;
+      if (fTileId) {
+        const tile = ws.tiles[fTileId];
+        if (tile) {
+          const session = state.sessions[tile.sessionId];
+          if (session?.isStreaming || session?.busy) {
+            e.preventDefault();
+            window.agent.cancel(session.id);
+          }
         }
       }
       return;
     }
-  }, [focusedTileId, tiles, sessions, createTile, closeTile, navigateTile, switchWorkspace, switchWorkspaceRelative]);
+  }, [createTile, closeTile, navigateTile, switchWorkspace, switchWorkspaceRelative]);
 
   useEffect(() => {
     document.addEventListener('keydown', handleKeyDown);

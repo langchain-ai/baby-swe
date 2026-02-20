@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import type { ToolExecutionChunk } from '../../types';
 import { ToolExecution } from './ToolExecution';
 
@@ -80,7 +81,7 @@ function getItemLabel(tool: ToolExecutionChunk, projectPath?: string): string {
   }
 }
 
-export function ToolGroup({ groupType, tools, projectPath, onApprove, onReject, onAutoApprove }: ToolGroupProps) {
+export const ToolGroup = memo(function ToolGroup({ groupType, tools, projectPath, onApprove, onReject, onAutoApprove }: ToolGroupProps) {
   const hasPendingApproval = tools.some(t => t.status === 'pending-approval');
   const hasDiff = tools.some(t => t.diffData);
 
@@ -136,4 +137,4 @@ export function ToolGroup({ groupType, tools, projectPath, onApprove, onReject, 
       )}
     </div>
   );
-}
+});

@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef } from "react";
+import { memo, useLayoutEffect, useRef } from "react";
 import { Terminal } from "xterm";
 import { FitAddon } from "@xterm/addon-fit";
 
@@ -9,7 +9,7 @@ interface TerminalTileProps {
   onFocus: () => void;
 }
 
-export function TerminalTile({
+export const TerminalTile = memo(function TerminalTile({
   tileId,
   cwd,
   isFocused,
@@ -150,4 +150,4 @@ export function TerminalTile({
       <div ref={containerRef} className="h-full w-full p-2" />
     </div>
   );
-}
+});

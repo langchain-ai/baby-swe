@@ -1,5 +1,6 @@
-import { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useLayoutEffect, useCallback, memo } from 'react';
 import { useStore } from '../../store';
+import { useShallow } from 'zustand/react/shallow';
 import { CommandAutocomplete, getFilteredCommandCount, getCommandAtIndex } from './CommandAutocomplete';
 import { FileAutocomplete, fuzzySearch, getFileAtIndex } from './FileAutocomplete';
 import { ModelAutocomplete, getModelCount, getModelAtIndex, type ModelOption } from './ModelAutocomplete';
@@ -23,11 +24,14 @@ interface PromptBarProps {
   onRemoveImage?: (index: number) => void;
 }
 
-export function PromptBar({ onSubmit, busy, projectPath, sessionId, isFocused, pendingImages, onRemoveImage }: PromptBarProps) {
+export const PromptBar = memo(function PromptBar({ onSubmit, busy, projectPath, sessionId, isFocused, pendingImages, onRemoveImage }: PromptBarProps) {
   const [query, setQuery] = useState('');
-  const { sessions, setSessionMode, modelConfig, setModelConfig } = useStore();
-  const session = sessions[sessionId];
-  const mode = session?.mode ?? 'agent';
+  const mode = useStore(state => state.sessions[sessionId]?.mode ?? 'agent');
+  const { setSessionMode, modelConfig, setModelConfig } = useStore(useShallow(state => ({
+    setSessionMode: state.setSessionMode,
+    modelConfig: state.modelConfig,
+    setModelConfig: state.setModelConfig,
+  })));
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const [commandSelectedIndex, setCommandSelectedIndex] = useState(0);
   const [fileSelectedIndex, setFileSelectedIndex] = useState(0);
@@ -343,4 +347,4 @@ export function PromptBar({ onSubmit, busy, projectPath, sessionId, isFocused, p
       </div>
     </div>
   );
-}
+});

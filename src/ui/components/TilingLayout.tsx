@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { useStore } from '../../store';
 import { TileContainer } from './TileContainer';
 import { SplitResizer } from './SplitResizer';
@@ -8,10 +9,10 @@ interface TilingLayoutProps {
   workspaceIndex: number;
 }
 
-export function TilingLayout({ node, workspaceIndex }: TilingLayoutProps) {
-  const { workspaces, activeWorkspaceIndex, focusTile } = useStore();
-  const isActiveWorkspace = workspaceIndex === activeWorkspaceIndex;
-  const focusedTileId = workspaces[workspaceIndex].focusedTileId;
+export const TilingLayout = memo(function TilingLayout({ node, workspaceIndex }: TilingLayoutProps) {
+  const isActiveWorkspace = useStore(state => workspaceIndex === state.activeWorkspaceIndex);
+  const focusedTileId = useStore(state => state.workspaces[workspaceIndex]?.focusedTileId ?? null);
+  const focusTile = useStore(state => state.focusTile);
 
   if (node.type === 'tile') {
     return (
@@ -52,4 +53,4 @@ export function TilingLayout({ node, workspaceIndex }: TilingLayoutProps) {
       </div>
     </div>
   );
-}
+});

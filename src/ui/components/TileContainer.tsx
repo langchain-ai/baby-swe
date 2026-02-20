@@ -1,5 +1,6 @@
-import { useCallback, useRef, useEffect, useState } from "react";
+import { useCallback, useRef, useEffect, useState, memo } from "react";
 import { useStore } from "../../store";
+import { useShallow } from 'zustand/react/shallow';
 import { MessageView } from "./MessageView";
 import { PromptBar } from "./PromptBar";
 import { TodoList } from "./TodoList";
@@ -70,10 +71,27 @@ export function TileContainer({
   const [pendingImages, setPendingImages] = useState<ImageChunk[]>([]);
   const [isDragOver, setIsDragOver] = useState(false);
 
+  const tile = useStore(state => state.workspaces[workspaceIndex]?.tiles[tileId] ?? null);
+  const session = useStore(state => {
+    const t = state.workspaces[workspaceIndex]?.tiles[tileId];
+    return t ? state.sessions[t.sessionId] ?? null : null;
+  });
+  const recentProjects = useStore(state => state.recentProjects);
+  const tokenUsage = useStore(state => state.tokenUsage);
+  const modelConfig = useStore(state => state.modelConfig);
+  const actions = useStore(useShallow(state => ({
+    loadRecentProjects: state.loadRecentProjects,
+    setTileProject: state.setTileProject,
+    createSession: state.createSession,
+    clearSession: state.clearSession,
+    addMessageToSession: state.addMessageToSession,
+    startStreaming: state.startStreaming,
+    finalizeStream: state.finalizeStream,
+    setAutoApproveSession: state.setAutoApproveSession,
+    setModelConfig: state.setModelConfig,
+    setShowApiKeysScreen: state.setShowApiKeysScreen,
+  })));
   const {
-    workspaces,
-    sessions,
-    recentProjects,
     loadRecentProjects,
     setTileProject,
     createSession,
@@ -82,15 +100,9 @@ export function TileContainer({
     startStreaming,
     finalizeStream,
     setAutoApproveSession,
-    tokenUsage,
-    modelConfig,
     setModelConfig,
     setShowApiKeysScreen,
-  } = useStore();
-
-  const tiles = workspaces[workspaceIndex].tiles;
-  const tile = tiles[tileId];
-  const session = tile ? sessions[tile.sessionId] : null;
+  } = actions;
 
   useEffect(() => {
     loadRecentProjects();
