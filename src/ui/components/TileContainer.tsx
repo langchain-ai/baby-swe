@@ -6,8 +6,9 @@ import { PromptBar } from "./PromptBar";
 import { TodoList } from "./TodoList";
 import { Logo } from "./Logo";
 import { TerminalTile } from "./TerminalTile";
+import { ThreadPicker } from "./ThreadPicker";
 import { executeCommand } from "../../commands";
-import type { Message, ChatMessage, ChatMessageContentBlock, Project, ImageChunk } from "../../types";
+import type { Message, ChatMessage, ChatMessageContentBlock, Project, ImageChunk, Thread } from "../../types";
 
 function messagesToChatMessages(messages: Message[]): ChatMessage[] {
   const chatMessages: ChatMessage[] = [];
@@ -70,6 +71,7 @@ export function TileContainer({
   const containerRef = useRef<HTMLDivElement>(null);
   const [pendingImages, setPendingImages] = useState<ImageChunk[]>([]);
   const [isDragOver, setIsDragOver] = useState(false);
+  const [showThreadPicker, setShowThreadPicker] = useState(false);
 
   const tile = useStore(state => state.workspaces[workspaceIndex]?.tiles[tileId] ?? null);
   const session = useStore(state => {
@@ -90,6 +92,7 @@ export function TileContainer({
     setAutoApproveSession: state.setAutoApproveSession,
     setModelConfig: state.setModelConfig,
     setShowApiKeysScreen: state.setShowApiKeysScreen,
+    resumeThread: state.resumeThread,
   })));
   const {
     loadRecentProjects,
@@ -102,6 +105,7 @@ export function TileContainer({
     setAutoApproveSession,
     setModelConfig,
     setShowApiKeysScreen,
+    resumeThread,
   } = actions;
 
   useEffect(() => {
@@ -197,6 +201,15 @@ export function TileContainer({
     setPendingImages((prev) => prev.filter((_, i) => i !== index));
   }, []);
 
+  const handleThreadSelect = useCallback(
+    (thread: Thread) => {
+      setShowThreadPicker(false);
+      const sid = session?.id || createSession(tileId);
+      resumeThread(sid, { messages: thread.messages, title: thread.title });
+    },
+    [session, createSession, tileId, resumeThread],
+  );
+
   const dragProps = {
     onDragOver: handleDragOver,
     onDragLeave: handleDragLeave,
@@ -217,6 +230,9 @@ export function TileContainer({
           modelConfig,
           setModelConfig,
           setShowApiKeysScreen,
+          project: tile.project,
+          resumeThread,
+          showThreadPicker: () => setShowThreadPicker(true),
         });
         if (commandExecuted) return;
       }
@@ -367,6 +383,13 @@ export function TileContainer({
             </div>
           </div>
         </div>
+        {showThreadPicker && tile.project && (
+          <ThreadPicker
+            projectId={tile.project.id}
+            onSelect={handleThreadSelect}
+            onClose={() => setShowThreadPicker(false)}
+          />
+        )}
       </div>
     );
   }
@@ -415,6 +438,13 @@ export function TileContainer({
           onRemoveImage={handleRemoveImage}
         />
       </div>
+      {showThreadPicker && tile.project && (
+        <ThreadPicker
+          projectId={tile.project.id}
+          onSelect={handleThreadSelect}
+          onClose={() => setShowThreadPicker(false)}
+        />
+      )}
     </div>
   );
 }

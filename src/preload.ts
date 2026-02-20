@@ -34,6 +34,9 @@ contextBridge.exposeInMainWorld('storage', {
   getSettings: () => ipcRenderer.invoke('storage:getSettings'),
   saveSettings: (settings: unknown) => ipcRenderer.invoke('storage:saveSettings', settings),
   getRecentProjects: () => ipcRenderer.invoke('storage:getRecentProjects'),
+  loadThreadsForProject: (projectId: string) => ipcRenderer.invoke('storage:loadThreadsForProject', projectId),
+  saveThread: (projectId: string, thread: unknown) => ipcRenderer.invoke('storage:saveThread', projectId, thread),
+  deleteThread: (projectId: string, threadId: string) => ipcRenderer.invoke('storage:deleteThread', projectId, threadId),
 });
 
 contextBridge.exposeInMainWorld('tile', {

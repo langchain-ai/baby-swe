@@ -93,6 +93,9 @@ declare global {
       getSettings: () => Promise<GlobalSettings>;
       saveSettings: (settings: GlobalSettings) => Promise<void>;
       getRecentProjects: () => Promise<Project[]>;
+      loadThreadsForProject: (projectId: string) => Promise<Thread[]>;
+      saveThread: (projectId: string, thread: Thread) => Promise<void>;
+      deleteThread: (projectId: string, threadId: string) => Promise<void>;
     };
     tile: {
       openProject: (tileId: string, folderPath?: string) => Promise<Project | null>;

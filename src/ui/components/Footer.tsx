@@ -28,12 +28,16 @@ function formatDuration(startTime: number): string {
 }
 
 export function Footer() {
-  const { tokenUsage, sessions, activeSessionId } = useStore();
+  const tokenUsage = useStore(state => state.tokenUsage);
+  const activeSession = useStore(state => {
+    const ws = state.workspaces[state.activeWorkspaceIndex];
+    if (!ws?.focusedTileId) return null;
+    const tile = ws.tiles[ws.focusedTileId];
+    return tile ? state.sessions[tile.sessionId] ?? null : null;
+  });
   const [busyAction] = useState(() => BUSY_ACTIONS[Math.floor(Math.random() * BUSY_ACTIONS.length)]);
   const [startTime, setStartTime] = useState<number | null>(null);
   const [, setTick] = useState(0);
-
-  const activeSession = activeSessionId ? sessions[activeSessionId] : null;
   const busy = activeSession?.busy ?? false;
   const streaming = activeSession?.isStreaming ?? false;
 

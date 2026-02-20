@@ -48,6 +48,7 @@ interface AppState {
   createSession: (tileId: string) => string;
   clearSession: (sessionId: string) => void;
   getSession: (sessionId: string) => Session | null;
+  resumeThread: (sessionId: string, thread: { messages: Message[]; title: string }) => void;
 
   addMessageToSession: (sessionId: string, author: Message['author'], chunks: Chunk[]) => string;
   updateToolExecution: (sessionId: string, messageId: string, toolCallId: string, status: ToolStatus, output?: string, elapsedMs?: number) => void;
@@ -90,6 +91,34 @@ function createEmptyWorkspace(id: number): Workspace {
 
 function createInitialWorkspaces(): Workspace[] {
   return Array.from({ length: NUM_WORKSPACES }, (_, i) => createEmptyWorkspace(i + 1));
+}
+
+function persistSessionAsThread(get: () => AppState, sessionId: string): void {
+  const state = get();
+  const session = state.sessions[sessionId];
+  if (!session || session.messages.length === 0) return;
+
+  let project: Project | null = null;
+  for (const ws of state.workspaces) {
+    for (const tile of Object.values(ws.tiles)) {
+      if (tile.sessionId === sessionId && tile.project) {
+        project = tile.project;
+        break;
+      }
+    }
+    if (project) break;
+  }
+  if (!project) return;
+
+  const thread: Thread = {
+    id: sessionId,
+    projectId: project.id,
+    title: session.title,
+    createdAt: session.createdAt,
+    updatedAt: session.updatedAt,
+    messages: session.messages,
+  };
+  window.storage.saveThread(project.id, thread).catch(() => {});
 }
 
 export const useStore = create<AppState>((set, get) => ({
@@ -304,11 +333,20 @@ export const useStore = create<AppState>((set, get) => ({
       mode: 'agent',
     };
     set((state) => {
-      const tile = state.tiles[tileId];
+      const workspace = state.workspaces[state.activeWorkspaceIndex];
+      const tile = workspace.tiles[tileId];
       if (!tile) return { sessions: { ...state.sessions, [id]: session } };
+
+      const updatedWorkspace: Workspace = {
+        ...workspace,
+        tiles: { ...workspace.tiles, [tileId]: { ...tile, sessionId: id } },
+      };
+      const updatedWorkspaces = [...state.workspaces];
+      updatedWorkspaces[state.activeWorkspaceIndex] = updatedWorkspace;
+
       return {
         sessions: { ...state.sessions, [id]: session },
-        tiles: { ...state.tiles, [tileId]: { ...tile, sessionId: id } },
+        workspaces: updatedWorkspaces,
       };
     });
     return id;
@@ -341,6 +379,24 @@ export const useStore = create<AppState>((set, get) => ({
 
   getSession: (sessionId) => {
     return get().sessions[sessionId] || null;
+  },
+
+  resumeThread: (sessionId, thread) => {
+    set((state) => {
+      const session = state.sessions[sessionId];
+      if (!session) return state;
+      return {
+        sessions: {
+          ...state.sessions,
+          [sessionId]: {
+            ...session,
+            messages: thread.messages,
+            title: thread.title,
+            updatedAt: Date.now(),
+          },
+        },
+      };
+    });
   },
 
   addMessageToSession: (sessionId, author, chunks) => {
@@ -543,6 +599,9 @@ export const useStore = create<AppState>((set, get) => ({
         sessions: { ...state.sessions, [sessionId]: updatedSession },
       };
     });
+
+    // Persist session as a thread (fire-and-forget)
+    persistSessionAsThread(get, sessionId);
   },
 
   abortStream: (sessionId, error) => {
@@ -573,6 +632,9 @@ export const useStore = create<AppState>((set, get) => ({
         sessions: { ...state.sessions, [sessionId]: updatedSession },
       };
     });
+
+    // Persist session as a thread (fire-and-forget)
+    persistSessionAsThread(get, sessionId);
   },
 
   setAutoApproveSession: (sessionId, value) => {

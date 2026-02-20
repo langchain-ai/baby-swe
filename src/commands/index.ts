@@ -9,6 +9,7 @@ export {
 import { registerCommand, getAllCommands } from './registry';
 import './remember';
 import './keys';
+import './resume';
 
 registerCommand({
   name: 'clear',

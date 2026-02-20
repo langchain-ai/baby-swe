@@ -273,6 +273,18 @@ function setupStorageIPC(): void {
 
   ipcMain.handle('storage:getRecentProjects', () => storage.getRecentProjects());
 
+  ipcMain.handle('storage:loadThreadsForProject', (_event, projectId: string) => {
+    return storage.loadThreadsForProject(projectId);
+  });
+
+  ipcMain.handle('storage:saveThread', (_event, projectId: string, thread: any) => {
+    storage.saveThread(projectId, thread);
+  });
+
+  ipcMain.handle('storage:deleteThread', (_event, projectId: string, threadId: string) => {
+    storage.deleteThread(projectId, threadId);
+  });
+
   ipcMain.handle('tile:openProject', async (_event, tileId: string, folderPath?: string) => {
     if (!folderPath) {
       const result = await dialog.showOpenDialog(mainWindow!, {

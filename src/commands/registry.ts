@@ -1,4 +1,4 @@
-import type { Chunk, ModelConfig } from '../types';
+import type { Chunk, ModelConfig, Project, Session } from '../types';
 
 export type CommandCategory = 'Actions' | 'Navigation' | 'Debug';
 
@@ -12,13 +12,16 @@ export interface CommandContext {
   modelConfig: ModelConfig;
   setModelConfig: (config: Partial<ModelConfig>) => void;
   setShowApiKeysScreen?: (show: boolean) => void;
+  project?: Project | null;
+  resumeThread?: (sessionId: string, thread: { messages: any[]; title: string }) => void;
+  showThreadPicker?: () => void;
 }
 
 export interface Command {
   name: string;
   description: string;
   category: CommandCategory;
-  execute: (ctx: CommandContext, args: string[]) => void;
+  execute: (ctx: CommandContext, args: string[]) => void | Promise<void>;
 }
 
 const commands: Map<string, Command> = new Map();

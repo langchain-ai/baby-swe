@@ -1,4 +1,4 @@
-import { useRef, useEffect } from 'react';
+import { useRef, useEffect, useState } from 'react';
 import type { TodoItem } from '../../types';
 
 interface TodoListProps {
@@ -19,6 +19,7 @@ function StatusIcon({ status }: { status: TodoItem['status'] }) {
 const MAX_HEIGHT = 160;
 
 export function TodoList({ todos }: TodoListProps) {
+  const [collapsed, setCollapsed] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -44,37 +45,43 @@ export function TodoList({ todos }: TodoListProps) {
 
   return (
     <div className="my-3 font-mono text-sm">
-      <div className="flex items-center gap-2 text-gray-400 mb-1">
+      <div
+        className="flex items-center gap-2 text-gray-400 mb-1 cursor-pointer select-none"
+        onClick={() => setCollapsed(c => !c)}
+      >
+        <span className="text-gray-600 text-xs">{collapsed ? '▶' : '▼'}</span>
         <span>Tasks</span>
         <span className="text-gray-600 text-xs">({statusParts.join(' · ')})</span>
       </div>
-      <div
-        ref={scrollRef}
-        className="ml-3 border-l border-gray-700 pl-3 space-y-1 overflow-y-auto"
-        style={{ maxHeight: MAX_HEIGHT }}
-      >
-        {todos.map((todo, index) => (
-          <div
-            key={index}
-            className={`flex items-start gap-2 ${
-              todo.status === 'completed' ? 'opacity-60' : ''
-            }`}
-          >
-            <StatusIcon status={todo.status} />
-            <span
-              className={
-                todo.status === 'completed'
-                  ? 'text-gray-500 line-through'
-                  : todo.status === 'in_progress'
-                  ? 'text-gray-200'
-                  : 'text-gray-400'
-              }
+      {!collapsed && (
+        <div
+          ref={scrollRef}
+          className="ml-3 border-l border-gray-700 pl-3 space-y-1 overflow-y-auto"
+          style={{ maxHeight: MAX_HEIGHT }}
+        >
+          {todos.map((todo, index) => (
+            <div
+              key={index}
+              className={`flex items-start gap-2 ${
+                todo.status === 'completed' ? 'opacity-60' : ''
+              }`}
             >
-              {todo.content}
-            </span>
-          </div>
-        ))}
-      </div>
+              <StatusIcon status={todo.status} />
+              <span
+                className={
+                  todo.status === 'completed'
+                    ? 'text-gray-500 line-through'
+                    : todo.status === 'in_progress'
+                    ? 'text-gray-200'
+                    : 'text-gray-400'
+                }
+              >
+                {todo.content}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
