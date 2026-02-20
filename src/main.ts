@@ -55,7 +55,7 @@ function getGithubPR(projectPath: string): GithubPR | null {
 
 function listGitBranches(projectPath: string): { branches: string[]; current: string | null } {
   try {
-    const result = execSync('git branch --no-color', {
+    const result = execSync('git branch --no-color --sort=-committerdate', {
       cwd: projectPath,
       encoding: 'utf-8',
       timeout: 5000,
