@@ -149,7 +149,7 @@ export const FileViewerTile = memo(function FileViewerTile({
     const diffEditor = monaco.editor.createDiffEditor(containerRef.current, {
       theme: "baby-swe-dark",
       readOnly: true,
-      automaticLayout: false,
+      automaticLayout: true,
       fontSize: 13,
       lineHeight: 24,
       fontFamily: "JetBrains Mono, Menlo, Monaco, monospace",
@@ -184,18 +184,42 @@ export const FileViewerTile = memo(function FileViewerTile({
       modified: modifiedModel,
     });
 
+    const layoutEditor = () => {
+      const container = containerRef.current;
+      if (!container) return;
+      const { width, height } = container.getBoundingClientRect();
+      if (width > 0 && height > 0) {
+        diffEditor.layout({
+          width: Math.floor(width),
+          height: Math.floor(height),
+        });
+      }
+    };
+
     const resizeObserver = new ResizeObserver(() => {
-      diffEditor.layout();
+      layoutEditor();
     });
 
-    resizeObserver.observe(containerRef.current);
-    requestAnimationFrame(() => diffEditor.layout());
+    const containerEl = containerRef.current;
+    const parentEl = containerEl.parentElement;
+    resizeObserver.observe(containerEl);
+    if (parentEl) resizeObserver.observe(parentEl);
+
+    const handleWindowResize = () => {
+      layoutEditor();
+    };
+    window.addEventListener("resize", handleWindowResize);
+
+    requestAnimationFrame(() => {
+      layoutEditor();
+    });
 
     editorRef.current = diffEditor;
     modelsRef.current = { original: originalModel, modified: modifiedModel };
 
     return () => {
       resizeObserver.disconnect();
+      window.removeEventListener("resize", handleWindowResize);
       editorRef.current = null;
       modelsRef.current = null;
       diffEditor.dispose();
@@ -218,7 +242,18 @@ export const FileViewerTile = memo(function FileViewerTile({
     monaco.editor.setModelLanguage(models.original, language);
     monaco.editor.setModelLanguage(models.modified, language);
 
-    editorRef.current?.layout();
+    requestAnimationFrame(() => {
+      const editor = editorRef.current;
+      const container = containerRef.current;
+      if (!editor || !container) return;
+      const { width, height } = container.getBoundingClientRect();
+      if (width > 0 && height > 0) {
+        editor.layout({
+          width: Math.floor(width),
+          height: Math.floor(height),
+        });
+      }
+    });
   }, [filePath, originalContent, modifiedContent, language]);
 
   return (
