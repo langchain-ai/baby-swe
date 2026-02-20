@@ -105,10 +105,10 @@ export function ToolGroup({ groupType, tools, projectPath, onApprove, onReject, 
   const hasError = tools.some(t => t.status === 'error');
 
   const statusIcon = hasError
-    ? <span className="text-red-400 leading-none">●</span>
+    ? <span className="text-red-400 leading-none mb-[3px]">●</span>
     : isRunning
-      ? <span className="text-yellow-400 animate-pulse leading-none">●</span>
-      : <span className="text-[#87CEEB] leading-none">●</span>;
+      ? <span className="text-yellow-400 animate-pulse leading-none mb-[3px]">●</span>
+      : <span className="text-[#87CEEB] leading-none mb-[3px]">●</span>;
 
   const summary = getGroupSummary(groupType, tools.length, isRunning);
   const visibleTools = tools.slice(0, MAX_ITEMS);
