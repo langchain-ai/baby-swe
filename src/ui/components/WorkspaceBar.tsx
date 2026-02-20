@@ -1,12 +1,6 @@
 import { useStore } from '../../store';
-import { BranchSelector } from './BranchSelector';
-import type { Project } from '../../types';
 
-interface WorkspaceBarProps {
-  project?: Project | null;
-}
-
-export function WorkspaceBar({ project }: WorkspaceBarProps) {
+export function WorkspaceBar() {
   const { workspaces, activeWorkspaceIndex, switchWorkspace } = useStore();
 
   return (
@@ -37,26 +31,12 @@ export function WorkspaceBar({ project }: WorkspaceBarProps) {
         })}
       </div>
 
-      <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-        <div className="pointer-events-auto" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
-          {project ? (
-            <div className="flex items-center gap-2 text-sm px-2">
-              <span className="text-gray-400 truncate" title={project.path}>
-                {project.name}
-              </span>
-              {project.gitBranch && (
-                <>
-                  <span className="text-gray-600 shrink-0">•</span>
-                  <div className="truncate" title={project.gitBranch}>
-                    <BranchSelector projectPath={project.path} currentBranch={project.gitBranch} />
-                  </div>
-                </>
-              )}
-            </div>
-          ) : (
-            <span className="text-gray-500 text-sm">No project selected</span>
-          )}
-        </div>
+      <div className="absolute left-1/2 -translate-x-1/2 flex items-center" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+        <img
+          src="./assets/light-blue/LangChain_Symbol_LightBlue.png"
+          alt="LangChain"
+          className="h-5 w-auto opacity-80"
+        />
       </div>
     </div>
   );

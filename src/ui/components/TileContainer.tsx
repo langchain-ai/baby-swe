@@ -375,6 +375,8 @@ export function TileContainer({
               onSubmit={handleSubmit}
               busy={session?.busy ?? false}
               projectPath={tile.project.path}
+              gitBranch={tile.project.gitBranch}
+              githubPR={tile.project.githubPR}
               sessionId={tile.sessionId}
               isFocused={isFocused}
               pendingImages={pendingImages}
@@ -432,6 +434,8 @@ export function TileContainer({
           onSubmit={handleSubmit}
           busy={session.busy}
           projectPath={tile.project.path}
+          gitBranch={tile.project.gitBranch}
+          githubPR={tile.project.githubPR}
           sessionId={tile.sessionId}
           isFocused={isFocused}
           pendingImages={pendingImages}
@@ -505,6 +509,8 @@ function TileFolderSelect({
     </div>
   );
 }
+
+
 
 const BINARY_FRAMES = [
   "010010", "001100", "100101", "111010", "111101",

@@ -16,6 +16,7 @@ interface Window {
     node: () => string;
     chrome: () => string;
     electron: () => string;
+    app: () => Promise<string>;
   };
   agent: {
     invoke: (message: string) => Promise<AgentResponse>;
@@ -49,5 +50,6 @@ interface Window {
     listBranches: (projectPath: string) => Promise<unknown>;
     switchBranch: (projectPath: string, branchName: string) => Promise<unknown>;
     createBranch: (projectPath: string, branchName: string) => Promise<unknown>;
+    getPR: (projectPath: string) => Promise<import('./types').GithubPR | null>;
   };
 }

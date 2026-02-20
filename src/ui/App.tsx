@@ -217,7 +217,7 @@ export function App() {
   if (shouldShowApiKeysScreen) {
     return (
       <div className="flex flex-col h-screen bg-[#1a2332] text-gray-100">
-        <WorkspaceBar project={project} />
+        <WorkspaceBar />
         <div className="flex-1 min-h-0">
           <ApiKeysScreen
             initialKeys={apiKeys}
@@ -226,14 +226,14 @@ export function App() {
             isStartup={needsApiKeys && isEmpty}
           />
         </div>
-        <StatusBar project={project} />
+        <StatusBar />
       </div>
     );
   }
 
   return (
     <div className="flex flex-col h-screen bg-[#1a2332] text-gray-100">
-      <WorkspaceBar project={project} />
+      <WorkspaceBar />
       <div className="flex-1 min-h-0">
         {isEmpty && (
           <FolderSelectScreen
@@ -252,7 +252,7 @@ export function App() {
           );
         })}
       </div>
-      <StatusBar project={project} />
+      <StatusBar />
     </div>
   );
 }

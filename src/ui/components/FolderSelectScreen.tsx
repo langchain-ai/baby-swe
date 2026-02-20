@@ -15,7 +15,6 @@ export function FolderSelectScreen({ onOpenFolder, onSelectRecent, recentProject
       <div className="flex flex-col items-center gap-8">
         <Logo />
         <div className="flex flex-col items-center">
-          <p className="text-gray-400 mb-6">Open a folder to get started</p>
           <button
             onClick={onOpenFolder}
             className="flex items-center gap-2 px-6 py-3 bg-[#5a9bc7] hover:bg-[#6daad3] text-white rounded-lg transition-colors font-medium"
@@ -50,9 +49,9 @@ export function FolderSelectScreen({ onOpenFolder, onSelectRecent, recentProject
 
       <div className="absolute bottom-8 flex flex-col items-center">
         <img
-          src="./assets/Light Blue/LangChain_Lockup_LightBlue.png"
+          src="./assets/light-blue/LangChain_Wordmark_LightBlue.png"
           alt="LangChain"
-          className="h-6 opacity-90"
+          className="h-5 opacity-60"
         />
       </div>
     </div>

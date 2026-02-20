@@ -18,13 +18,15 @@ interface PromptBarProps {
   onSubmit: (query: string) => void;
   busy: boolean;
   projectPath?: string;
+  gitBranch?: string;
+  githubPR?: { number: number; url: string } | null;
   sessionId: string;
   isFocused: boolean;
   pendingImages?: ImageChunk[];
   onRemoveImage?: (index: number) => void;
 }
 
-export const PromptBar = memo(function PromptBar({ onSubmit, busy, projectPath, sessionId, isFocused, pendingImages, onRemoveImage }: PromptBarProps) {
+export const PromptBar = memo(function PromptBar({ onSubmit, busy, projectPath, gitBranch, githubPR, sessionId, isFocused, pendingImages, onRemoveImage }: PromptBarProps) {
   const [query, setQuery] = useState('');
   const mode = useStore(state => state.sessions[sessionId]?.mode ?? 'agent');
   const { setSessionMode, modelConfig, setModelConfig } = useStore(useShallow(state => ({
@@ -342,6 +344,24 @@ export const PromptBar = memo(function PromptBar({ onSubmit, busy, projectPath, 
           <>
             <span>·</span>
             <span className="text-gray-500 truncate">{projectPath.replace(/^\/Users\/[^/]+/, '~')}</span>
+          </>
+        )}
+        {gitBranch && (
+          <>
+            <span>·</span>
+            <span className="text-gray-500">{gitBranch}</span>
+          </>
+        )}
+        {githubPR && (
+          <>
+            <span>·</span>
+            <a
+              href={githubPR.url}
+              onClick={e => { e.preventDefault(); window.open(githubPR.url, '_blank'); }}
+              className="text-gray-500 hover:text-[#87CEEB] transition-colors"
+            >
+              #{githubPR.number}
+            </a>
           </>
         )}
       </div>

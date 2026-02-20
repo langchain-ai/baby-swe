@@ -264,6 +264,10 @@ function setupTerminalIPC(): void {
   });
 }
 
+function setupAppIPC(): void {
+  ipcMain.handle('app:getVersion', () => app.getVersion());
+}
+
 function setupStorageIPC(): void {
   ipcMain.handle('storage:getSettings', () => storage.loadSettings());
 
@@ -375,6 +379,7 @@ function createWindow(): void {
 app.whenReady().then(() => {
   storage.initStorage();
   createMenu();
+  setupAppIPC();
   setupStorageIPC();
   setupTerminalIPC();
   createWindow();
