@@ -16,8 +16,7 @@ function StatusIcon({ status }: { status: TodoItem['status'] }) {
   }
 }
 
-const ITEM_HEIGHT = 24;
-const MAX_VISIBLE = 5;
+const MAX_HEIGHT = 160;
 
 export function TodoList({ todos }: TodoListProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -25,10 +24,11 @@ export function TodoList({ todos }: TodoListProps) {
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
+    // Find the first in-progress item and scroll it into view
     const firstActive = todos.findIndex(t => t.status === 'in_progress');
     const targetIndex = firstActive !== -1 ? firstActive : todos.length - 1;
-    const scrollTo = Math.max(0, (targetIndex - MAX_VISIBLE + 2) * ITEM_HEIGHT);
-    el.scrollTop = scrollTo;
+    const targetEl = el.children[targetIndex] as HTMLElement | undefined;
+    targetEl?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   }, [todos]);
 
   if (todos.length === 0) return null;
@@ -50,8 +50,8 @@ export function TodoList({ todos }: TodoListProps) {
       </div>
       <div
         ref={scrollRef}
-        className="ml-3 border-l border-gray-700 pl-3 space-y-1 overflow-y-hidden"
-        style={{ maxHeight: MAX_VISIBLE * ITEM_HEIGHT }}
+        className="ml-3 border-l border-gray-700 pl-3 space-y-1 overflow-y-auto"
+        style={{ maxHeight: MAX_HEIGHT }}
       >
         {todos.map((todo, index) => (
           <div
