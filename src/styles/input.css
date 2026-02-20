@@ -31,3 +31,23 @@ body {
   background-clip: text;
   animation: shimmer-sweep 4s linear infinite;
 }
+
+.file-viewer-tile .monaco-editor .sticky-widget {
+  border-bottom: none !important;
+  box-shadow: none !important;
+}
+
+.file-viewer-tile .monaco-editor .sticky-widget .sticky-widget-lines-scrollable {
+  box-shadow: none !important;
+}
+
+.file-viewer-tile .monaco-editor .scroll-decoration {
+  box-shadow: none !important;
+  height: 0 !important;
+}
+
+.file-viewer-tile .monaco-scrollable-element > .shadow.top,
+.file-viewer-tile .monaco-scrollable-element > .shadow.top.left,
+.file-viewer-tile .monaco-scrollable-element > .shadow.top-left-corner {
+  box-shadow: none !important;
+}

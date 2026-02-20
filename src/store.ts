@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { v4 as uuidv4 } from 'uuid';
-import type { Message, Chunk, Mode, ModelConfig, ToolStatus, Thread, Session, Project, ApprovalRequest, DiffData, TodoItem, Tile, LayoutNode, SplitDirection, TileType, Workspace, ApiKeys } from './types';
+import type { Message, Chunk, Mode, ModelConfig, ToolStatus, Thread, Session, Project, ApprovalRequest, DiffData, TodoItem, Tile, LayoutNode, SplitDirection, TileType, Workspace, ApiKeys, FileViewerData } from './types';
 import { loadSettings, saveSettings, loadRecentProjects } from './persistence';
 import { createInitialLayout, splitTile, removeTile, getTileIds, getSmartDirection, findAdjacentTile, getTileDimensions } from './layout-utils';
 
@@ -44,6 +44,7 @@ interface AppState {
   updateSplitRatio: (tileId: string, delta: number) => void;
   getTile: (tileId: string) => Tile | null;
   getFocusedTile: () => Tile | null;
+  openFileViewer: (fileViewerData: FileViewerData, direction?: SplitDirection | 'auto') => string;
 
   createSession: (tileId: string) => string;
   clearSession: (sessionId: string) => void;
@@ -314,6 +315,70 @@ export const useStore = create<AppState>((set, get) => ({
     const { workspaces, activeWorkspaceIndex } = get();
     const workspace = workspaces[activeWorkspaceIndex];
     return workspace.focusedTileId ? workspace.tiles[workspace.focusedTileId] || null : null;
+  },
+
+  openFileViewer: (fileViewerData, direction) => {
+    const { workspaces, activeWorkspaceIndex } = get();
+    const workspace = workspaces[activeWorkspaceIndex];
+    const { focusedTileId, layout, tiles } = workspace;
+
+    const tileId = uuidv4();
+    const sessionId = uuidv4();
+    const now = Date.now();
+
+    const session: Session = {
+      id: sessionId,
+      title: fileViewerData.filePath.split('/').pop() || 'File Viewer',
+      messages: [],
+      streamingMessageId: null,
+      isStreaming: false,
+      busy: false,
+      createdAt: now,
+      updatedAt: now,
+      autoApproveSession: false,
+      pendingApprovals: {},
+      todos: [],
+      mode: 'agent',
+    };
+
+    const tile: Tile = {
+      id: tileId,
+      type: 'file-viewer',
+      sessionId,
+      project: focusedTileId ? tiles[focusedTileId]?.project || null : null,
+      fileViewerData,
+    };
+
+    let newLayout: LayoutNode;
+    if (layout && focusedTileId) {
+      let splitDir: 'horizontal' | 'vertical';
+      if (direction === 'auto' || !direction) {
+        const dims = getTileDimensions(layout, focusedTileId, window.innerWidth, window.innerHeight);
+        splitDir = dims ? getSmartDirection(dims.width, dims.height) : 'horizontal';
+      } else {
+        splitDir = direction;
+      }
+      newLayout = splitTile(layout, focusedTileId, tileId, splitDir);
+    } else {
+      newLayout = createInitialLayout(tileId);
+    }
+
+    const updatedWorkspace: Workspace = {
+      ...workspace,
+      tiles: { ...tiles, [tileId]: tile },
+      layout: newLayout,
+      focusedTileId: tileId,
+    };
+
+    const updatedWorkspaces = [...workspaces];
+    updatedWorkspaces[activeWorkspaceIndex] = updatedWorkspace;
+
+    set((state) => ({
+      sessions: { ...state.sessions, [sessionId]: session },
+      workspaces: updatedWorkspaces,
+    }));
+
+    return tileId;
   },
 
   createSession: (tileId) => {

@@ -6,6 +6,7 @@ import { PromptBar } from "./PromptBar";
 import { TodoList } from "./TodoList";
 import { Logo } from "./Logo";
 import { TerminalTile } from "./TerminalTile";
+import { FileViewerTile } from "./FileViewerTile";
 import { ThreadPicker } from "./ThreadPicker";
 import { executeCommand } from "../../commands";
 import type { Message, ChatMessage, ChatMessageContentBlock, Project, ImageChunk, Thread } from "../../types";
@@ -93,6 +94,7 @@ export function TileContainer({
     setModelConfig: state.setModelConfig,
     setShowApiKeysScreen: state.setShowApiKeysScreen,
     resumeThread: state.resumeThread,
+    openFileViewer: state.openFileViewer,
   })));
   const {
     loadRecentProjects,
@@ -106,6 +108,7 @@ export function TileContainer({
     setModelConfig,
     setShowApiKeysScreen,
     resumeThread,
+    openFileViewer,
   } = actions;
 
   useEffect(() => {
@@ -211,6 +214,19 @@ export function TileContainer({
       resumeThread(sid, { messages: thread.messages, title: thread.title });
     },
     [session, createSession, tileId, resumeThread],
+  );
+
+  const handleOpenDiff = useCallback(
+    (diffData: { filePath: string; originalContent: string; modifiedContent: string }) => {
+      const language = diffData.filePath.split(".").pop() ?? "plaintext";
+      openFileViewer({
+        filePath: diffData.filePath,
+        originalContent: diffData.originalContent,
+        modifiedContent: diffData.modifiedContent,
+        language,
+      });
+    },
+    [openFileViewer],
   );
 
   const dragProps = {
@@ -320,6 +336,18 @@ export function TileContainer({
     );
   }
 
+  if (tile.type === "file-viewer" && tile.fileViewerData) {
+    return (
+      <FileViewerTile
+        tileId={tileId}
+        fileViewerData={tile.fileViewerData}
+        projectPath={tile.project?.path}
+        isFocused={isFocused}
+        onFocus={onFocus}
+      />
+    );
+  }
+
   const handleContainerClick = useCallback(() => {
     onFocus();
     const textarea = containerRef.current?.querySelector("textarea");
@@ -404,6 +432,7 @@ export function TileContainer({
         onApprove={handleApprove}
         onReject={handleReject}
         onAutoApprove={handleAutoApprove}
+        onOpenDiff={handleOpenDiff}
         showHeader
         project={tile.project}
       />
@@ -521,5 +550,4 @@ function BinarySpinner({ isStreaming }: { isStreaming: boolean }) {
     </div>
   );
 }
-
 

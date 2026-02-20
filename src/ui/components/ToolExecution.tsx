@@ -8,6 +8,7 @@ interface ToolExecutionProps {
   onApprove?: (approvalRequestId: string) => void;
   onReject?: (approvalRequestId: string) => void;
   onAutoApprove?: (approvalRequestId: string) => void;
+  onOpenDiff?: (diffData: { filePath: string; originalContent: string; modifiedContent: string }) => void;
 }
 
 function formatElapsed(ms?: number): string {
@@ -220,6 +221,7 @@ export const ToolExecution = memo(function ToolExecution({
   onApprove,
   onReject,
   onAutoApprove,
+  onOpenDiff,
 }: ToolExecutionProps) {
   const {
     toolName,
@@ -244,10 +246,20 @@ export const ToolExecution = memo(function ToolExecution({
 
   const isFileOp = toolName === "write_file" || toolName === "edit_file";
   const showDiff = isFileOp && diffData;
+  const canOpenInEditor = isFileOp && diffData && (status === "success" || status === "error") && onOpenDiff;
   const summary = getToolSummary(toolName, toolArgs || {}, output, status);
 
   const hasContent =
     status === "pending-approval" || status === "running" || summary;
+
+  const handleOpenDiff = () => {
+    if (!diffData || !onOpenDiff) return;
+    onOpenDiff({
+      filePath: diffData.filePath,
+      originalContent: diffData.originalContent ?? "",
+      modifiedContent: diffData.newContent,
+    });
+  };
 
   return (
     <div className="my-1 font-mono text-sm">
@@ -256,6 +268,15 @@ export const ToolExecution = memo(function ToolExecution({
         <span className="text-gray-300">{displayName}</span>
         {elapsedMs && status !== "running" && (
           <span className="text-gray-600">{formatElapsed(elapsedMs)}</span>
+        )}
+        {canOpenInEditor && (
+          <button
+            onClick={handleOpenDiff}
+            className="text-gray-600 hover:text-[#87CEEB] transition-colors text-xs"
+            title="Open diff in editor"
+          >
+            [diff]
+          </button>
         )}
       </div>
 

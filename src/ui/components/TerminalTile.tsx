@@ -27,6 +27,7 @@ export const TerminalTile = memo(function TerminalTile({
 
     const term = new Terminal({
       cursorBlink: true,
+      cursorStyle: "block",
       fontSize: 13,
       fontFamily: "JetBrains Mono, Menlo, Monaco, monospace",
       theme: {

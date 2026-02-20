@@ -103,6 +103,33 @@ function createGitBranch(projectPath: string, branchName: string): { success: bo
   }
 }
 
+function getGitFileDiff(projectPath: string, filePath: string): { original: string; modified: string } | null {
+  try {
+    // Get the current file content (working tree)
+    const absolutePath = filePath.startsWith('/') ? filePath : path.join(projectPath, filePath);
+    const modified = fs.readFileSync(absolutePath, 'utf-8');
+
+    // Get the HEAD version of the file
+    const relativePath = filePath.startsWith('/') ? path.relative(projectPath, filePath) : filePath;
+    let original = '';
+    try {
+      original = execSync(`git show HEAD:${relativePath}`, {
+        cwd: projectPath,
+        encoding: 'utf-8',
+        timeout: 5000,
+        stdio: ['pipe', 'pipe', 'pipe'],
+      });
+    } catch {
+      // File doesn't exist in HEAD (new file)
+      original = '';
+    }
+
+    return { original, modified };
+  } catch {
+    return null;
+  }
+}
+
 function listProjectFiles(projectPath: string): string[] {
   try {
     const result = execSync('git ls-files', {
@@ -352,6 +379,10 @@ function setupStorageIPC(): void {
       }
     }
     return result;
+  });
+
+  ipcMain.handle('git:diffFile', (_event, projectPath: string, filePath: string) => {
+    return getGitFileDiff(projectPath, filePath);
   });
 }
 

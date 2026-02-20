@@ -97,6 +97,7 @@ interface ApprovalCallbacks {
   onApprove?: (approvalRequestId: string) => void;
   onReject?: (approvalRequestId: string) => void;
   onAutoApprove?: (approvalRequestId: string) => void;
+  onOpenDiff?: (diffData: { filePath: string; originalContent: string; modifiedContent: string }) => void;
 }
 
 interface MessageViewProps extends ApprovalCallbacks {
@@ -138,6 +139,7 @@ function ChunkRenderer({
           onApprove={callbacks.onApprove}
           onReject={callbacks.onReject}
           onAutoApprove={callbacks.onAutoApprove}
+          onOpenDiff={callbacks.onOpenDiff}
         />
       );
     case "image":
@@ -220,6 +222,7 @@ function AgentMessage({
               onApprove={callbacks.onApprove}
               onReject={callbacks.onReject}
               onAutoApprove={callbacks.onAutoApprove}
+              onOpenDiff={callbacks.onOpenDiff}
             />
           );
         }
@@ -271,6 +274,7 @@ export const MessageView = memo(function MessageView({
   onApprove,
   onReject,
   onAutoApprove,
+  onOpenDiff,
 }: MessageViewProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const isNearBottomRef = useRef(true);
@@ -311,6 +315,7 @@ export const MessageView = memo(function MessageView({
           onApprove={onApprove}
           onReject={onReject}
           onAutoApprove={onAutoApprove}
+          onOpenDiff={onOpenDiff}
         />
       ))}
     </div>

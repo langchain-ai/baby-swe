@@ -18,13 +18,21 @@ export interface Project {
   githubPR?: GithubPR | null;
 }
 
-export type TileType = 'agent' | 'terminal';
+export type TileType = 'agent' | 'terminal' | 'file-viewer';
+
+export interface FileViewerData {
+  filePath: string;
+  originalContent: string;
+  modifiedContent: string;
+  language: string;
+}
 
 export interface Tile {
   id: string;
   type: TileType;
   sessionId: string;
   project: Project | null;
+  fileViewerData?: FileViewerData;
 }
 
 export type SplitDirection = 'horizontal' | 'vertical';
@@ -117,6 +125,7 @@ declare global {
       switchBranch: (projectPath: string, branchName: string) => Promise<{ success: boolean; error?: string }>;
       createBranch: (projectPath: string, branchName: string) => Promise<{ success: boolean; error?: string }>;
       getPR: (projectPath: string) => Promise<GithubPR | null>;
+      diffFile: (projectPath: string, filePath: string) => Promise<{ original: string; modified: string } | null>;
     };
   }
 }

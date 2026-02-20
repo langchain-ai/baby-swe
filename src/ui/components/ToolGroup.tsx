@@ -11,6 +11,7 @@ interface ToolGroupProps {
   onApprove?: (approvalRequestId: string) => void;
   onReject?: (approvalRequestId: string) => void;
   onAutoApprove?: (approvalRequestId: string) => void;
+  onOpenDiff?: (diffData: { filePath: string; originalContent: string; modifiedContent: string }) => void;
 }
 
 const MAX_ITEMS = 8;
@@ -81,7 +82,7 @@ function getItemLabel(tool: ToolExecutionChunk, projectPath?: string): string {
   }
 }
 
-export const ToolGroup = memo(function ToolGroup({ groupType, tools, projectPath, onApprove, onReject, onAutoApprove }: ToolGroupProps) {
+export const ToolGroup = memo(function ToolGroup({ groupType, tools, projectPath, onApprove, onReject, onAutoApprove, onOpenDiff }: ToolGroupProps) {
   const hasPendingApproval = tools.some(t => t.status === 'pending-approval');
   const hasDiff = tools.some(t => t.diffData);
 
@@ -96,6 +97,7 @@ export const ToolGroup = memo(function ToolGroup({ groupType, tools, projectPath
             onApprove={onApprove}
             onReject={onReject}
             onAutoApprove={onAutoApprove}
+            onOpenDiff={onOpenDiff}
           />
         ))}
       </div>
