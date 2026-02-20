@@ -367,7 +367,7 @@ export const PromptBar = memo(function PromptBar({ onSubmit, busy, projectPath, 
         />
       </div>
 
-      <div className="mt-2 text-xs text-gray-600 flex items-center gap-1.5">
+      <div className="mt-2 text-xs text-gray-600 flex items-center gap-1.5 min-w-0">
         <div ref={modeDropdownRef} className="relative">
           <button
             type="button"
@@ -433,34 +433,32 @@ export const PromptBar = memo(function PromptBar({ onSubmit, busy, projectPath, 
           </>
         )}
         {gitBranch && projectPath && (
-          <>
-            <span>·</span>
-            <div ref={branchDropdownRef} className="relative">
-              <button
-                type="button"
-                onClick={async () => {
-                  if (branchDropdownOpen) {
-                    setBranchDropdownOpen(false);
-                    setBranchAction(null);
-                    setNewBranchName('');
-                    setBranchError(null);
-                    setBranchSearch('');
-                  } else {
-                    const result = await window.git.listBranches(projectPath) as { branches: string[]; current: string | null };
-                    setBranches(result.branches);
-                    setBranchDropdownOpen(true);
-                    setBranchAction(null);
-                    setNewBranchName('');
-                    setBranchError(null);
-                    setBranchSearch('');
-                  }
-                }}
-                className="cursor-pointer text-gray-500 hover:opacity-80 transition-opacity max-w-[400px] truncate block"
-              >
-                {gitBranch}
-              </button>
-              {branchDropdownOpen && (
-                <div className={`absolute ${dropUp ? 'bottom-full mb-1' : 'top-full mt-1'} left-0 bg-gray-800 border border-gray-700 rounded shadow-lg overflow-hidden z-50 min-w-48`}>
+          <div ref={branchDropdownRef} className="relative ml-auto min-w-0 flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={async () => {
+                if (branchDropdownOpen) {
+                  setBranchDropdownOpen(false);
+                  setBranchAction(null);
+                  setNewBranchName('');
+                  setBranchError(null);
+                  setBranchSearch('');
+                } else {
+                  const result = await window.git.listBranches(projectPath) as { branches: string[]; current: string | null };
+                  setBranches(result.branches);
+                  setBranchDropdownOpen(true);
+                  setBranchAction(null);
+                  setNewBranchName('');
+                  setBranchError(null);
+                  setBranchSearch('');
+                }
+              }}
+              className="cursor-pointer text-gray-500 hover:opacity-80 transition-opacity truncate block min-w-0 max-w-[150px]"
+            >
+              {gitBranch}
+            </button>
+            {branchDropdownOpen && (
+              <div className={`absolute ${dropUp ? 'bottom-full mb-1' : 'top-full mt-1'} right-0 bg-gray-800 border border-gray-700 rounded shadow-lg overflow-hidden z-50 min-w-48`}>
                   {/* Create new branch */}
                   {branchAction === 'create' ? (
                     <form
@@ -592,20 +590,19 @@ export const PromptBar = memo(function PromptBar({ onSubmit, busy, projectPath, 
                   })()}
                 </div>
               )}
-            </div>
-          </>
-        )}
-        {githubPR && (
-          <>
-            <span>·</span>
-            <a
-              href={githubPR.url}
-              onClick={e => { e.preventDefault(); window.open(githubPR.url, '_blank'); }}
-              className="text-gray-500 hover:text-[#87CEEB] transition-colors"
-            >
-              #{githubPR.number}
-            </a>
-          </>
+            {githubPR && (
+              <>
+                <span>·</span>
+                <a
+                  href={githubPR.url}
+                  onClick={e => { e.preventDefault(); window.open(githubPR.url, '_blank'); }}
+                  className="text-gray-500 hover:text-[#87CEEB] transition-colors shrink-0"
+                >
+                  #{githubPR.number}
+                </a>
+              </>
+            )}
+          </div>
         )}
       </div>
     </div>
