@@ -381,6 +381,7 @@ export function TileContainer({
               isFocused={isFocused}
               pendingImages={pendingImages}
               onRemoveImage={handleRemoveImage}
+              dropUp={false}
             />
             </div>
           </div>

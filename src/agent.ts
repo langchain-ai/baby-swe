@@ -17,6 +17,8 @@ import TurndownService from "turndown";
 import { loadSettings } from "./storage";
 import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
 import { buildSystemPrompt } from "./prompts";
+import { createMiddleware } from "langchain";
+import { ToolMessage } from "@langchain/core/messages";
 
 const sessionControllers = new Map<string, AbortController>();
 const sessionModes = new Map<string, Mode>();
@@ -275,6 +277,25 @@ function createModel(modelConfig: ModelConfig, apiKeys?: ApiKeys): BaseChatModel
   });
 }
 
+// Middleware that catches tool call errors (e.g. schema validation failures) and
+// converts them into ToolMessages so the agent can self-correct instead of crashing.
+const toolErrorRecoveryMiddleware = createMiddleware({
+  name: "toolErrorRecoveryMiddleware",
+  wrapToolCall: async (request, next) => {
+    try {
+      return await next(request);
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      return new ToolMessage({
+        content: `Error invoking tool '${request.toolCall.name}' with kwargs ${JSON.stringify(request.toolCall.args)} with error: ${errorMessage} Please fix your mistakes.`,
+        tool_call_id: request.toolCall.id ?? "",
+        name: request.toolCall.name,
+        additional_kwargs: { tool_error: true },
+      });
+    }
+  },
+});
+
 function createAgent(rootDir?: string, modelConfig?: ModelConfig, apiKeys?: ApiKeys, githubPR?: GithubPR | null) {
   const modelCfg = modelConfig || { name: 'claude-sonnet-4-6', provider: 'anthropic', effort: 'default' };
   const model = createModel(modelCfg, apiKeys);
@@ -285,6 +306,7 @@ function createAgent(rootDir?: string, modelConfig?: ModelConfig, apiKeys?: ApiK
     model,
     systemPrompt,
     tools: rootDir ? [] : webTools,
+    middleware: [toolErrorRecoveryMiddleware],
   };
 
   if (rootDir) {
@@ -484,8 +506,17 @@ export function setupAgentIPC(mainWindow: BrowserWindow, getTileProject: (tileId
 
           if (typeof output === 'string') {
             outputStr = output;
+            // Tools that fail return plain error strings (e.g. FilesystemBackend ENOENT)
+            if (outputStr.startsWith('Error ')) {
+              errorStr = outputStr;
+            }
           } else if (output && typeof output === 'object') {
             // Handle LangChain ToolMessage object
+            const isToolError =
+              output.kwargs?.additional_kwargs?.tool_error === true ||
+              output.additional_kwargs?.tool_error === true ||
+              output.kwargs?.status === 'error' ||
+              output.status === 'error';
             if (output.kwargs?.content) {
               outputStr = String(output.kwargs.content);
             } else if (output.content) {
@@ -497,6 +528,9 @@ export function setupAgentIPC(mainWindow: BrowserWindow, getTileProject: (tileId
               outputStr = errorStr;
             } else {
               outputStr = JSON.stringify(output, null, 2);
+            }
+            if (isToolError || outputStr.startsWith('Error ')) {
+              errorStr = outputStr;
             }
           }
 

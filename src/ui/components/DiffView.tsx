@@ -1,8 +1,58 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
+import { getSingletonHighlighter, type ThemedToken } from 'shiki';
 import type { DiffData } from '../../types';
 
 interface DiffViewProps {
   diffData: DiffData;
+}
+
+// Map file extensions to shiki language IDs
+function getLanguageFromPath(filePath: string): string {
+  const ext = filePath.split('.').pop()?.toLowerCase() ?? '';
+  const map: Record<string, string> = {
+    ts: 'typescript', tsx: 'tsx', js: 'javascript', jsx: 'jsx',
+    py: 'python', rb: 'ruby', rs: 'rust', go: 'go', java: 'java',
+    kt: 'kotlin', swift: 'swift', c: 'c', cpp: 'cpp', cs: 'csharp',
+    html: 'html', css: 'css', scss: 'scss', json: 'json',
+    yaml: 'yaml', yml: 'yaml', toml: 'toml', md: 'markdown', mdx: 'mdx',
+    sh: 'bash', bash: 'bash', zsh: 'bash', fish: 'fish', sql: 'sql',
+    xml: 'xml', php: 'php', r: 'r', lua: 'lua', ex: 'elixir',
+    exs: 'elixir', elm: 'elm', clj: 'clojure', hs: 'haskell',
+    scala: 'scala', vue: 'vue', svelte: 'svelte', graphql: 'graphql',
+    tf: 'hcl', hcl: 'hcl', ini: 'ini',
+  };
+  const filename = filePath.split('/').pop()?.toLowerCase() ?? '';
+  if (filename === 'dockerfile') return 'dockerfile';
+  if (filename === 'makefile') return 'makefile';
+  return map[ext] ?? 'text';
+}
+
+// Highlighted line cache: maps "lang::lineText" -> ThemedToken[]
+type TokenCache = Map<string, ThemedToken[]>;
+
+// Renders a line of text as highlighted token spans, falling back to plain text
+function HighlightedLine({ tokens, fallback, isAdd, isRemove }: {
+  tokens: ThemedToken[] | null;
+  fallback: string;
+  isAdd: boolean;
+  isRemove: boolean;
+}) {
+  if (!tokens) {
+    return (
+      <span className={isAdd ? 'text-green-300' : isRemove ? 'text-red-300' : 'text-gray-400'}>
+        {fallback}
+      </span>
+    );
+  }
+  return (
+    <>
+      {tokens.map((token, i) => (
+        <span key={i} style={{ color: token.color }}>
+          {token.content}
+        </span>
+      ))}
+    </>
+  );
 }
 
 const CONTEXT_LINES = 3;
@@ -137,16 +187,11 @@ function filterToHunks(lines: DiffLineData[], contextLines: number = CONTEXT_LIN
 
 export function DiffView({ diffData }: DiffViewProps) {
   const [expanded, setExpanded] = useState(false);
+  const [tokenCache, setTokenCache] = useState<TokenCache | null>(null);
+  const highlightingRef = useRef(false);
 
   const { originalContent, newContent, filePath, isNewFile, isBinary } = diffData;
-
-  if (isBinary) {
-    return (
-      <div className="mt-2 text-gray-500 text-xs font-mono">
-        Binary file - diff not available
-      </div>
-    );
-  }
+  const language = getLanguageFromPath(filePath);
 
   const allDiffLines = useMemo(
     () => computeDiffLines(originalContent, newContent),
@@ -167,6 +212,49 @@ export function DiffView({ diffData }: DiffViewProps) {
     }
     return { additions, deletions };
   }, [allDiffLines]);
+
+  // Tokenize all visible lines for syntax highlighting
+  useEffect(() => {
+    if (language === 'text' || isBinary) return;
+    if (highlightingRef.current) return;
+    highlightingRef.current = true;
+
+    const linesToHighlight = hunkLines.filter(l => l.type !== 'separator');
+
+    getSingletonHighlighter({
+      themes: ['github-dark'],
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      langs: [language as any],
+    }).then(highlighter => {
+      const cache: TokenCache = new Map();
+      for (const line of linesToHighlight) {
+        const cacheKey = `${language}::${line.text}`;
+        if (cache.has(cacheKey)) continue;
+        try {
+          const result = highlighter.codeToTokens(line.text, {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            lang: language as any,
+            theme: 'github-dark',
+          });
+          cache.set(cacheKey, result.tokens[0] ?? []);
+        } catch {
+          // Skip lines that fail tokenization
+        }
+      }
+      setTokenCache(cache);
+      highlightingRef.current = false;
+    }).catch(() => {
+      highlightingRef.current = false;
+    });
+  }, [hunkLines, language, isBinary]);
+
+  if (isBinary) {
+    return (
+      <div className="mt-2 text-gray-500 text-xs font-mono">
+        Binary file - diff not available
+      </div>
+    );
+  }
 
   const displayLines = expanded ? hunkLines : hunkLines.slice(0, MAX_COLLAPSED_LINES);
   const hasMoreLines = hunkLines.length > MAX_COLLAPSED_LINES;
@@ -201,6 +289,8 @@ export function DiffView({ diffData }: DiffViewProps) {
 
           const isAdd = line.type === 'add';
           const isRemove = line.type === 'remove';
+          const cacheKey = `${language}::${line.text}`;
+          const tokens = tokenCache?.get(cacheKey) ?? null;
 
           return (
             <div
@@ -219,12 +309,7 @@ export function DiffView({ diffData }: DiffViewProps) {
               }`}>
                 {isAdd ? '+' : isRemove ? '-' : ' '}
               </span>
-              <span className={
-                isAdd ? 'text-green-300' :
-                isRemove ? 'text-red-300' : 'text-gray-400'
-              }>
-                {line.text}
-              </span>
+              <HighlightedLine tokens={tokens} fallback={line.text} isAdd={isAdd} isRemove={isRemove} />
             </div>
           );
         })}

@@ -24,9 +24,10 @@ interface PromptBarProps {
   isFocused: boolean;
   pendingImages?: ImageChunk[];
   onRemoveImage?: (index: number) => void;
+  dropUp?: boolean;
 }
 
-export const PromptBar = memo(function PromptBar({ onSubmit, busy, projectPath, gitBranch, githubPR, sessionId, isFocused, pendingImages, onRemoveImage }: PromptBarProps) {
+export const PromptBar = memo(function PromptBar({ onSubmit, busy, projectPath, gitBranch, githubPR, sessionId, isFocused, pendingImages, onRemoveImage, dropUp = true }: PromptBarProps) {
   const [query, setQuery] = useState('');
   const mode = useStore(state => state.sessions[sessionId]?.mode ?? 'agent');
   const { setSessionMode, modelConfig, setModelConfig } = useStore(useShallow(state => ({
@@ -38,6 +39,8 @@ export const PromptBar = memo(function PromptBar({ onSubmit, busy, projectPath, 
   const [commandSelectedIndex, setCommandSelectedIndex] = useState(0);
   const [fileSelectedIndex, setFileSelectedIndex] = useState(0);
   const [modelSelectedIndex, setModelSelectedIndex] = useState(0);
+  const [modeDropdownOpen, setModeDropdownOpen] = useState(false);
+  const modeDropdownRef = useRef<HTMLDivElement>(null);
   const [projectFiles, setProjectFiles] = useState<string[]>([]);
   const [cursorPosition, setCursorPosition] = useState(0);
 
@@ -97,6 +100,16 @@ export const PromptBar = memo(function PromptBar({ onSubmit, busy, projectPath, 
       setProjectFiles([]);
     }
   }, [projectPath]);
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (modeDropdownRef.current && !modeDropdownRef.current.contains(e.target as Node)) {
+        setModeDropdownOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
@@ -334,10 +347,29 @@ export const PromptBar = memo(function PromptBar({ onSubmit, busy, projectPath, 
       </div>
 
       <div className="mt-2 text-xs text-gray-600 flex items-center gap-1.5">
-        <span className="text-gray-500">▸▸</span>
-        <span className={mode === 'agent' ? 'text-[#87CEEB]' : mode === 'plan' ? 'text-purple-400' : 'text-red-500'}>
-          {mode}
-        </span>
+        <div ref={modeDropdownRef} className="relative">
+          <button
+            type="button"
+            onClick={() => setModeDropdownOpen(o => !o)}
+            className={`cursor-pointer hover:opacity-80 transition-opacity ${mode === 'agent' ? 'text-[#87CEEB]' : mode === 'plan' ? 'text-purple-400' : 'text-red-500'}`}
+          >
+            {mode}
+          </button>
+          {modeDropdownOpen && (
+            <div className={`absolute ${dropUp ? 'bottom-full mb-1' : 'top-full mt-1'} left-0 bg-gray-800 border border-gray-700 rounded shadow-lg overflow-hidden z-50`}>
+              {(['agent', 'plan', 'yolo'] as const).map(m => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => { setSessionMode(sessionId, m); setModeDropdownOpen(false); }}
+                  className={`block w-full text-left px-3 py-1.5 hover:bg-gray-700 transition-colors ${m === mode ? (m === 'agent' ? 'text-[#87CEEB]' : m === 'plan' ? 'text-purple-400' : 'text-red-500') : 'text-gray-400'}`}
+                >
+                  {m}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
         <span>·</span>
         <span className="text-gray-500">{MODELS[modelConfig.name] || modelConfig.name}</span>
         {projectPath && (

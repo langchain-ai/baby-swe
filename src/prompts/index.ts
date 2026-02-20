@@ -285,7 +285,7 @@ Reads a file from the local filesystem.
 Usage:
 - The file_path parameter must be an absolute path
 - By default, reads up to 2000 lines from the beginning
-- Can specify line offset and limit for long files
+- Can paginate large files using separate integer parameters: offset (line number to start from) and limit (number of lines to read). Do NOT pass arrays or ranges — these are always plain integers, e.g. offset=100, limit=50
 - Lines longer than 2000 characters will be truncated
 - Can read images (PNG, JPG, etc.) - contents are presented visually
 - Can read Jupyter notebooks (.ipynb files)
