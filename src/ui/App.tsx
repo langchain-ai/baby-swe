@@ -141,7 +141,13 @@ export function App() {
     // New agent tile: Cmd+T
     if (isMod && e.key === 't') {
       e.preventDefault();
-      createTile('auto', 'agent');
+      const state = useStore.getState();
+      const ws = state.workspaces[state.activeWorkspaceIndex];
+      const focusedProject = ws?.focusedTileId ? ws.tiles[ws.focusedTileId]?.project : null;
+      const newTileId = createTile('auto', 'agent');
+      if (focusedProject?.path) {
+        window.tile.openProject(newTileId, focusedProject.path);
+      }
       return;
     }
 
