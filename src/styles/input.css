@@ -6,6 +6,7 @@
 
 body {
   font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+  font-weight: 300;
 }
 
 * {

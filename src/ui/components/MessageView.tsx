@@ -201,8 +201,7 @@ function AgentMessage({
 
   if (groupedItems.length === 0 && isStreaming) {
     return (
-      <div className="flex items-start gap-2 my-1">
-        <span className="text-[#87CEEB] select-none">●</span>
+      <div className="my-1">
         <span className="text-gray-400">...</span>
       </div>
     );
@@ -228,15 +227,12 @@ function AgentMessage({
         const chunk = item as Chunk;
 
         return (
-          <div key={i} className="flex items-start gap-2">
-            <span className="text-[#87CEEB] select-none">●</span>
-            <div className="flex-1 min-w-0">
-              <ChunkRenderer
-                chunk={chunk}
-                projectPath={projectPath}
-                {...callbacks}
-              />
-            </div>
+          <div key={i} className="flex-1 min-w-0">
+            <ChunkRenderer
+              chunk={chunk}
+              projectPath={projectPath}
+              {...callbacks}
+            />
           </div>
         );
       })}

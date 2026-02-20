@@ -247,7 +247,7 @@ export function ToolExecution({
   }[status];
 
   const isFileOp = toolName === "write_file" || toolName === "edit_file";
-  const showDiff = isFileOp && diffData && status === "pending-approval";
+  const showDiff = isFileOp && diffData;
   const summary = getToolSummary(toolName, toolArgs || {}, output, status);
 
   const hasContent =
@@ -280,6 +280,8 @@ export function ToolExecution({
               </>
             ) : status === "running" ? (
               <span className="text-gray-500">Running...</span>
+            ) : showDiff ? (
+              <DiffView diffData={diffData!} />
             ) : (
               <span className="text-gray-500">{summary}</span>
             )}

@@ -82,8 +82,9 @@ function getItemLabel(tool: ToolExecutionChunk, projectPath?: string): string {
 
 export function ToolGroup({ groupType, tools, projectPath, onApprove, onReject, onAutoApprove }: ToolGroupProps) {
   const hasPendingApproval = tools.some(t => t.status === 'pending-approval');
+  const hasDiff = tools.some(t => t.diffData);
 
-  if (hasPendingApproval) {
+  if (hasPendingApproval || hasDiff) {
     return (
       <div className="space-y-0.5">
         {tools.map(tool => (
