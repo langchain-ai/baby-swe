@@ -22,7 +22,7 @@ export function Markdown({ content }: MarkdownProps) {
           h1: ({ children }) => <div className="text-gray-100 font-bold mt-3 mb-1">{children}</div>,
           h2: ({ children }) => <div className="text-gray-100 font-bold mt-3 mb-1">{children}</div>,
           h3: ({ children }) => <div className="text-gray-100 font-semibold mt-2 mb-1">{children}</div>,
-          p: ({ children }) => <div className="my-1">{children}</div>,
+          p: ({ children }) => <p className="my-1">{children}</p>,
           a: ({ href, children }) => (
             <a className="text-[#87CEEB] underline" href={href} target="_blank" rel="noreferrer">
               {children}
@@ -30,7 +30,7 @@ export function Markdown({ content }: MarkdownProps) {
           ),
           ul: ({ children }) => <div className="ml-4 my-1">{children}</div>,
           ol: ({ children }) => <div className="ml-4 my-1">{children}</div>,
-          li: ({ children }) => <div className="text-gray-200">• {children}</div>,
+          li: ({ children }) => <div className="text-gray-200 [&>p]:inline [&>p]:my-0">• {children}</div>,
           blockquote: ({ children }) => (
             <div className="border-l-2 border-gray-600 pl-3 my-2 text-gray-400">{children}</div>
           ),

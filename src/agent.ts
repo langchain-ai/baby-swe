@@ -1,4 +1,4 @@
-import { createDeepAgent } from "deepagents";
+import { createAgent as createReactAgent } from "langchain";
 import { LocalSandboxBackend } from "./backends/local-sandbox";
 import { ChatAnthropic } from "@langchain/anthropic";
 import { ChatOpenAI } from "@langchain/openai";
@@ -17,8 +17,6 @@ import TurndownService from "turndown";
 import { loadSettings } from "./storage";
 import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
 import { buildSystemPrompt } from "./prompts";
-import { createMiddleware } from "langchain";
-import { ToolMessage } from "@langchain/core/messages";
 
 const sessionControllers = new Map<string, AbortController>();
 const sessionModes = new Map<string, Mode>();
@@ -142,6 +140,154 @@ const httpRequestTool = tool(
 );
 
 const webTools = [webSearchTool, fetchUrlTool, httpRequestTool];
+
+function createBackendTools(backend: LocalSandboxBackend) {
+  const readFileTool = tool(
+    async ({ file_path, offset, limit }: { file_path: string; offset?: number; limit?: number }) => {
+      try {
+        return await backend.read(file_path, offset, limit);
+      } catch (err) {
+        return `Error reading file '${file_path}': ${(err as Error).message}`;
+      }
+    },
+    {
+      name: "read_file",
+      description: "Read a file's contents with line numbers. Returns formatted content with line numbers. Use offset and limit for large files.",
+      schema: z.object({
+        file_path: z.string().describe("The path to the file to read (absolute or relative to working directory)"),
+        offset: z.number().optional().describe("Line offset to start reading from (0-indexed)"),
+        limit: z.number().optional().describe("Maximum number of lines to read"),
+      }),
+    }
+  );
+
+  const writeFileTool = tool(
+    async ({ file_path, content }: { file_path: string; content: string }) => {
+      try {
+        const result = await backend.write(file_path, content);
+        if (result.error) return result.error;
+        return `File written successfully: ${result.path}`;
+      } catch (err) {
+        return `Error writing file '${file_path}': ${(err as Error).message}`;
+      }
+    },
+    {
+      name: "write_file",
+      description: "Create a new file with the given content. Will fail if the file already exists — use edit_file to modify existing files.",
+      schema: z.object({
+        file_path: z.string().describe("The path for the new file (absolute or relative to working directory)"),
+        content: z.string().describe("The content to write to the file"),
+      }),
+    }
+  );
+
+  const editFileTool = tool(
+    async ({ file_path, old_string, new_string, replace_all }: { file_path: string; old_string: string; new_string: string; replace_all?: boolean }) => {
+      try {
+        const result = await backend.edit(file_path, old_string, new_string, replace_all);
+        if (result.error) return result.error;
+        return `File edited successfully: ${result.path} (${result.occurrences} replacement${result.occurrences === 1 ? '' : 's'})`;
+      } catch (err) {
+        return `Error editing file '${file_path}': ${(err as Error).message}`;
+      }
+    },
+    {
+      name: "edit_file",
+      description: "Edit a file by replacing exact string matches. The old_string must match exactly (including whitespace). Use replace_all=true to replace all occurrences.",
+      schema: z.object({
+        file_path: z.string().describe("The path to the file to edit (absolute or relative to working directory)"),
+        old_string: z.string().describe("The exact string to find and replace"),
+        new_string: z.string().describe("The string to replace it with"),
+        replace_all: z.boolean().optional().describe("If true, replace all occurrences. Default: false (must be unique match)"),
+      }),
+    }
+  );
+
+  const executeTool = tool(
+    async ({ command }: { command: string }) => {
+      try {
+        const result = await backend.execute(command);
+        let output = result.output;
+        if (result.exitCode !== null && result.exitCode !== 0) {
+          output = `Exit code: ${result.exitCode}\n${output}`;
+        }
+        return output;
+      } catch (err) {
+        return `Error executing command: ${(err as Error).message}`;
+      }
+    },
+    {
+      name: "execute",
+      description: "Execute a shell command in the working directory. Returns combined stdout/stderr output. Commands have a 120 second timeout.",
+      schema: z.object({
+        command: z.string().describe("The shell command to execute"),
+      }),
+    }
+  );
+
+  const grepTool = tool(
+    async ({ pattern, path, glob }: { pattern: string; path?: string; glob?: string }) => {
+      try {
+        return await backend.grepRaw(pattern, path, glob);
+      } catch (err) {
+        return `Error searching: ${(err as Error).message}`;
+      }
+    },
+    {
+      name: "grep",
+      description: "Search for a literal text pattern in files. Uses ripgrep when available. Returns matching lines grouped by file.",
+      schema: z.object({
+        pattern: z.string().describe("The literal string pattern to search for"),
+        path: z.string().optional().describe("Directory or file path to search in (defaults to working directory)"),
+        glob: z.string().optional().describe("Glob pattern to filter which files to search (e.g., '*.ts', '*.py')"),
+      }),
+    }
+  );
+
+  const globTool = tool(
+    async ({ pattern, path: searchPath }: { pattern: string; path?: string }) => {
+      try {
+        const results = await backend.globInfo(pattern, searchPath);
+        if (results.length === 0) return `No files found matching pattern '${pattern}'`;
+        return results.map(f => `${f.path} (${f.size} bytes)`).join('\n');
+      } catch (err) {
+        return `Error searching: ${(err as Error).message}`;
+      }
+    },
+    {
+      name: "glob",
+      description: "Find files matching a glob pattern. Returns file paths with sizes.",
+      schema: z.object({
+        pattern: z.string().describe("The glob pattern (e.g., '**/*.ts', 'src/**/*.js')"),
+        path: z.string().optional().describe("Base directory for the search (defaults to working directory)"),
+      }),
+    }
+  );
+
+  const lsTool = tool(
+    async ({ path: dirPath }: { path: string }) => {
+      try {
+        const results = await backend.lsInfo(dirPath);
+        if (results.length === 0) return `Directory '${dirPath}' is empty or does not exist`;
+        return results.map(f => {
+          const name = f.is_dir ? `${f.path}` : `${f.path} (${f.size} bytes)`;
+          return name;
+        }).join('\n');
+      } catch (err) {
+        return `Error listing directory: ${(err as Error).message}`;
+      }
+    },
+    {
+      name: "ls",
+      description: "List files and directories in the specified directory (non-recursive).",
+      schema: z.object({
+        path: z.string().describe("The directory path to list"),
+      }),
+    }
+  );
+
+  return [readFileTool, writeFileTool, editFileTool, executeTool, grepTool, globTool, lsTool];
+}
 
 function isBinaryFile(filePath: string): boolean {
   const ext = path.extname(filePath).toLowerCase();
@@ -277,43 +423,24 @@ function createModel(modelConfig: ModelConfig, apiKeys?: ApiKeys): BaseChatModel
   });
 }
 
-// Middleware that catches tool call errors (e.g. schema validation failures) and
-// converts them into ToolMessages so the agent can self-correct instead of crashing.
-const toolErrorRecoveryMiddleware = createMiddleware({
-  name: "toolErrorRecoveryMiddleware",
-  wrapToolCall: async (request, next) => {
-    try {
-      return await next(request);
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : String(err);
-      return new ToolMessage({
-        content: `Error invoking tool '${request.toolCall.name}' with kwargs ${JSON.stringify(request.toolCall.args)} with error: ${errorMessage} Please fix your mistakes.`,
-        tool_call_id: request.toolCall.id ?? "",
-        name: request.toolCall.name,
-        additional_kwargs: { tool_error: true },
-      });
-    }
-  },
-});
-
 function createAgent(rootDir?: string, modelConfig?: ModelConfig, apiKeys?: ApiKeys, githubPR?: GithubPR | null) {
   const modelCfg = modelConfig || { name: 'claude-sonnet-4-6', provider: 'anthropic', effort: 'default' };
   const model = createModel(modelCfg, apiKeys);
   const agentMemory = rootDir ? loadAgentMemory(rootDir) || undefined : undefined;
   const systemPrompt = buildSystemPrompt(rootDir, agentMemory, githubPR);
 
-  const config: Parameters<typeof createDeepAgent>[0] = {
-    model,
-    systemPrompt,
-    tools: rootDir ? [] : webTools,
-    middleware: [toolErrorRecoveryMiddleware as any],
-  };
-
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let tools: any[] = [...webTools];
   if (rootDir) {
-    config!.backend = () => new LocalSandboxBackend({ rootDir });
+    const backend = new LocalSandboxBackend({ rootDir });
+    tools = [...createBackendTools(backend), ...webTools];
   }
 
-  return createDeepAgent(config);
+  return createReactAgent({
+    model,
+    tools,
+    systemPrompt,
+  });
 }
 
 export interface AgentResponse {
