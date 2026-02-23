@@ -327,6 +327,18 @@ export interface AgentResponse {
   }>;
 }
 
+const STREAM_INACTIVITY_TIMEOUT = 60_000;
+
+function safeSend(webContents: Electron.WebContents, channel: string, ...args: unknown[]): void {
+  try {
+    if (!webContents.isDestroyed()) {
+      webContents.send(channel, ...args);
+    }
+  } catch {
+    // Window destroyed or IPC unavailable
+  }
+}
+
 export function setupAgentIPC(mainWindow: BrowserWindow, getTileProject: (tileId: string) => string | null, getTileProjectData?: (tileId: string) => Project | null) {
   ipcMain.handle("agent:invoke", async (_event, userMessage: string): Promise<AgentResponse> => {
     try {
@@ -365,6 +377,27 @@ export function setupAgentIPC(mainWindow: BrowserWindow, getTileProject: (tileId
     sessionModes.set(sessionId, mode);
 
     const toolTimers = new Map<string, number>();
+    let sentFinalEvent = false;
+    let inactivityTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const send = (data: Record<string, unknown>) => {
+      safeSend(mainWindow.webContents, 'agent:stream-event', data);
+    };
+
+    const sendFinal = (data: Record<string, unknown>) => {
+      if (sentFinalEvent) return;
+      sentFinalEvent = true;
+      send(data);
+    };
+
+    const resetInactivityTimer = () => {
+      if (inactivityTimer) clearTimeout(inactivityTimer);
+      inactivityTimer = setTimeout(() => {
+        console.error(`[agent:stream] Inactivity timeout for session ${sessionId}`);
+        controller.abort();
+        sendFinal({ type: 'error', sessionId, error: 'Stream timed out — no activity for 60s' });
+      }, STREAM_INACTIVITY_TIMEOUT);
+    };
 
     try {
       const folder = getTileProject(tileId);
@@ -381,8 +414,11 @@ export function setupAgentIPC(mainWindow: BrowserWindow, getTileProject: (tileId
         { version: "v2", signal: controller.signal, recursionLimit: 10000, configurable: { rootDir: folder } }
       );
 
+      resetInactivityTimer();
+
       for await (const event of stream) {
         if (controller.signal.aborted) break;
+        resetInactivityTimer();
 
         if (event.event === "on_chat_model_stream") {
           const chunk = event.data?.chunk;
@@ -399,11 +435,7 @@ export function setupAgentIPC(mainWindow: BrowserWindow, getTileProject: (tileId
             }
 
             if (token) {
-              mainWindow.webContents.send('agent:stream-event', {
-                type: 'token',
-                sessionId,
-                token,
-              });
+              send({ type: 'token', sessionId, token });
             }
           }
         }
@@ -412,7 +444,7 @@ export function setupAgentIPC(mainWindow: BrowserWindow, getTileProject: (tileId
           const message = event.data?.output;
           if (message?.usage_metadata) {
             const { input_tokens, output_tokens } = message.usage_metadata;
-            mainWindow.webContents.send('agent:stream-event', {
+            send({
               type: 'token-usage',
               sessionId,
               inputTokens: input_tokens || 0,
@@ -445,7 +477,7 @@ export function setupAgentIPC(mainWindow: BrowserWindow, getTileProject: (tileId
             diffData = computeDiffData(toolName, toolArgs, folder);
           }
 
-          mainWindow.webContents.send('agent:stream-event', {
+          send({
             type: 'tool-start',
             sessionId,
             toolCallId,
@@ -456,7 +488,7 @@ export function setupAgentIPC(mainWindow: BrowserWindow, getTileProject: (tileId
           });
 
           if (toolName === 'write_todos' && toolArgs.todos) {
-            mainWindow.webContents.send('agent:stream-event', {
+            send({
               type: 'todo-update',
               sessionId,
               todos: toolArgs.todos as TodoItem[],
@@ -464,12 +496,16 @@ export function setupAgentIPC(mainWindow: BrowserWindow, getTileProject: (tileId
           }
 
           if (requiresApproval && approvalRequestId) {
+            if (inactivityTimer) clearTimeout(inactivityTimer);
+
             const decision = await new Promise<ApprovalDecision>((resolve) => {
               pendingApprovals.set(approvalRequestId, { resolve });
             });
 
+            resetInactivityTimer();
+
             if (decision === 'reject') {
-              mainWindow.webContents.send('agent:stream-event', {
+              send({
                 type: 'tool-end',
                 sessionId,
                 toolCallId,
@@ -477,15 +513,12 @@ export function setupAgentIPC(mainWindow: BrowserWindow, getTileProject: (tileId
                 error: 'skipped',
                 elapsedMs: 0,
               });
-              mainWindow.webContents.send('agent:stream-event', {
-                type: 'done',
-                sessionId,
-              });
+              sendFinal({ type: 'done', sessionId });
               controller.abort();
               return;
             }
 
-            mainWindow.webContents.send('agent:stream-event', {
+            send({
               type: 'tool-status-update',
               sessionId,
               toolCallId,
@@ -506,12 +539,10 @@ export function setupAgentIPC(mainWindow: BrowserWindow, getTileProject: (tileId
 
           if (typeof output === 'string') {
             outputStr = output;
-            // Tools that fail return plain error strings (e.g. FilesystemBackend ENOENT)
             if (outputStr.startsWith('Error ')) {
               errorStr = outputStr;
             }
           } else if (output && typeof output === 'object') {
-            // Handle LangChain ToolMessage object
             const isToolError =
               output.kwargs?.additional_kwargs?.tool_error === true ||
               output.additional_kwargs?.tool_error === true ||
@@ -534,7 +565,7 @@ export function setupAgentIPC(mainWindow: BrowserWindow, getTileProject: (tileId
             }
           }
 
-          mainWindow.webContents.send('agent:stream-event', {
+          send({
             type: 'tool-end',
             sessionId,
             toolCallId,
@@ -547,21 +578,14 @@ export function setupAgentIPC(mainWindow: BrowserWindow, getTileProject: (tileId
 
       if (!controller.signal.aborted) {
         console.log(`[agent:stream] Stream completed for session ${sessionId}`);
-        mainWindow.webContents.send('agent:stream-event', {
-          type: 'done',
-          sessionId,
-        });
+        sendFinal({ type: 'done', sessionId });
       }
     } catch (error) {
       console.error(`[agent:stream] Error for session ${sessionId}:`, error);
-      if (!controller.signal.aborted) {
-        mainWindow.webContents.send('agent:stream-event', {
-          type: 'error',
-          sessionId,
-          error: error instanceof Error ? error.message : 'Unknown error',
-        });
-      }
+      sendFinal({ type: 'error', sessionId, error: error instanceof Error ? error.message : 'Unknown error' });
     } finally {
+      if (inactivityTimer) clearTimeout(inactivityTimer);
+      sendFinal({ type: 'done', sessionId });
       if (sessionControllers.get(sessionId) === controller) {
         sessionControllers.delete(sessionId);
       }
