@@ -15,7 +15,7 @@ export function HeaderBar({ compact }: HeaderBarProps) {
   }
 
   return (
-    <div className="flex items-start gap-4 px-4 py-3 font-mono">
+    <div className="flex items-start gap-4 px-4 py-3 font-mono text-sm">
       <pre className="text-[#e07a5f] leading-none text-xs">
 {` ╭───╮
  │ ◠ │

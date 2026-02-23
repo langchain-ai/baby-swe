@@ -55,7 +55,7 @@ function SubagentItem({
   const hasContent = task.status === 'pending-approval' || task.status === 'running' || (task.status === 'success' && task.output);
 
   return (
-    <div className="font-mono">
+    <div className="font-mono text-sm">
       <div className="flex items-center gap-2">
         {statusIcon}
         <span className="text-[#87CEEB]">{subagentType}</span>
@@ -118,7 +118,7 @@ export function SubagentGroup({ tasks, onApprove, onReject }: SubagentGroupProps
   if (errorCount > 0) statusParts.push(`${errorCount} failed`);
 
   return (
-    <div className="my-2 font-mono">
+    <div className="my-2 font-mono text-sm">
       <div
         className="flex items-center gap-2 cursor-pointer select-none"
         onClick={() => setExpanded(!expanded)}

@@ -210,7 +210,7 @@ function AgentMessage({
   }
 
   return (
-    <div className="my-1 space-y-0.5">
+    <div className="my-2 space-y-1">
       {groupedItems.map((item, i) => {
         if ("type" in item && item.type === "tool-group") {
           return (
@@ -303,7 +303,7 @@ export const MessageView = memo(function MessageView({
   return (
     <div
       ref={scrollRef}
-      className="flex-1 min-h-0 min-w-0 overflow-y-auto px-4 py-4 leading-normal"
+      className="flex-1 min-h-0 min-w-0 overflow-y-auto px-4 py-4 text-sm leading-relaxed"
     >
       {showHeader && <div className="flex justify-start pb-4"><Logo /></div>}
       {messages.map((message, index) => (
