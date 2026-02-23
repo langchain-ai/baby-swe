@@ -118,7 +118,7 @@ export const ToolGroup = memo(function ToolGroup({ groupType, tools, projectPath
   const hiddenCount = tools.length - visibleTools.length;
 
   return (
-    <div className="my-1 font-mono text-sm">
+    <div className="my-1 font-mono">
       <div className="flex items-center gap-2">
         {statusIcon}
         <span className="text-gray-300">{summary}</span>
