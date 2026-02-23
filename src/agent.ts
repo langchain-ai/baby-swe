@@ -306,11 +306,11 @@ function createAgent(rootDir?: string, modelConfig?: ModelConfig, apiKeys?: ApiK
     model,
     systemPrompt,
     tools: rootDir ? [] : webTools,
-    middleware: [toolErrorRecoveryMiddleware],
+    middleware: [toolErrorRecoveryMiddleware as any],
   };
 
   if (rootDir) {
-    config.backend = () => new LocalSandboxBackend({ rootDir });
+    config!.backend = () => new LocalSandboxBackend({ rootDir });
   }
 
   return createDeepAgent(config);
@@ -484,6 +484,15 @@ export function setupAgentIPC(mainWindow: BrowserWindow, getTileProject: (tileId
           if (requiresApproval && approvalRequestId) {
             const decision = await new Promise<ApprovalDecision>((resolve) => {
               pendingApprovals.set(approvalRequestId, { resolve });
+              const onAbort = () => {
+                resolve('reject');
+                pendingApprovals.delete(approvalRequestId);
+              };
+              if (controller.signal.aborted) {
+                onAbort();
+              } else {
+                controller.signal.addEventListener('abort', onAbort, { once: true });
+              }
             });
 
             if (decision === 'reject') {
@@ -570,6 +579,7 @@ export function setupAgentIPC(mainWindow: BrowserWindow, getTileProject: (tileId
       if (sessionControllers.get(sessionId) === controller) {
         sessionControllers.delete(sessionId);
       }
+      sessionModes.delete(sessionId);
     }
   });
 

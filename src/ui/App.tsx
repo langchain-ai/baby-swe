@@ -154,18 +154,15 @@ export function App() {
     // Close tile: Cmd+W
     if (isMod && e.key === 'w') {
       e.preventDefault();
-      // Read fresh state at event time to avoid depending on sessions in the closure
       const state = useStore.getState();
       const ws = state.workspaces[state.activeWorkspaceIndex];
       const fTileId = ws?.focusedTileId;
       if (fTileId) {
         const tile = ws.tiles[fTileId];
         if (tile) {
-          const session = state.sessions[tile.sessionId];
-          if (session?.isStreaming) {
-            window.agent.cancel(session.id);
-          }
+          window.agent.cancel(tile.sessionId);
         }
+        window.tile.closeProject(fTileId);
         closeTile(fTileId);
       }
       return;
