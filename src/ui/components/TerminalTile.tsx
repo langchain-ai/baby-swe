@@ -96,8 +96,17 @@ export const TerminalTile = memo(function TerminalTile({
 
     const { term, fitAddon } = instance;
 
+    let lastCols = term.cols;
+    let lastRows = term.rows;
+
     const fitAndResize = () => {
       if (disposed || !containerRef.current) return;
+
+      // Skip when container is hidden (display: none) – zero-size fit()
+      // would reset the terminal viewport scroll position.
+      const rect = containerRef.current.getBoundingClientRect();
+      if (rect.width === 0 || rect.height === 0) return;
+
       fitAddon.fit();
 
       const termEl = term.element;
@@ -116,7 +125,12 @@ export const TerminalTile = memo(function TerminalTile({
         }
       }
 
-      window.terminal.resize(tileId, term.cols, term.rows);
+      // Only notify the backend if dimensions actually changed
+      if (term.cols !== lastCols || term.rows !== lastRows) {
+        lastCols = term.cols;
+        lastRows = term.rows;
+        window.terminal.resize(tileId, term.cols, term.rows);
+      }
     };
 
     const scheduleFitAndResize = () => {
