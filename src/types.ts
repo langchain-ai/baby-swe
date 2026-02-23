@@ -136,6 +136,8 @@ export type ChunkKind = 'text' | 'code' | 'error' | 'list' | 'tool-execution' | 
 
 export type TodoStatus = 'pending' | 'in_progress' | 'completed';
 
+export type AgentStatus = 'idle' | 'running' | 'finished' | 'interrupted' | 'error';
+
 export interface TodoItem {
   content: string;
   status: TodoStatus;
@@ -237,6 +239,7 @@ export interface Session {
   pendingApprovals: Record<string, ApprovalRequest>;
   todos: TodoItem[];
   mode: Mode;
+  agentStatus: AgentStatus;
 }
 
 export interface ToolStartEvent {

@@ -203,7 +203,7 @@ function AgentMessage({
 
   if (groupedItems.length === 0 && isStreaming) {
     return (
-      <div className="my-1">
+      <div className="mt-4 my-1">
         <span className="text-gray-400">...</span>
       </div>
     );

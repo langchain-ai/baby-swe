@@ -90,6 +90,7 @@ export function TileContainer({
     addMessageToSession: state.addMessageToSession,
     startStreaming: state.startStreaming,
     finalizeStream: state.finalizeStream,
+    abortStream: state.abortStream,
     setAutoApproveSession: state.setAutoApproveSession,
     setModelConfig: state.setModelConfig,
     setShowApiKeysScreen: state.setShowApiKeysScreen,
@@ -104,6 +105,7 @@ export function TileContainer({
     addMessageToSession,
     startStreaming,
     finalizeStream,
+    abortStream,
     setAutoApproveSession,
     setModelConfig,
     setShowApiKeysScreen,
@@ -260,7 +262,7 @@ export function TileContainer({
 
       if (session.isStreaming || session.busy) {
         window.agent.cancel(session.id);
-        finalizeStream(session.id);
+        abortStream(session.id);
       }
 
       const freshSession = useStore.getState().sessions[session.id];
@@ -307,7 +309,7 @@ export function TileContainer({
       pendingImages,
       addMessageToSession,
       startStreaming,
-      finalizeStream,
+      abortStream,
       createSession,
       clearSession,
       tokenUsage,

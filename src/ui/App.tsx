@@ -189,12 +189,13 @@ export function App() {
           if (session?.isStreaming || session?.busy) {
             e.preventDefault();
             window.agent.cancel(session.id);
+            abortStream(session.id);
           }
         }
       }
       return;
     }
-  }, [createTile, closeTile, navigateTile, switchWorkspace, switchWorkspaceRelative]);
+  }, [createTile, closeTile, navigateTile, switchWorkspace, switchWorkspaceRelative, abortStream]);
 
   useEffect(() => {
     document.addEventListener('keydown', handleKeyDown);

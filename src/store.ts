@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { v4 as uuidv4 } from 'uuid';
-import type { Message, Chunk, Mode, ModelConfig, ToolStatus, Thread, Session, Project, ApprovalRequest, DiffData, TodoItem, Tile, LayoutNode, SplitDirection, TileType, Workspace, ApiKeys, FileViewerData } from './types';
+import type { Message, Chunk, Mode, ModelConfig, ToolStatus, Thread, Session, Project, ApprovalRequest, DiffData, TodoItem, Tile, LayoutNode, SplitDirection, TileType, Workspace, ApiKeys, FileViewerData, AgentStatus } from './types';
 import { loadSettings, saveSettings, loadRecentProjects } from './persistence';
 import { createInitialLayout, splitTile, removeTile, getTileIds, getSmartDirection, findAdjacentTile, getTileDimensions } from './layout-utils';
 
@@ -146,7 +146,26 @@ export const useStore = create<AppState>((set, get) => ({
 
   switchWorkspace: (index) => {
     if (index >= 0 && index < NUM_WORKSPACES) {
-      set({ activeWorkspaceIndex: index });
+      const { workspaces, sessions } = get();
+      const workspace = workspaces[index];
+      const updatedSessions = { ...sessions };
+      let changed = false;
+
+      for (const tile of Object.values(workspace.tiles)) {
+        if (tile.type !== 'agent') continue;
+        const session = updatedSessions[tile.sessionId];
+        if (!session) continue;
+        const s = session.agentStatus;
+        if (s === 'finished' || s === 'interrupted' || s === 'error') {
+          updatedSessions[tile.sessionId] = { ...session, agentStatus: 'idle' };
+          changed = true;
+        }
+      }
+
+      set({
+        activeWorkspaceIndex: index,
+        ...(changed ? { sessions: updatedSessions } : {}),
+      });
     }
   },
 
@@ -178,6 +197,7 @@ export const useStore = create<AppState>((set, get) => ({
       pendingApprovals: {},
       todos: [],
       mode: 'agent',
+      agentStatus: 'idle',
     };
 
     const tile: Tile = {
@@ -396,6 +416,7 @@ export const useStore = create<AppState>((set, get) => ({
       pendingApprovals: {},
       todos: [],
       mode: 'agent',
+      agentStatus: 'idle',
     };
     set((state) => {
       const workspace = state.workspaces[state.activeWorkspaceIndex];
@@ -435,6 +456,7 @@ export const useStore = create<AppState>((set, get) => ({
             autoApproveSession: false,
             pendingApprovals: {},
             todos: [],
+            agentStatus: 'idle',
           },
         },
         tokenUsage: { input: 0, output: 0, total: 0 },
@@ -549,6 +571,7 @@ export const useStore = create<AppState>((set, get) => ({
             isStreaming: true,
             busy: true,
             updatedAt: Date.now(),
+            agentStatus: 'running',
           },
         },
       };
@@ -652,12 +675,18 @@ export const useStore = create<AppState>((set, get) => ({
       const session = state.sessions[sessionId];
       if (!session || !session.streamingMessageId) return state;
 
+      // Don't overwrite interrupted/error status from abortStream
+      const agentStatus = (session.agentStatus === 'interrupted' || session.agentStatus === 'error')
+        ? session.agentStatus
+        : 'finished';
+
       const updatedSession: Session = {
         ...session,
         streamingMessageId: null,
         isStreaming: false,
         busy: false,
         updatedAt: Date.now(),
+        agentStatus,
       };
 
       return {
@@ -691,6 +720,7 @@ export const useStore = create<AppState>((set, get) => ({
         isStreaming: false,
         busy: false,
         updatedAt: Date.now(),
+        agentStatus: error ? 'error' : 'interrupted',
       };
 
       return {

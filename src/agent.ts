@@ -575,7 +575,9 @@ export function setupAgentIPC(mainWindow: BrowserWindow, getTileProject: (tileId
       console.error(`[agent:stream] Error for session ${sessionId}:`, error);
       sendFinal({ type: 'error', sessionId, error: error instanceof Error ? error.message : 'Unknown error' });
     } finally {
-      sendFinal({ type: 'done', sessionId });
+      if (!controller.signal.aborted) {
+        sendFinal({ type: 'done', sessionId });
+      }
       if (sessionControllers.get(sessionId) === controller) {
         sessionControllers.delete(sessionId);
       }
