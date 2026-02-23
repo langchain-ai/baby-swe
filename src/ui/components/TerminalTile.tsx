@@ -1,6 +1,7 @@
 import { memo, useLayoutEffect, useRef } from "react";
 import { Terminal } from "xterm";
 import { FitAddon } from "@xterm/addon-fit";
+import { useStore } from "../../store";
 
 interface TerminalTileProps {
   tileId: string;
@@ -129,7 +130,14 @@ export const TerminalTile = memo(function TerminalTile({
       if (rafId !== null) cancelAnimationFrame(rafId);
       resizeObserver.disconnect();
       unsubscribe();
-      window.terminal.destroy(tileId);
+      // Only destroy the pty process if the tile has actually been closed.
+      // If the component is unmounting due to a layout restructure (e.g. split),
+      // the tile still exists in the store and we should keep the pty alive.
+      const ws = useStore.getState().workspaces;
+      const tileStillExists = ws.some((w) => !!w.tiles[tileId]);
+      if (!tileStillExists) {
+        window.terminal.destroy(tileId);
+      }
       term.dispose();
     };
   }, [tileId, cwd]);

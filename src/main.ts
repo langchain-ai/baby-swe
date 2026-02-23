@@ -248,6 +248,8 @@ function createMenu(): void {
 
 function setupTerminalIPC(): void {
   ipcMain.on('terminal:create', (_event, id: string, cwd?: string) => {
+    if (terminals.has(id)) return;
+
     const shell = process.platform === 'win32' ? 'powershell.exe' : process.env.SHELL || '/bin/zsh';
     const term = pty.spawn(shell, [], {
       name: 'xterm-256color',

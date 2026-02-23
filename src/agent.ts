@@ -327,7 +327,6 @@ export interface AgentResponse {
   }>;
 }
 
-const STREAM_INACTIVITY_TIMEOUT = 60_000;
 
 function safeSend(webContents: Electron.WebContents, channel: string, ...args: unknown[]): void {
   try {
@@ -378,7 +377,6 @@ export function setupAgentIPC(mainWindow: BrowserWindow, getTileProject: (tileId
 
     const toolTimers = new Map<string, number>();
     let sentFinalEvent = false;
-    let inactivityTimer: ReturnType<typeof setTimeout> | null = null;
 
     const send = (data: Record<string, unknown>) => {
       safeSend(mainWindow.webContents, 'agent:stream-event', data);
@@ -388,15 +386,6 @@ export function setupAgentIPC(mainWindow: BrowserWindow, getTileProject: (tileId
       if (sentFinalEvent) return;
       sentFinalEvent = true;
       send(data);
-    };
-
-    const resetInactivityTimer = () => {
-      if (inactivityTimer) clearTimeout(inactivityTimer);
-      inactivityTimer = setTimeout(() => {
-        console.error(`[agent:stream] Inactivity timeout for session ${sessionId}`);
-        controller.abort();
-        sendFinal({ type: 'error', sessionId, error: 'Stream timed out — no activity for 60s' });
-      }, STREAM_INACTIVITY_TIMEOUT);
     };
 
     try {
@@ -414,11 +403,8 @@ export function setupAgentIPC(mainWindow: BrowserWindow, getTileProject: (tileId
         { version: "v2", signal: controller.signal, recursionLimit: 10000, configurable: { rootDir: folder } }
       );
 
-      resetInactivityTimer();
-
       for await (const event of stream) {
         if (controller.signal.aborted) break;
-        resetInactivityTimer();
 
         if (event.event === "on_chat_model_stream") {
           const chunk = event.data?.chunk;
@@ -496,13 +482,9 @@ export function setupAgentIPC(mainWindow: BrowserWindow, getTileProject: (tileId
           }
 
           if (requiresApproval && approvalRequestId) {
-            if (inactivityTimer) clearTimeout(inactivityTimer);
-
             const decision = await new Promise<ApprovalDecision>((resolve) => {
               pendingApprovals.set(approvalRequestId, { resolve });
             });
-
-            resetInactivityTimer();
 
             if (decision === 'reject') {
               send({
@@ -584,7 +566,6 @@ export function setupAgentIPC(mainWindow: BrowserWindow, getTileProject: (tileId
       console.error(`[agent:stream] Error for session ${sessionId}:`, error);
       sendFinal({ type: 'error', sessionId, error: error instanceof Error ? error.message : 'Unknown error' });
     } finally {
-      if (inactivityTimer) clearTimeout(inactivityTimer);
       sendFinal({ type: 'done', sessionId });
       if (sessionControllers.get(sessionId) === controller) {
         sessionControllers.delete(sessionId);
