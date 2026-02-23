@@ -3,3 +3,6 @@ dist/
 .DS_Store
 .env
 release/
+pnpm-lock.yaml
+yarn.lock
+package-lock.json
