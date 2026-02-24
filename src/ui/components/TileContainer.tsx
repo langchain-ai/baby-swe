@@ -459,28 +459,36 @@ export function TileContainer({
         showHeader
         project={tile.project}
       />
-      <div className="px-4 pt-2 shrink-0">
-        {session.isCompacting ? <CompactingIndicator /> : <BinarySpinner isStreaming={session.isStreaming} />}
-      </div>
-      {session.todos && session.todos.length > 0 && (
-        <div className="px-4 shrink-0">
-          <TodoList todos={session.todos} />
+      {session.isCompacting ? (
+        <div className="px-4 py-4 shrink-0">
+          <CompactingIndicator />
         </div>
+      ) : (
+        <>
+          <div className="px-4 pt-2 shrink-0">
+            <BinarySpinner isStreaming={session.isStreaming} />
+          </div>
+          {session.todos && session.todos.length > 0 && (
+            <div className="px-4 shrink-0">
+              <TodoList todos={session.todos} />
+            </div>
+          )}
+          <div className="px-4 pb-4 shrink-0">
+            <PromptBar
+              onSubmit={handleSubmit}
+              busy={session.busy}
+              projectPath={tile.project.path}
+              gitBranch={tile.project.gitBranch}
+              githubPR={tile.project.githubPR}
+              sessionId={tile.sessionId}
+              isFocused={isFocused}
+              pendingImages={pendingImages}
+              onRemoveImage={handleRemoveImage}
+              onChangeDirectory={handleOpenFolder}
+            />
+          </div>
+        </>
       )}
-      <div className="px-4 pb-4 shrink-0">
-        <PromptBar
-          onSubmit={handleSubmit}
-          busy={session.busy}
-          projectPath={tile.project.path}
-          gitBranch={tile.project.gitBranch}
-          githubPR={tile.project.githubPR}
-          sessionId={tile.sessionId}
-          isFocused={isFocused}
-          pendingImages={pendingImages}
-          onRemoveImage={handleRemoveImage}
-          onChangeDirectory={handleOpenFolder}
-        />
-      </div>
       {showThreadPicker && tile.project && (
         <ThreadPicker
           projectId={tile.project.id}
