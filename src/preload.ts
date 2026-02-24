@@ -78,4 +78,6 @@ contextBridge.exposeInMainWorld('git', {
   getPR: (projectPath: string) => ipcRenderer.invoke('git:getPR', projectPath),
   diffFile: (projectPath: string, filePath: string) =>
     ipcRenderer.invoke('git:diffFile', projectPath, filePath),
+  status: (projectPath: string) =>
+    ipcRenderer.invoke('git:status', projectPath),
 });

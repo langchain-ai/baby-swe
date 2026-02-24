@@ -51,5 +51,7 @@ interface Window {
     switchBranch: (projectPath: string, branchName: string) => Promise<unknown>;
     createBranch: (projectPath: string, branchName: string) => Promise<unknown>;
     getPR: (projectPath: string) => Promise<import('./types').GithubPR | null>;
+    diffFile: (projectPath: string, filePath: string) => Promise<{ original: string; modified: string } | null>;
+    status: (projectPath: string) => Promise<import('./types').GitStatusEntry[]>;
   };
 }

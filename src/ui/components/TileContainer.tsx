@@ -7,6 +7,7 @@ import { TodoList } from "./TodoList";
 import { Logo } from "./Logo";
 import { TerminalTile } from "./TerminalTile";
 import { FileViewerTile } from "./FileViewerTile";
+import { SourceControlTile } from "./SourceControlTile";
 import { ThreadPicker } from "./ThreadPicker";
 import { executeCommand } from "../../commands";
 import type { Message, ChatMessage, ChatMessageContentBlock, Project, ImageChunk, Thread } from "../../types";
@@ -327,6 +328,17 @@ export function TileContainer({
     );
   }
 
+  if (tile.type === "source-control") {
+    return (
+      <SourceControlTile
+        tileId={tileId}
+        projectPath={tile.project?.path}
+        isFocused={isFocused}
+        onFocus={onFocus}
+      />
+    );
+  }
+
   if (tile.type === "terminal") {
     return (
       <TerminalTile
@@ -438,7 +450,7 @@ export function TileContainer({
         showHeader
         project={tile.project}
       />
-      <div className="px-4 shrink-0">
+      <div className="px-4 pt-2 shrink-0">
         <BinarySpinner isStreaming={session.isStreaming} />
       </div>
       {session.todos && session.todos.length > 0 && (

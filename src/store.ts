@@ -359,6 +359,7 @@ export const useStore = create<AppState>((set, get) => ({
       pendingApprovals: {},
       todos: [],
       mode: 'agent',
+      agentStatus: 'idle',
     };
 
     const tile: Tile = {

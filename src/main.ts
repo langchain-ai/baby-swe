@@ -103,6 +103,46 @@ function createGitBranch(projectPath: string, branchName: string): { success: bo
   }
 }
 
+export interface GitStatusEntry {
+  path: string;
+  status: 'modified' | 'added' | 'deleted' | 'renamed' | 'untracked' | 'staged-modified' | 'staged-added' | 'staged-deleted' | 'staged-renamed';
+  staged: boolean;
+}
+
+function getGitStatus(projectPath: string): GitStatusEntry[] {
+  try {
+    const result = execSync('git status --porcelain=v1', {
+      cwd: projectPath,
+      encoding: 'utf-8',
+      timeout: 5000,
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+    const lines = result.trim().split('\n').filter(Boolean);
+    const entries: GitStatusEntry[] = [];
+
+    for (const line of lines) {
+      const index = line[0];   // staged status
+      const worktree = line[1]; // working tree status
+      const filePath = line.slice(3).trim();
+
+      // Staged changes
+      if (index === 'M') entries.push({ path: filePath, status: 'staged-modified', staged: true });
+      else if (index === 'A') entries.push({ path: filePath, status: 'staged-added', staged: true });
+      else if (index === 'D') entries.push({ path: filePath, status: 'staged-deleted', staged: true });
+      else if (index === 'R') entries.push({ path: filePath, status: 'staged-renamed', staged: true });
+
+      // Working tree changes
+      if (worktree === 'M') entries.push({ path: filePath, status: 'modified', staged: false });
+      else if (worktree === 'D') entries.push({ path: filePath, status: 'deleted', staged: false });
+      else if (worktree === '?' && index === '?') entries.push({ path: filePath, status: 'untracked', staged: false });
+    }
+
+    return entries;
+  } catch {
+    return [];
+  }
+}
+
 function getGitFileDiff(projectPath: string, filePath: string): { original: string; modified: string } | null {
   try {
     // Get the current file content (working tree)
@@ -385,6 +425,10 @@ function setupStorageIPC(): void {
 
   ipcMain.handle('git:diffFile', (_event, projectPath: string, filePath: string) => {
     return getGitFileDiff(projectPath, filePath);
+  });
+
+  ipcMain.handle('git:status', (_event, projectPath: string) => {
+    return getGitStatus(projectPath);
   });
 }
 

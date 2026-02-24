@@ -131,6 +131,19 @@ export function App() {
       return;
     }
 
+    // New source control tile: Cmd+Shift+G
+    if (isMod && e.shiftKey && (e.key === 'g' || e.key === 'G')) {
+      e.preventDefault();
+      const state = useStore.getState();
+      const ws = state.workspaces[state.activeWorkspaceIndex];
+      const focusedProject = ws?.focusedTileId ? ws.tiles[ws.focusedTileId]?.project : null;
+      const newTileId = createTile('auto', 'source-control');
+      if (focusedProject?.path) {
+        window.tile.openProject(newTileId, focusedProject.path);
+      }
+      return;
+    }
+
     // New terminal tile: Cmd+Shift+T
     if (isMod && e.shiftKey && e.key === 't') {
       e.preventDefault();

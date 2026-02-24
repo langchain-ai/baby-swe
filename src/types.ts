@@ -18,7 +18,15 @@ export interface Project {
   githubPR?: GithubPR | null;
 }
 
-export type TileType = 'agent' | 'terminal' | 'file-viewer';
+export type TileType = 'agent' | 'terminal' | 'file-viewer' | 'source-control';
+
+export type GitFileStatus = 'modified' | 'added' | 'deleted' | 'renamed' | 'untracked' | 'staged-modified' | 'staged-added' | 'staged-deleted' | 'staged-renamed';
+
+export interface GitStatusEntry {
+  path: string;
+  status: GitFileStatus;
+  staged: boolean;
+}
 
 export interface FileViewerData {
   filePath: string;
@@ -126,6 +134,7 @@ declare global {
       createBranch: (projectPath: string, branchName: string) => Promise<{ success: boolean; error?: string }>;
       getPR: (projectPath: string) => Promise<GithubPR | null>;
       diffFile: (projectPath: string, filePath: string) => Promise<{ original: string; modified: string } | null>;
+      status: (projectPath: string) => Promise<GitStatusEntry[]>;
     };
   }
 }
