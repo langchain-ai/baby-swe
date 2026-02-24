@@ -34,12 +34,6 @@ function getToolDisplayName(
       const truncated = cmd.length > 60 ? cmd.slice(0, 60) + "..." : cmd;
       return `Bash(${truncated})`;
     }
-    case "task": {
-      const type = (toolArgs?.subagent_type as string) || "Task";
-      const desc = (toolArgs?.description as string) || "task";
-      const truncatedDesc = desc.length > 50 ? desc.slice(0, 50) + "..." : desc;
-      return `${type}(${truncatedDesc})`;
-    }
     case "list_dir": {
       const path = stripProjectPath(
         (toolArgs?.path as string) || (toolArgs?.directory as string) || ".",
@@ -108,17 +102,6 @@ function getToolSummary(
       const lines = output?.split("\n").filter((l) => l.trim()).length || 0;
       return lines > 0 ? `${lines} lines` : "No output";
     }
-    case "task": {
-      try {
-        const parsed = JSON.parse(output || "{}");
-        const result = parsed.output || parsed.error || "Completed";
-        return (
-          result.split("\n")[0].slice(0, 60) + (result.length > 60 ? "..." : "")
-        );
-      } catch {
-        return "Completed";
-      }
-    }
     case "read_file": {
       const lines = output?.split("\n").length || 0;
       return `Read ${lines} lines`;
@@ -166,12 +149,7 @@ function KeyboardApproval({
   const containerRef = useRef<HTMLDivElement>(null);
   const [selectedIndex, setSelectedIndex] = useState(0);
 
-  const action =
-    toolName === "execute"
-      ? "Run command"
-      : toolName === "task"
-        ? "Delegate task"
-        : "Make this edit";
+  const action = toolName === "execute" ? "Run command" : "Make this edit";
 
   const options = [
     { label: "Yes", handler: () => onApprove?.(approvalRequestId) },

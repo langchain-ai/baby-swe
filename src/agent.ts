@@ -22,7 +22,7 @@ const sessionControllers = new Map<string, AbortController>();
 const sessionModes = new Map<string, Mode>();
 const pendingApprovals = new Map<string, { resolve: (decision: ApprovalDecision) => void }>();
 
-const TOOLS_REQUIRING_APPROVAL = ['execute', 'write_file', 'edit_file', 'web_search', 'task'];
+const TOOLS_REQUIRING_APPROVAL = ['execute', 'write_file', 'edit_file', 'web_search'];
 
 const MAX_DIFF_LINES = 800;
 const BINARY_EXTENSIONS = new Set([

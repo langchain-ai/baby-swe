@@ -16,7 +16,6 @@ type ToolGroupType =
   | "search"
   | "write"
   | "execute"
-  | "explore"
   | "tasks"
   | "other";
 
@@ -43,8 +42,6 @@ function getToolGroupType(toolName: string): ToolGroupType {
       return "write";
     case "execute":
       return "execute";
-    case "task":
-      return "explore";
     case "write_todos":
       return "tasks";
     default:

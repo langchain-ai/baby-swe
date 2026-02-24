@@ -2,7 +2,7 @@ import { memo } from 'react';
 import type { ToolExecutionChunk } from '../../types';
 import { ToolExecution } from './ToolExecution';
 
-type ToolGroupType = 'read' | 'search' | 'write' | 'execute' | 'explore' | 'tasks' | 'other';
+type ToolGroupType = 'read' | 'search' | 'write' | 'execute' | 'tasks' | 'other';
 
 interface ToolGroupProps {
   groupType: ToolGroupType;
@@ -38,8 +38,6 @@ function getGroupSummary(groupType: ToolGroupType, count: number, isRunning: boo
       return isRunning
         ? `Running ${count > 1 ? count + ' ' : ''}command${count !== 1 ? 's' : ''}...`
         : `Ran ${count > 1 ? count + ' ' : ''}command${count !== 1 ? 's' : ''}`;
-    case 'explore':
-      return isRunning ? 'Delegating...' : `Completed ${count} task${count !== 1 ? 's' : ''}`;
     case 'tasks':
       return isRunning ? 'Tracking tasks...' : 'Updated task list';
     default:
@@ -68,10 +66,6 @@ function getItemLabel(tool: ToolExecutionChunk, projectPath?: string): string {
     case 'execute': {
       const cmd = (args.command as string) || '';
       return cmd.length > 60 ? cmd.slice(0, 60) + '...' : cmd;
-    }
-    case 'task': {
-      const desc = (args.description as string) || 'task';
-      return desc.length > 60 ? desc.slice(0, 60) + '...' : desc;
     }
     case 'write_todos': {
       const todos = (args.todos as Array<unknown>) || [];
