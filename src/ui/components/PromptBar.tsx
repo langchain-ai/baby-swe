@@ -4,6 +4,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { CommandAutocomplete, getFilteredCommandCount, getCommandAtIndex } from './CommandAutocomplete';
 import { FileAutocomplete, fuzzySearch, getFileAtIndex } from './FileAutocomplete';
 import { ModelAutocomplete, AVAILABLE_MODELS, getModelCount, getModelAtIndex, type ModelOption } from './ModelAutocomplete';
+import { ContextIndicator } from './ContextIndicator';
 import type { Command } from '../../commands';
 import type { ImageChunk } from '../../types';
 
@@ -432,8 +433,10 @@ export const PromptBar = memo(function PromptBar({ onSubmit, busy, projectPath, 
             </button>
           </>
         )}
+        <div className="ml-auto flex items-center gap-1.5 min-w-0">
+          <ContextIndicator />
         {gitBranch && projectPath && (
-          <div ref={branchDropdownRef} className="relative ml-auto min-w-0 flex items-center gap-1.5">
+          <div ref={branchDropdownRef} className="relative min-w-0 flex items-center gap-1.5">
             <button
               type="button"
               onClick={async () => {
@@ -604,6 +607,7 @@ export const PromptBar = memo(function PromptBar({ onSubmit, busy, projectPath, 
             )}
           </div>
         )}
+        </div>
       </div>
     </div>
   );
