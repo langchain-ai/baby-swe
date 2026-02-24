@@ -16,6 +16,9 @@ contextBridge.exposeInMainWorld('agent', {
   cancel: (sessionId: string) => {
     ipcRenderer.send('agent:cancel', sessionId);
   },
+  compact: (sessionId: string, messages: ChatMessage[], modelConfig: ModelConfig) => {
+    ipcRenderer.send('agent:compact', sessionId, messages, modelConfig);
+  },
   onStreamEvent: (callback: (event: StreamEvent) => void) => {
     const handler = (_event: Electron.IpcRendererEvent, streamEvent: StreamEvent) => {
       callback(streamEvent);

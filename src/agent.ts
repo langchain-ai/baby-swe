@@ -8,7 +8,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { setMaxListeners } from "events";
 import "dotenv/config";
-import type { ApprovalDecision, ApprovalResponse, ChatMessage, DiffData, TodoItem, ModelConfig, ApiKeys, Mode, GithubPR, Project } from "./types";
+import type { ApprovalDecision, ApprovalResponse, ChatMessage, DiffData, TodoItem, ModelConfig, ApiKeys, Mode, GithubPR, Project, StreamEvent } from "./types";
 import { loadAgentMemory } from "./memory/agents";
 import { tool } from "@langchain/core/tools";
 import { z } from "zod";
@@ -17,6 +17,7 @@ import TurndownService from "turndown";
 import { loadSettings } from "./storage";
 import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
 import { buildSystemPrompt } from "./prompts";
+import { getContextLimit, COMPACT_THRESHOLD } from "./context-limits";
 
 const sessionControllers = new Map<string, AbortController>();
 const sessionModes = new Map<string, Mode>();
@@ -454,6 +455,60 @@ export interface AgentResponse {
   }>;
 }
 
+const SUMMARIZATION_PROMPT = `Your task is to create a detailed summary of the conversation so far, paying close attention to the user's explicit requests and your previous actions.
+This summary should be thorough in capturing technical details, code patterns, and architectural decisions that would be essential for continuing development work without losing context.
+
+Your summary should include the following sections:
+
+1. Primary Request and Intent: Capture all of the user's explicit requests and intents in detail
+2. Key Technical Concepts: List all important technical concepts, technologies, and frameworks discussed.
+3. Files and Code Sections: Enumerate specific files and code sections examined, modified, or created. Include full code snippets where applicable and include a summary of why each file read or edit is important.
+4. Errors and fixes: List all errors encountered and how they were fixed. Pay special attention to specific user feedback.
+5. Problem Solving: Document problems solved and any ongoing troubleshooting efforts.
+6. All user messages: List ALL user messages that are not tool results. These are critical for understanding the users' feedback and changing intent.
+7. Pending Tasks: Outline any pending tasks that have explicitly been asked to work on.
+8. Current Work: Describe in detail precisely what was being worked on immediately before this summary request. Include file names and code snippets where applicable.
+9. Optional Next Step: List the next step related to the most recent work. Ensure this step is DIRECTLY in line with the user's most recent explicit requests.`;
+
+async function runCompaction(
+  messages: ChatMessage[],
+  modelConfig: ModelConfig,
+  apiKeys?: ApiKeys,
+): Promise<{ summary: string; keptMessages: ChatMessage[] } | null> {
+  try {
+    const model = createModel(modelConfig, apiKeys);
+
+    // Keep the last 10% of messages (minimum 2)
+    const keepCount = Math.max(2, Math.floor(messages.length * 0.10));
+    const messagesToSummarize = messages.slice(0, messages.length - keepCount);
+    const keptMessages = messages.slice(messages.length - keepCount);
+
+    if (messagesToSummarize.length === 0) return null;
+
+    // Build conversation text for summarization
+    const conversationText = messagesToSummarize.map(m => {
+      const role = m.role === 'user' ? 'User' : 'Assistant';
+      const content = typeof m.content === 'string' ? m.content : JSON.stringify(m.content);
+      return `${role}: ${content}`;
+    }).join('\n\n');
+
+    const result = await model.invoke([
+      { role: 'system', content: SUMMARIZATION_PROMPT },
+      { role: 'user', content: `Here is the conversation to summarize:\n\n${conversationText}` },
+    ]);
+
+    const summary = typeof result.content === 'string'
+      ? result.content
+      : Array.isArray(result.content)
+        ? result.content.map((b: { type: string; text?: string }) => b.type === 'text' ? b.text || '' : '').join('')
+        : String(result.content);
+
+    return { summary, keptMessages };
+  } catch (err) {
+    console.error('[compact] Summarization failed:', err);
+    return null;
+  }
+}
 
 function safeSend(webContents: Electron.WebContents, channel: string, ...args: unknown[]): void {
   try {
@@ -504,6 +559,7 @@ export function setupAgentIPC(mainWindow: BrowserWindow, getTileProject: (tileId
 
     const toolTimers = new Map<string, number>();
     let sentFinalEvent = false;
+    let lastInputTokens = 0;
 
     const send = (data: Record<string, unknown>) => {
       safeSend(event.sender, 'agent:stream-event', data);
@@ -557,6 +613,7 @@ export function setupAgentIPC(mainWindow: BrowserWindow, getTileProject: (tileId
           const message = event.data?.output;
           if (message?.usage_metadata) {
             const { input_tokens, output_tokens } = message.usage_metadata;
+            lastInputTokens = input_tokens || 0;
             send({
               type: 'token-usage',
               sessionId,
@@ -697,6 +754,29 @@ export function setupAgentIPC(mainWindow: BrowserWindow, getTileProject: (tileId
       if (!controller.signal.aborted) {
         console.log(`[agent:stream] Stream completed for session ${sessionId}`);
         sendFinal({ type: 'done', sessionId });
+
+        // Check if context usage crossed the compact threshold
+        const contextLimit = getContextLimit(modelConfig.name);
+        const contextUsage = lastInputTokens / contextLimit;
+        if (contextUsage >= COMPACT_THRESHOLD && messages.length > 4) {
+          console.log(`[agent:stream] Context at ${(contextUsage * 100).toFixed(1)}% (${lastInputTokens}/${contextLimit}), triggering compact for session ${sessionId}`);
+          send({ type: 'compact-start', sessionId });
+
+          const settings = loadSettings();
+          const result = await runCompaction(messages, modelConfig, settings.apiKeys);
+          if (result) {
+            console.log(`[agent:stream] Compact complete for session ${sessionId}, summarized ${messages.length - result.keptMessages.length} messages`);
+            send({
+              type: 'compact',
+              sessionId,
+              summary: result.summary,
+              keptMessages: result.keptMessages,
+            });
+          } else {
+            console.log(`[agent:stream] Compact failed or skipped for session ${sessionId}`);
+            send({ type: 'compact-end', sessionId });
+          }
+        }
       }
     } catch (error) {
       console.error(`[agent:stream] Error for session ${sessionId}:`, error);
@@ -725,6 +805,33 @@ export function setupAgentIPC(mainWindow: BrowserWindow, getTileProject: (tileId
     if (pending) {
       pending.resolve(response.decision);
       pendingApprovals.delete(response.requestId);
+    }
+  });
+
+  ipcMain.on("agent:compact", async (event, sessionId: string, messages: ChatMessage[], modelConfig: ModelConfig) => {
+    const webContents = event.sender;
+    const send = (streamEvent: StreamEvent) => safeSend(webContents, 'agent:stream-event', streamEvent);
+
+    if (messages.length <= 4) {
+      send({ type: 'compact-end', sessionId });
+      return;
+    }
+
+    send({ type: 'compact-start', sessionId });
+
+    const settings = loadSettings();
+    const result = await runCompaction(messages, modelConfig, settings.apiKeys);
+    if (result) {
+      console.log(`[agent:compact] Manual compact for session ${sessionId}, summarized ${messages.length - result.keptMessages.length} messages`);
+      send({
+        type: 'compact',
+        sessionId,
+        summary: result.summary,
+        keptMessages: result.keptMessages,
+      });
+    } else {
+      console.log(`[agent:compact] Manual compact failed or skipped for session ${sessionId}`);
+      send({ type: 'compact-end', sessionId });
     }
   });
 }

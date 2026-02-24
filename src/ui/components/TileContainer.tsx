@@ -9,6 +9,7 @@ import { TerminalTile } from "./TerminalTile";
 import { FileViewerTile } from "./FileViewerTile";
 import { SourceControlTile } from "./SourceControlTile";
 import { ThreadPicker } from "./ThreadPicker";
+import { CompactingIndicator } from "./CompactingIndicator";
 import { executeCommand } from "../../commands";
 import type { Message, ChatMessage, ChatMessageContentBlock, Project, ImageChunk, Thread } from "../../types";
 
@@ -255,11 +256,19 @@ export function TileContainer({
           project: tile.project,
           resumeThread,
           showThreadPicker: () => setShowThreadPicker(true),
+          compact: (sessionId) => {
+            const s = useStore.getState().sessions[sessionId];
+            if (!s) return;
+            const chatMessages = messagesToChatMessages(s.messages);
+            window.agent.compact(sessionId, chatMessages, modelConfig);
+          },
         });
         if (commandExecuted) return;
       }
 
       if (!session) return;
+
+      if (session.isCompacting) return;
 
       if (session.isStreaming || session.busy) {
         window.agent.cancel(session.id);
@@ -451,7 +460,7 @@ export function TileContainer({
         project={tile.project}
       />
       <div className="px-4 pt-2 shrink-0">
-        <BinarySpinner isStreaming={session.isStreaming} />
+        {session.isCompacting ? <CompactingIndicator /> : <BinarySpinner isStreaming={session.isStreaming} />}
       </div>
       {session.todos && session.todos.length > 0 && (
         <div className="px-4 shrink-0">

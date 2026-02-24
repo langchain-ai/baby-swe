@@ -28,6 +28,8 @@ export function App() {
     updateToolEnd: state.updateToolEnd,
     updateToolStatus: state.updateToolStatus,
     updateTokenUsage: state.updateTokenUsage,
+    compactSession: state.compactSession,
+    setCompacting: state.setCompacting,
     updateTodos: state.updateTodos,
     finalizeStream: state.finalizeStream,
     abortStream: state.abortStream,
@@ -40,7 +42,7 @@ export function App() {
     createTile, closeTile, navigateTile, setTileProject,
     switchWorkspace, switchWorkspaceRelative, loadRecentProjects,
     appendStreamToken, addToolStart, updateToolEnd, updateToolStatus,
-    updateTokenUsage, updateTodos, finalizeStream, abortStream,
+    updateTokenUsage, compactSession, setCompacting, updateTodos, finalizeStream, abortStream,
     loadApiKeys, saveApiKeys, setShowApiKeysScreen, loadModelConfig,
   } = actions;
 
@@ -87,6 +89,16 @@ export function App() {
         case 'todo-update':
           updateTodos(event.sessionId, event.todos);
           break;
+        case 'compact':
+          console.log(`[compact] Compacting session ${event.sessionId}`);
+          compactSession(event.sessionId, event.summary, event.keptMessages);
+          break;
+        case 'compact-start':
+          setCompacting(event.sessionId, true);
+          break;
+        case 'compact-end':
+          setCompacting(event.sessionId, false);
+          break;
         case 'done':
           finalizeStream(event.sessionId);
           break;
@@ -96,7 +108,7 @@ export function App() {
       }
     });
     return unsubscribe;
-  }, [appendStreamToken, addToolStart, updateToolEnd, updateToolStatus, updateTokenUsage, updateTodos, finalizeStream, abortStream]);
+  }, [appendStreamToken, addToolStart, updateToolEnd, updateToolStatus, updateTokenUsage, compactSession, setCompacting, updateTodos, finalizeStream, abortStream]);
 
   const handleOpenFolder = useCallback(async () => {
     const tileId = createTile('auto', 'agent');

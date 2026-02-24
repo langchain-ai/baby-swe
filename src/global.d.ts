@@ -22,6 +22,7 @@ interface Window {
     invoke: (message: string) => Promise<AgentResponse>;
     stream: (sessionId: string, tileId: string, messages: ChatMessage[], modelConfig: ModelConfig, mode: Mode) => void;
     cancel: (sessionId: string) => void;
+    compact: (sessionId: string, messages: ChatMessage[], modelConfig: ModelConfig) => void;
     onStreamEvent: (callback: (event: StreamEvent) => void) => () => void;
     respondToApproval: (response: ApprovalResponse) => void;
     setMode: (sessionId: string, mode: Mode) => void;

@@ -216,6 +216,7 @@ export interface Message {
   author: Author;
   timestamp: string;
   chunks: Chunk[];
+  hidden?: boolean;
 }
 
 export type Mode = 'agent' | 'plan' | 'yolo';
@@ -249,6 +250,7 @@ export interface Session {
   todos: TodoItem[];
   mode: Mode;
   agentStatus: AgentStatus;
+  isCompacting: boolean;
 }
 
 export interface ToolStartEvent {
@@ -320,4 +322,7 @@ export type StreamEvent =
   | ToolStatusUpdateEvent
   | TokenUsageEvent
   | ApprovalRequestEvent
-  | TodoUpdateEvent;
+  | TodoUpdateEvent
+  | { type: 'compact-start'; sessionId: string }
+  | { type: 'compact'; sessionId: string; summary: string; keptMessages: ChatMessage[] }
+  | { type: 'compact-end'; sessionId: string };

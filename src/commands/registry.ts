@@ -15,6 +15,7 @@ export interface CommandContext {
   project?: Project | null;
   resumeThread?: (sessionId: string, thread: { messages: any[]; title: string }) => void;
   showThreadPicker?: () => void;
+  compact?: (sessionId: string) => void;
 }
 
 export interface Command {

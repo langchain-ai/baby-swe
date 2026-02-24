@@ -303,11 +303,11 @@ export const MessageView = memo(function MessageView({
       className="flex-1 min-h-0 min-w-0 overflow-y-auto px-4 py-4 text-sm leading-relaxed"
     >
       {showHeader && <div className="flex justify-start pb-4"><Logo /></div>}
-      {messages.map((message, index) => (
+      {messages.filter(m => !m.hidden).map((message, index, filtered) => (
         <MessageBubble
           key={message.id}
           message={message}
-          isStreaming={isStreaming && index === messages.length - 1}
+          isStreaming={isStreaming && index === filtered.length - 1}
           projectPath={project?.path}
           onApprove={onApprove}
           onReject={onReject}

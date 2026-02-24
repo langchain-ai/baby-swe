@@ -87,3 +87,17 @@ registerCommand({
   category: 'Actions',
   execute: () => {},
 });
+
+registerCommand({
+  name: 'compact',
+  description: 'Summarize conversation to free context window space',
+  category: 'Actions',
+  execute: (ctx) => {
+    const sessionId = ctx.sessionId;
+    if (!sessionId) return;
+
+    if (ctx.compact) {
+      ctx.compact(sessionId);
+    }
+  },
+});

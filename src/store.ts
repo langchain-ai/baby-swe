@@ -71,6 +71,8 @@ interface AppState {
   setMode: (mode: Mode) => void;
   setModelConfig: (config: Partial<ModelConfig>) => void;
   updateTokenUsage: (input: number, output: number) => void;
+  compactSession: (sessionId: string, summary: string, keptMessages: import('./types').ChatMessage[]) => void;
+  setCompacting: (sessionId: string, isCompacting: boolean) => void;
   toggleBlink: () => void;
   loadRecentProjects: () => Promise<void>;
   setShowApiKeysScreen: (show: boolean) => void;
@@ -198,6 +200,7 @@ export const useStore = create<AppState>((set, get) => ({
       todos: [],
       mode: 'agent',
       agentStatus: 'idle',
+      isCompacting: false,
     };
 
     const tile: Tile = {
@@ -360,6 +363,7 @@ export const useStore = create<AppState>((set, get) => ({
       todos: [],
       mode: 'agent',
       agentStatus: 'idle',
+      isCompacting: false,
     };
 
     const tile: Tile = {
@@ -418,6 +422,7 @@ export const useStore = create<AppState>((set, get) => ({
       todos: [],
       mode: 'agent',
       agentStatus: 'idle',
+      isCompacting: false,
     };
     set((state) => {
       const workspace = state.workspaces[state.activeWorkspaceIndex];
@@ -458,6 +463,7 @@ export const useStore = create<AppState>((set, get) => ({
             pendingApprovals: {},
             todos: [],
             agentStatus: 'idle',
+            isCompacting: false,
           },
         },
         tokenUsage: { input: 0, output: 0, total: 0 },
@@ -847,6 +853,66 @@ export const useStore = create<AppState>((set, get) => ({
         output,
         total: input + output,
       },
+    }),
+
+  setCompacting: (sessionId, isCompacting) =>
+    set((state) => {
+      const session = state.sessions[sessionId];
+      if (!session) return state;
+      return {
+        sessions: {
+          ...state.sessions,
+          [sessionId]: { ...session, isCompacting },
+        },
+      };
+    }),
+
+  compactSession: (sessionId, summary, keptMessages) =>
+    set((state) => {
+      const session = state.sessions[sessionId];
+      if (!session) return state;
+
+      // Build compacted messages: summary as a user message (so it's included in chat history sent to the model)
+      // Hidden from UI but included when converting to ChatMessages for the agent
+      const summaryMessage: Message = {
+        id: uuidv4(),
+        author: 'user',
+        timestamp: new Date().toISOString(),
+        chunks: [{ kind: 'text', text: `[Context compacted — previous conversation summarized to free context window space]\n\n${summary}` }],
+        hidden: true,
+      };
+
+      // Add a visible system message confirming compaction
+      const confirmMessage: Message = {
+        id: uuidv4(),
+        author: 'system',
+        timestamp: new Date().toISOString(),
+        chunks: [{ kind: 'text', text: 'Conversation compacted successfully.' }],
+      };
+
+      // Convert kept ChatMessages back to Message format
+      const keptStoreMessages: Message[] = keptMessages.map(m => ({
+        id: uuidv4(),
+        author: m.role === 'user' ? 'user' as const : 'agent' as const,
+        timestamp: new Date().toISOString(),
+        chunks: [{
+          kind: 'text' as const,
+          text: typeof m.content === 'string' ? m.content : JSON.stringify(m.content),
+        }],
+      }));
+
+      return {
+        sessions: {
+          ...state.sessions,
+          [sessionId]: {
+            ...session,
+            messages: [summaryMessage, confirmMessage, ...keptStoreMessages],
+            isCompacting: false,
+            updatedAt: Date.now(),
+          },
+        },
+        tokenUsage: { input: 0, output: 0, total: 0 },
+      };
     }),
 
   loadRecentProjects: async () => {
