@@ -491,7 +491,7 @@ export function setupAgentIPC(mainWindow: BrowserWindow, getTileProject: (tileId
     sessionModes.set(sessionId, mode);
   });
 
-  ipcMain.on("agent:stream", async (_event, sessionId: string, tileId: string, messages: ChatMessage[], modelConfig: ModelConfig, mode: Mode) => {
+  ipcMain.on("agent:stream", async (event, sessionId: string, tileId: string, messages: ChatMessage[], modelConfig: ModelConfig, mode: Mode) => {
     const existing = sessionControllers.get(sessionId);
     if (existing) {
       existing.abort();
@@ -506,7 +506,7 @@ export function setupAgentIPC(mainWindow: BrowserWindow, getTileProject: (tileId
     let sentFinalEvent = false;
 
     const send = (data: Record<string, unknown>) => {
-      safeSend(mainWindow.webContents, 'agent:stream-event', data);
+      safeSend(event.sender, 'agent:stream-event', data);
     };
 
     const sendFinal = (data: Record<string, unknown>) => {
