@@ -2,7 +2,7 @@ import { createAgent as createReactAgent } from "langchain";
 import { LocalSandboxBackend } from "./backends/local-sandbox";
 import { ChatAnthropic } from "@langchain/anthropic";
 import { ChatOpenAI } from "@langchain/openai";
-import { ipcMain, BrowserWindow } from "electron";
+import { app, ipcMain, BrowserWindow } from "electron";
 import { v4 as uuidv4 } from "uuid";
 import * as fs from "fs";
 import * as path from "path";
@@ -92,15 +92,16 @@ function createContentPreview(content: string): string {
  * If a tool result exceeds the eviction threshold, write the full output to a file
  * and return a head/tail preview with a file path reference. The agent can then use
  * read_file with offset/limit to read the full output in chunks.
+ *
+ * Files are stored in the app's global data directory (not the project root).
  */
-function evictLargeToolResult(output: string, toolName: string, toolCallId: string, rootDir: string): string {
+function evictLargeToolResult(output: string, toolName: string, toolCallId: string): string {
   if (TOOLS_EXCLUDED_FROM_EVICTION.has(toolName)) return output;
   if (output.length <= EVICTION_CHAR_THRESHOLD) return output;
 
   // Sanitize tool call ID to prevent path traversal
   const sanitizedId = toolCallId.replace(/[./\\]/g, '_');
-  const evictionDir = path.join(rootDir, EVICTION_DIR);
-  const filePath = `${EVICTION_DIR}/${sanitizedId}`;
+  const evictionDir = path.join(app.getPath('userData'), EVICTION_DIR);
   const absPath = path.join(evictionDir, sanitizedId);
 
   try {
@@ -114,14 +115,13 @@ function evictLargeToolResult(output: string, toolName: string, toolCallId: stri
   const contentSample = createContentPreview(output);
   return TOO_LARGE_TOOL_MSG
     .replace('{tool_call_id}', toolCallId)
-    .replace('{file_path}', filePath)
+    .replace('{file_path}', absPath)
     .replace('{content_sample}', contentSample);
 }
 
-function createWebTools(rootDir?: string) {
+function createWebTools() {
   const maybeEvict = (output: string, toolName: string, toolCallId: string): string => {
-    if (!rootDir) return output;
-    return evictLargeToolResult(output, toolName, toolCallId, rootDir);
+    return evictLargeToolResult(output, toolName, toolCallId);
   };
 
   const webSearchTool = tool(
@@ -236,7 +236,7 @@ function createWebTools(rootDir?: string) {
   return [webSearchTool, fetchUrlTool, httpRequestTool];
 }
 
-function createBackendTools(backend: LocalSandboxBackend, rootDir: string) {
+function createBackendTools(backend: LocalSandboxBackend) {
   const readFileTool = tool(
     async ({ file_path, offset, limit }: { file_path: string; offset?: number; limit?: number }) => {
       try {
@@ -307,7 +307,7 @@ function createBackendTools(backend: LocalSandboxBackend, rootDir: string) {
           output = `Exit code: ${result.exitCode}\n${output}`;
         }
         const toolCallId = runManager?.runId || 'execute';
-        return evictLargeToolResult(output, 'execute', toolCallId, rootDir);
+        return evictLargeToolResult(output, 'execute', toolCallId);
       } catch (err) {
         return `Error executing command: ${(err as Error).message}`;
       }
@@ -525,12 +525,12 @@ function createAgent(rootDir?: string, modelConfig?: ModelConfig, apiKeys?: ApiK
   const agentMemory = rootDir ? loadAgentMemory(rootDir) || undefined : undefined;
   const systemPrompt = buildSystemPrompt(rootDir, agentMemory, githubPR);
 
-  const webTools = createWebTools(rootDir);
+  const webTools = createWebTools();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let tools: any[] = [...webTools];
   if (rootDir) {
     const backend = new LocalSandboxBackend({ rootDir });
-    tools = [...createBackendTools(backend, rootDir), ...webTools];
+    tools = [...createBackendTools(backend), ...webTools];
   }
 
   return createReactAgent({
