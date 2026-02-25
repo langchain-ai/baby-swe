@@ -466,6 +466,120 @@ function setupStorageIPC(): void {
   ipcMain.handle('git:status', (_event, projectPath: string) => {
     return getGitStatus(projectPath);
   });
+
+  ipcMain.handle('git:stageFile', (_event, projectPath: string, filePath: string) => {
+    try {
+      execSync(`git add -- ${JSON.stringify(filePath)}`, {
+        cwd: projectPath,
+        encoding: 'utf-8',
+        timeout: 5000,
+        stdio: ['pipe', 'pipe', 'pipe'],
+      });
+      return { success: true };
+    } catch (e: any) {
+      return { success: false, error: e.message || 'Failed to stage file' };
+    }
+  });
+
+  ipcMain.handle('git:unstageFile', (_event, projectPath: string, filePath: string) => {
+    try {
+      execSync(`git restore --staged -- ${JSON.stringify(filePath)}`, {
+        cwd: projectPath,
+        encoding: 'utf-8',
+        timeout: 5000,
+        stdio: ['pipe', 'pipe', 'pipe'],
+      });
+      return { success: true };
+    } catch (e: any) {
+      return { success: false, error: e.message || 'Failed to unstage file' };
+    }
+  });
+
+  ipcMain.handle('git:discardFile', (_event, projectPath: string, filePath: string) => {
+    try {
+      execSync(`git checkout -- ${JSON.stringify(filePath)}`, {
+        cwd: projectPath,
+        encoding: 'utf-8',
+        timeout: 5000,
+        stdio: ['pipe', 'pipe', 'pipe'],
+      });
+      return { success: true };
+    } catch (e: any) {
+      // For untracked files, remove them
+      try {
+        execSync(`git clean -f -- ${JSON.stringify(filePath)}`, {
+          cwd: projectPath,
+          encoding: 'utf-8',
+          timeout: 5000,
+          stdio: ['pipe', 'pipe', 'pipe'],
+        });
+        return { success: true };
+      } catch (e2: any) {
+        return { success: false, error: e2.message || 'Failed to discard file' };
+      }
+    }
+  });
+
+  ipcMain.handle('git:stageAll', (_event, projectPath: string) => {
+    try {
+      execSync('git add -A', {
+        cwd: projectPath,
+        encoding: 'utf-8',
+        timeout: 5000,
+        stdio: ['pipe', 'pipe', 'pipe'],
+      });
+      return { success: true };
+    } catch (e: any) {
+      return { success: false, error: e.message || 'Failed to stage all' };
+    }
+  });
+
+  ipcMain.handle('git:commit', (_event, projectPath: string, message: string) => {
+    try {
+      execSync(`git commit -m ${JSON.stringify(message)}`, {
+        cwd: projectPath,
+        encoding: 'utf-8',
+        timeout: 15000,
+        stdio: ['pipe', 'pipe', 'pipe'],
+      });
+      return { success: true };
+    } catch (e: any) {
+      return { success: false, error: e.message || 'Failed to commit' };
+    }
+  });
+
+  ipcMain.handle('git:push', (_event, projectPath: string) => {
+    try {
+      execSync('git push', {
+        cwd: projectPath,
+        encoding: 'utf-8',
+        timeout: 30000,
+        stdio: ['pipe', 'pipe', 'pipe'],
+        env: userShellEnv,
+      });
+      return { success: true };
+    } catch (e: any) {
+      // Try push with --set-upstream if no upstream is set
+      try {
+        const branch = execSync('git rev-parse --abbrev-ref HEAD', {
+          cwd: projectPath,
+          encoding: 'utf-8',
+          timeout: 5000,
+          stdio: ['pipe', 'pipe', 'pipe'],
+        }).trim();
+        execSync(`git push --set-upstream origin ${branch}`, {
+          cwd: projectPath,
+          encoding: 'utf-8',
+          timeout: 30000,
+          stdio: ['pipe', 'pipe', 'pipe'],
+          env: userShellEnv,
+        });
+        return { success: true };
+      } catch (e2: any) {
+        return { success: false, error: e2.message || 'Failed to push' };
+      }
+    }
+  });
 }
 
 function createWindow(): void {

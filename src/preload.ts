@@ -83,4 +83,16 @@ contextBridge.exposeInMainWorld('git', {
     ipcRenderer.invoke('git:diffFile', projectPath, filePath),
   status: (projectPath: string) =>
     ipcRenderer.invoke('git:status', projectPath),
+  stageFile: (projectPath: string, filePath: string) =>
+    ipcRenderer.invoke('git:stageFile', projectPath, filePath),
+  unstageFile: (projectPath: string, filePath: string) =>
+    ipcRenderer.invoke('git:unstageFile', projectPath, filePath),
+  discardFile: (projectPath: string, filePath: string) =>
+    ipcRenderer.invoke('git:discardFile', projectPath, filePath),
+  stageAll: (projectPath: string) =>
+    ipcRenderer.invoke('git:stageAll', projectPath),
+  commit: (projectPath: string, message: string) =>
+    ipcRenderer.invoke('git:commit', projectPath, message),
+  push: (projectPath: string) =>
+    ipcRenderer.invoke('git:push', projectPath),
 });

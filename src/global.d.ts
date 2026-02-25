@@ -54,5 +54,11 @@ interface Window {
     getPR: (projectPath: string) => Promise<import('./types').GithubPR | null>;
     diffFile: (projectPath: string, filePath: string) => Promise<{ original: string; modified: string } | null>;
     status: (projectPath: string) => Promise<import('./types').GitStatusEntry[]>;
+    stageFile: (projectPath: string, filePath: string) => Promise<{ success: boolean; error?: string }>;
+    unstageFile: (projectPath: string, filePath: string) => Promise<{ success: boolean; error?: string }>;
+    discardFile: (projectPath: string, filePath: string) => Promise<{ success: boolean; error?: string }>;
+    stageAll: (projectPath: string) => Promise<{ success: boolean; error?: string }>;
+    commit: (projectPath: string, message: string) => Promise<{ success: boolean; error?: string }>;
+    push: (projectPath: string) => Promise<{ success: boolean; error?: string }>;
   };
 }
