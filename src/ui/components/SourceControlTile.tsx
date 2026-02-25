@@ -100,22 +100,31 @@ export const SourceControlTile = memo(function SourceControlTile({
 
   const refresh = useCallback(async () => {
     if (!projectPath) return;
-    setLoading(true);
     try {
       const [result, sync] = await Promise.all([
         window.git.status(projectPath),
         window.git.syncStatus(projectPath),
       ]);
-      setEntries(result);
-      setSyncStatus(sync);
+      // Only update state when data actually changed to avoid flicker
+      setEntries(prev => {
+        const serialized = JSON.stringify(result);
+        if (JSON.stringify(prev) === serialized) return prev;
+        return result;
+      });
+      setSyncStatus(prev => {
+        const serialized = JSON.stringify(sync);
+        if (JSON.stringify(prev) === serialized) return prev;
+        return sync;
+      });
     } catch {
-      setEntries([]);
-      setSyncStatus(null);
+      setEntries(prev => prev.length === 0 ? prev : []);
+      setSyncStatus(prev => prev === null ? prev : null);
     }
     setLoading(false);
   }, [projectPath]);
 
   useEffect(() => {
+    setLoading(true);
     refresh();
     const interval = setInterval(refresh, 3000);
     return () => clearInterval(interval);

@@ -204,6 +204,19 @@ export const FileViewerTile = memo(function FileViewerTile({
       modified: modifiedModel,
     });
 
+    // Scroll to first diff once changes are computed
+    const diffDisposable = diffEditor.onDidUpdateDiff(() => {
+      const changes = diffEditor.getLineChanges();
+      if (changes && changes.length > 0) {
+        const firstChange = changes[0];
+        const targetLine = firstChange.modifiedStartLineNumber;
+        const modifiedEditor = diffEditor.getModifiedEditor();
+        // Scroll so the first change is near the top with some context
+        modifiedEditor.revealLineNearTop(Math.max(1, targetLine - 2));
+      }
+      diffDisposable.dispose();
+    });
+
     const layoutEditor = () => {
       const container = containerRef.current;
       if (!container) return;
@@ -262,13 +275,27 @@ export const FileViewerTile = memo(function FileViewerTile({
     monaco.editor.setModelLanguage(models.original, language);
     monaco.editor.setModelLanguage(models.modified, language);
 
+    // Scroll to first diff after tab switch
+    const editor = editorRef.current;
+    if (editor) {
+      const diffDisposable = editor.onDidUpdateDiff(() => {
+        const changes = editor.getLineChanges();
+        if (changes && changes.length > 0) {
+          const firstChange = changes[0];
+          const targetLine = firstChange.modifiedStartLineNumber;
+          editor.getModifiedEditor().revealLineNearTop(Math.max(1, targetLine - 2));
+        }
+        diffDisposable.dispose();
+      });
+    }
+
     requestAnimationFrame(() => {
-      const editor = editorRef.current;
+      const ed = editorRef.current;
       const container = containerRef.current;
-      if (!editor || !container) return;
+      if (!ed || !container) return;
       const { width, height } = container.getBoundingClientRect();
       if (width > 0 && height > 0) {
-        editor.layout({
+        ed.layout({
           width: Math.floor(width),
           height: Math.floor(height),
         });
