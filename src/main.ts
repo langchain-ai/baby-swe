@@ -1,3 +1,9 @@
+import { webcrypto } from 'crypto';
+if (!globalThis.crypto) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  globalThis.crypto = webcrypto as any;
+}
+
 import { app, BrowserWindow, Menu, dialog, ipcMain } from 'electron';
 import * as path from 'path';
 import { execSync } from 'child_process';
