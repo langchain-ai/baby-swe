@@ -36,113 +36,207 @@ const BINARY_EXTENSIONS = new Set([
 
 const MAX_OUTPUT_SIZE = 100 * 1024;
 
-const webSearchTool = tool(
-  async ({ query }: { query: string }) => {
-    const settings = loadSettings();
-    const apiKey = settings.apiKeys?.tavily || process.env.TAVILY_API_KEY;
-    if (!apiKey) {
-      return JSON.stringify({ results: [], error: 'Tavily API key not set. Use /keys command to configure.' });
-    }
-    try {
-      const client = tavily({ apiKey });
-      const response = await client.search(query, { maxResults: 5 });
-      return JSON.stringify({
-        results: response.results.map((r) => ({
-          title: r.title,
-          url: r.url,
-          content: r.content,
-        })),
-      });
-    } catch (err) {
-      return JSON.stringify({ results: [], error: `Web search failed: ${(err as Error).message}` });
-    }
-  },
-  {
-    name: "web_search",
-    description: "Search the web using Tavily API. Returns top 5 search results with title, URL, and content snippet.",
-    schema: z.object({
-      query: z.string().describe("The search query"),
-    }),
+// Large tool result eviction constants
+const NUM_CHARS_PER_TOKEN = 4;
+const EVICTION_TOKEN_LIMIT = 20_000;
+const EVICTION_CHAR_THRESHOLD = NUM_CHARS_PER_TOKEN * EVICTION_TOKEN_LIMIT; // ~80K chars
+const EVICTION_DIR = 'large_tool_results';
+const EVICTION_HEAD_LINES = 5;
+const EVICTION_TAIL_LINES = 5;
+const EVICTION_MAX_LINE_LENGTH = 1000;
+
+const TOOLS_EXCLUDED_FROM_EVICTION = new Set([
+  'ls', 'glob', 'grep', 'read_file', 'edit_file', 'write_file',
+]);
+
+const TOO_LARGE_TOOL_MSG = `Tool result too large, the result of this tool call {tool_call_id} was saved in the filesystem at this path: {file_path}
+You can read the result from the filesystem by using the read_file tool, but make sure to only read part of the result at a time.
+You can do this by specifying an offset and limit in the read_file tool call.
+For example, to read the first 100 lines, you can use the read_file tool with offset=0 and limit=100.
+
+Here is a preview showing the head and tail of the result (lines of the form
+... [N lines truncated] ...
+indicate omitted lines in the middle of the content):
+
+{content_sample}
+`;
+
+function formatContentWithLineNumbers(lines: string[], startLine: number): string {
+  return lines.map((line, i) => {
+    const lineNum = startLine + i;
+    return `${String(lineNum).padStart(6, ' ')}\t${line}`;
+  }).join('\n');
+}
+
+function createContentPreview(content: string): string {
+  const lines = content.split('\n');
+  const headLines = EVICTION_HEAD_LINES;
+  const tailLines = EVICTION_TAIL_LINES;
+
+  if (lines.length <= headLines + tailLines) {
+    const preview = lines.map(l => l.slice(0, EVICTION_MAX_LINE_LENGTH));
+    return formatContentWithLineNumbers(preview, 1);
   }
-);
 
-const fetchUrlTool = tool(
-  async ({ url }: { url: string }) => {
-    try {
-      const response = await fetch(url, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (compatible; BabySWE/1.0)',
-          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        },
-        signal: AbortSignal.timeout(30_000),
-      });
-      if (!response.ok) {
-        return JSON.stringify({ content: '', error: `HTTP ${response.status}: ${response.statusText}` });
-      }
-      const contentType = response.headers.get('content-type') || '';
-      const text = await response.text();
-      if (contentType.includes('text/html')) {
-        const turndown = new TurndownService({ headingStyle: 'atx', codeBlockStyle: 'fenced' });
-        const markdown = turndown.turndown(text);
-        const truncated = markdown.length > MAX_OUTPUT_SIZE
-          ? markdown.slice(0, MAX_OUTPUT_SIZE) + '\n\n[Content truncated due to size limit]'
-          : markdown;
-        return JSON.stringify({ content: truncated });
-      }
-      const truncated = text.length > MAX_OUTPUT_SIZE
-        ? text.slice(0, MAX_OUTPUT_SIZE) + '\n\n[Content truncated due to size limit]'
-        : text;
-      return JSON.stringify({ content: truncated });
-    } catch (err) {
-      return JSON.stringify({ content: '', error: `Fetch failed: ${(err as Error).message}` });
-    }
-  },
-  {
-    name: "fetch_url",
-    description: "Fetch a URL and return its content. HTML pages are converted to Markdown.",
-    schema: z.object({
-      url: z.string().describe("The URL to fetch"),
-    }),
+  const head = lines.slice(0, headLines).map(l => l.slice(0, EVICTION_MAX_LINE_LENGTH));
+  const tail = lines.slice(-tailLines).map(l => l.slice(0, EVICTION_MAX_LINE_LENGTH));
+
+  const headSample = formatContentWithLineNumbers(head, 1);
+  const truncationNotice = `\n... [${lines.length - headLines - tailLines} lines truncated] ...\n`;
+  const tailSample = formatContentWithLineNumbers(tail, lines.length - tailLines + 1);
+
+  return headSample + truncationNotice + tailSample;
+}
+
+/**
+ * If a tool result exceeds the eviction threshold, write the full output to a file
+ * and return a head/tail preview with a file path reference. The agent can then use
+ * read_file with offset/limit to read the full output in chunks.
+ */
+function evictLargeToolResult(output: string, toolName: string, toolCallId: string, rootDir: string): string {
+  if (TOOLS_EXCLUDED_FROM_EVICTION.has(toolName)) return output;
+  if (output.length <= EVICTION_CHAR_THRESHOLD) return output;
+
+  // Sanitize tool call ID to prevent path traversal
+  const sanitizedId = toolCallId.replace(/[./\\]/g, '_');
+  const evictionDir = path.join(rootDir, EVICTION_DIR);
+  const filePath = `${EVICTION_DIR}/${sanitizedId}`;
+  const absPath = path.join(evictionDir, sanitizedId);
+
+  try {
+    fs.mkdirSync(evictionDir, { recursive: true });
+    fs.writeFileSync(absPath, output, 'utf-8');
+  } catch (err) {
+    console.error('[evict] Failed to write large tool result:', err);
+    return output;
   }
-);
 
-const httpRequestTool = tool(
-  async ({ method, url, headers, body }: { method: string; url: string; headers?: Record<string, string>; body?: string }) => {
-    try {
-      const response = await fetch(url, {
-        method: method.toUpperCase(),
-        headers: headers || {},
-        body: ['GET', 'HEAD'].includes(method.toUpperCase()) ? undefined : body,
-        signal: AbortSignal.timeout(30_000),
-      });
-      const responseHeaders: Record<string, string> = {};
-      response.headers.forEach((value, key) => {
-        responseHeaders[key] = value;
-      });
-      let responseBody = await response.text();
-      if (responseBody.length > MAX_OUTPUT_SIZE) {
-        responseBody = responseBody.slice(0, MAX_OUTPUT_SIZE) + '\n\n[Response truncated due to size limit]';
+  const contentSample = createContentPreview(output);
+  return TOO_LARGE_TOOL_MSG
+    .replace('{tool_call_id}', toolCallId)
+    .replace('{file_path}', filePath)
+    .replace('{content_sample}', contentSample);
+}
+
+function createWebTools(rootDir?: string) {
+  const maybeEvict = (output: string, toolName: string, toolCallId: string): string => {
+    if (!rootDir) return output;
+    return evictLargeToolResult(output, toolName, toolCallId, rootDir);
+  };
+
+  const webSearchTool = tool(
+    async ({ query }: { query: string }, runManager) => {
+      const settings = loadSettings();
+      const apiKey = settings.apiKeys?.tavily || process.env.TAVILY_API_KEY;
+      if (!apiKey) {
+        return JSON.stringify({ results: [], error: 'Tavily API key not set. Use /keys command to configure.' });
       }
-      return JSON.stringify({ status: response.status, headers: responseHeaders, body: responseBody });
-    } catch (err) {
-      return JSON.stringify({ status: 0, headers: {}, body: '', error: `HTTP request failed: ${(err as Error).message}` });
+      try {
+        const client = tavily({ apiKey });
+        const response = await client.search(query, { maxResults: 5 });
+        const result = JSON.stringify({
+          results: response.results.map((r) => ({
+            title: r.title,
+            url: r.url,
+            content: r.content,
+          })),
+        });
+        return maybeEvict(result, 'web_search', runManager?.runId || 'web_search');
+      } catch (err) {
+        return JSON.stringify({ results: [], error: `Web search failed: ${(err as Error).message}` });
+      }
+    },
+    {
+      name: "web_search",
+      description: "Search the web using Tavily API. Returns top 5 search results with title, URL, and content snippet.",
+      schema: z.object({
+        query: z.string().describe("The search query"),
+      }),
     }
-  },
-  {
-    name: "http_request",
-    description: "Make an HTTP request. Supports GET, POST, PUT, DELETE methods with custom headers and body.",
-    schema: z.object({
-      method: z.string().describe("HTTP method (GET, POST, PUT, DELETE)"),
-      url: z.string().describe("The URL to request"),
-      headers: z.record(z.string(), z.string()).optional().describe("Optional HTTP headers"),
-      body: z.string().optional().describe("Optional request body for POST/PUT"),
-    }),
-  }
-);
+  );
 
-const webTools = [webSearchTool, fetchUrlTool, httpRequestTool];
+  const fetchUrlTool = tool(
+    async ({ url }: { url: string }, runManager) => {
+      try {
+        const response = await fetch(url, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (compatible; BabySWE/1.0)',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+          },
+          signal: AbortSignal.timeout(30_000),
+        });
+        if (!response.ok) {
+          return JSON.stringify({ content: '', error: `HTTP ${response.status}: ${response.statusText}` });
+        }
+        const contentType = response.headers.get('content-type') || '';
+        const text = await response.text();
+        let result: string;
+        if (contentType.includes('text/html')) {
+          const turndown = new TurndownService({ headingStyle: 'atx', codeBlockStyle: 'fenced' });
+          const markdown = turndown.turndown(text);
+          const truncated = markdown.length > MAX_OUTPUT_SIZE
+            ? markdown.slice(0, MAX_OUTPUT_SIZE) + '\n\n[Content truncated due to size limit]'
+            : markdown;
+          result = JSON.stringify({ content: truncated });
+        } else {
+          const truncated = text.length > MAX_OUTPUT_SIZE
+            ? text.slice(0, MAX_OUTPUT_SIZE) + '\n\n[Content truncated due to size limit]'
+            : text;
+          result = JSON.stringify({ content: truncated });
+        }
+        return maybeEvict(result, 'fetch_url', runManager?.runId || 'fetch_url');
+      } catch (err) {
+        return JSON.stringify({ content: '', error: `Fetch failed: ${(err as Error).message}` });
+      }
+    },
+    {
+      name: "fetch_url",
+      description: "Fetch a URL and return its content. HTML pages are converted to Markdown.",
+      schema: z.object({
+        url: z.string().describe("The URL to fetch"),
+      }),
+    }
+  );
 
-function createBackendTools(backend: LocalSandboxBackend) {
+  const httpRequestTool = tool(
+    async ({ method, url, headers, body }: { method: string; url: string; headers?: Record<string, string>; body?: string }, runManager) => {
+      try {
+        const response = await fetch(url, {
+          method: method.toUpperCase(),
+          headers: headers || {},
+          body: ['GET', 'HEAD'].includes(method.toUpperCase()) ? undefined : body,
+          signal: AbortSignal.timeout(30_000),
+        });
+        const responseHeaders: Record<string, string> = {};
+        response.headers.forEach((value, key) => {
+          responseHeaders[key] = value;
+        });
+        let responseBody = await response.text();
+        if (responseBody.length > MAX_OUTPUT_SIZE) {
+          responseBody = responseBody.slice(0, MAX_OUTPUT_SIZE) + '\n\n[Response truncated due to size limit]';
+        }
+        const result = JSON.stringify({ status: response.status, headers: responseHeaders, body: responseBody });
+        return maybeEvict(result, 'http_request', runManager?.runId || 'http_request');
+      } catch (err) {
+        return JSON.stringify({ status: 0, headers: {}, body: '', error: `HTTP request failed: ${(err as Error).message}` });
+      }
+    },
+    {
+      name: "http_request",
+      description: "Make an HTTP request. Supports GET, POST, PUT, DELETE methods with custom headers and body.",
+      schema: z.object({
+        method: z.string().describe("HTTP method (GET, POST, PUT, DELETE)"),
+        url: z.string().describe("The URL to request"),
+        headers: z.record(z.string(), z.string()).optional().describe("Optional HTTP headers"),
+        body: z.string().optional().describe("Optional request body for POST/PUT"),
+      }),
+    }
+  );
+
+  return [webSearchTool, fetchUrlTool, httpRequestTool];
+}
+
+function createBackendTools(backend: LocalSandboxBackend, rootDir: string) {
   const readFileTool = tool(
     async ({ file_path, offset, limit }: { file_path: string; offset?: number; limit?: number }) => {
       try {
@@ -205,14 +299,15 @@ function createBackendTools(backend: LocalSandboxBackend) {
   );
 
   const executeTool = tool(
-    async ({ command }: { command: string }) => {
+    async ({ command }: { command: string }, runManager) => {
       try {
         const result = await backend.execute(command);
         let output = result.output;
         if (result.exitCode !== null && result.exitCode !== 0) {
           output = `Exit code: ${result.exitCode}\n${output}`;
         }
-        return output;
+        const toolCallId = runManager?.runId || 'execute';
+        return evictLargeToolResult(output, 'execute', toolCallId, rootDir);
       } catch (err) {
         return `Error executing command: ${(err as Error).message}`;
       }
@@ -430,11 +525,12 @@ function createAgent(rootDir?: string, modelConfig?: ModelConfig, apiKeys?: ApiK
   const agentMemory = rootDir ? loadAgentMemory(rootDir) || undefined : undefined;
   const systemPrompt = buildSystemPrompt(rootDir, agentMemory, githubPR);
 
+  const webTools = createWebTools(rootDir);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let tools: any[] = [...webTools];
   if (rootDir) {
     const backend = new LocalSandboxBackend({ rootDir });
-    tools = [...createBackendTools(backend), ...webTools];
+    tools = [...createBackendTools(backend, rootDir), ...webTools];
   }
 
   return createReactAgent({
