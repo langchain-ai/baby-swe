@@ -8,6 +8,15 @@ export interface GithubPR {
   headRef: string;
 }
 
+export type WorktreeType = 'local' | 'worktree';
+
+export interface WorktreeInfo {
+  path: string;
+  branch: string;
+  isMain: boolean;
+  isBare: boolean;
+}
+
 export interface Project {
   id: string;
   path: string;
@@ -16,6 +25,10 @@ export interface Project {
   lastOpenedAt: number;
   gitBranch?: string;
   githubPR?: GithubPR | null;
+  /** If this tile uses a worktree, this is the worktree directory path */
+  worktreePath?: string;
+  /** Whether this tile is using the main checkout or a worktree */
+  worktreeType?: WorktreeType;
 }
 
 export type TileType = 'agent' | 'terminal' | 'file-viewer' | 'source-control';
@@ -121,6 +134,7 @@ declare global {
     };
     tile: {
       openProject: (tileId: string, folderPath?: string) => Promise<Project | null>;
+      openWorktree: (tileId: string, mainProjectPath: string, worktreePath: string) => Promise<Project | null>;
       closeProject: (tileId: string) => Promise<void>;
       onProjectChanged: (callback: (tileId: string, project: Project | null) => void) => () => void;
     };
@@ -141,6 +155,9 @@ declare global {
       getPR: (projectPath: string) => Promise<GithubPR | null>;
       diffFile: (projectPath: string, filePath: string) => Promise<{ original: string; modified: string } | null>;
       status: (projectPath: string) => Promise<GitStatusEntry[]>;
+      listWorktrees: (projectPath: string) => Promise<WorktreeInfo[]>;
+      addWorktree: (projectPath: string, branch: string, newBranch?: boolean) => Promise<{ success: boolean; worktreePath?: string; error?: string }>;
+      removeWorktree: (projectPath: string, worktreePath: string) => Promise<{ success: boolean; error?: string }>;
     };
   }
 }

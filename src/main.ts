@@ -11,7 +11,7 @@ import * as fs from 'fs';
 import * as pty from 'node-pty';
 import { setupAgentIPC } from './agent';
 import * as storage from './storage';
-import type { Project, GithubPR } from './types';
+import type { Project, GithubPR, WorktreeInfo } from './types';
 
 const terminals = new Map<string, pty.IPty>();
 
@@ -346,6 +346,120 @@ function getGitSyncStatus(projectPath: string): GitSyncStatus {
   }
 }
 
+// ─── Git worktree functions ──────────────────────────────────────────────────
+
+function getGitRepoRoot(projectPath: string): string | null {
+  try {
+    return execFileSync('git', ['rev-parse', '--show-toplevel'], {
+      cwd: projectPath,
+      encoding: 'utf-8',
+      timeout: 2000,
+      stdio: ['pipe', 'pipe', 'pipe'],
+      env: GIT_ENV,
+    }).trim();
+  } catch {
+    return null;
+  }
+}
+
+function listGitWorktrees(projectPath: string): WorktreeInfo[] {
+  try {
+    const result = execFileSync('git', ['worktree', 'list', '--porcelain'], {
+      cwd: projectPath,
+      encoding: 'utf-8',
+      timeout: 5000,
+      stdio: ['pipe', 'pipe', 'pipe'],
+      env: GIT_ENV,
+    });
+
+    const worktrees: WorktreeInfo[] = [];
+    const blocks = result.split('\n\n').filter(Boolean);
+
+    for (const block of blocks) {
+      const lines = block.trim().split('\n');
+      let wtPath = '';
+      let branch = '';
+      let isBare = false;
+
+      for (const line of lines) {
+        if (line.startsWith('worktree ')) {
+          wtPath = line.slice('worktree '.length);
+        } else if (line.startsWith('branch ')) {
+          // branch refs/heads/main -> main
+          branch = line.slice('branch '.length).replace('refs/heads/', '');
+        } else if (line === 'bare') {
+          isBare = true;
+        } else if (line === 'detached') {
+          branch = '(detached)';
+        }
+      }
+
+      if (wtPath) {
+        const repoRoot = getGitRepoRoot(projectPath);
+        worktrees.push({
+          path: wtPath,
+          branch,
+          isMain: wtPath === repoRoot,
+          isBare,
+        });
+      }
+    }
+
+    return worktrees;
+  } catch {
+    return [];
+  }
+}
+
+function addGitWorktree(projectPath: string, branch: string, newBranch: boolean): { success: boolean; worktreePath?: string; error?: string } {
+  try {
+    // Determine worktree directory: place it in a .worktrees/ folder next to .git
+    const repoRoot = getGitRepoRoot(projectPath) || projectPath;
+    const safeBranch = branch.replace(/[^a-zA-Z0-9_\-./]/g, '_');
+    const worktreeDir = path.join(repoRoot, '.worktrees', safeBranch);
+
+    // Ensure parent directory exists
+    fs.mkdirSync(path.dirname(worktreeDir), { recursive: true });
+
+    const args = ['worktree', 'add'];
+    if (newBranch) {
+      args.push('-b', branch);
+    }
+    args.push(worktreeDir);
+    if (!newBranch) {
+      args.push(branch);
+    }
+
+    execFileSync('git', args, {
+      cwd: repoRoot,
+      encoding: 'utf-8',
+      timeout: 15000,
+      stdio: ['pipe', 'pipe', 'pipe'],
+      env: GIT_ENV,
+    });
+
+    return { success: true, worktreePath: worktreeDir };
+  } catch (e: any) {
+    return { success: false, error: e.stderr?.trim() || e.message || 'Failed to add worktree' };
+  }
+}
+
+function removeGitWorktree(projectPath: string, worktreePath: string): { success: boolean; error?: string } {
+  try {
+    const repoRoot = getGitRepoRoot(projectPath) || projectPath;
+    execFileSync('git', ['worktree', 'remove', worktreePath, '--force'], {
+      cwd: repoRoot,
+      encoding: 'utf-8',
+      timeout: 10000,
+      stdio: ['pipe', 'pipe', 'pipe'],
+      env: GIT_ENV,
+    });
+    return { success: true };
+  } catch (e: any) {
+    return { success: false, error: e.stderr?.trim() || e.message || 'Failed to remove worktree' };
+  }
+}
+
 function listProjectFiles(projectPath: string): string[] {
   try {
     const result = execFileSync('git', ['ls-files'], {
@@ -584,6 +698,22 @@ function setupStorageIPC(): void {
     return projectWithBranch;
   });
 
+  ipcMain.handle('tile:openWorktree', async (_event, tileId: string, mainProjectPath: string, worktreePath: string) => {
+    const gitBranch = getGitBranch(worktreePath);
+    const githubPR = getGithubPR(worktreePath);
+    const project = storage.getOrCreateProject(mainProjectPath);
+    const projectWithWorktree: Project = {
+      ...project,
+      gitBranch,
+      githubPR,
+      worktreePath,
+      worktreeType: 'worktree',
+    };
+    tileProjects.set(tileId, projectWithWorktree);
+    mainWindow?.webContents.send('tile:projectChanged', tileId, projectWithWorktree);
+    return projectWithWorktree;
+  });
+
   ipcMain.handle('tile:closeProject', (_event, tileId: string) => {
     tileProjects.delete(tileId);
     mainWindow?.webContents.send('tile:projectChanged', tileId, null);
@@ -602,7 +732,8 @@ function setupStorageIPC(): void {
     const result = switchGitBranch(projectPath, branchName);
     if (result.success) {
       for (const [tileId, project] of tileProjects.entries()) {
-        if (project?.path === projectPath) {
+        // Only update tiles on the local checkout, not worktree tiles
+        if (project?.path === projectPath && !project.worktreePath) {
           const updatedProject = { ...project, gitBranch: branchName };
           tileProjects.set(tileId, updatedProject);
           mainWindow?.webContents.send('tile:projectChanged', tileId, updatedProject);
@@ -620,7 +751,8 @@ function setupStorageIPC(): void {
     const result = createGitBranch(projectPath, branchName);
     if (result.success) {
       for (const [tileId, project] of tileProjects.entries()) {
-        if (project?.path === projectPath) {
+        // Only update tiles on the local checkout, not worktree tiles
+        if (project?.path === projectPath && !project.worktreePath) {
           const updatedProject = { ...project, gitBranch: branchName };
           tileProjects.set(tileId, updatedProject);
           mainWindow?.webContents.send('tile:projectChanged', tileId, updatedProject);
@@ -826,6 +958,21 @@ function setupStorageIPC(): void {
   ipcMain.handle('git:syncStatus', (_event, projectPath: string) => {
     return getGitSyncStatus(projectPath);
   });
+
+  // ─── Worktree IPC handlers ────────────────────────────────────────────────
+
+  ipcMain.handle('git:listWorktrees', (_event, projectPath: string) => {
+    return listGitWorktrees(projectPath);
+  });
+
+  ipcMain.handle('git:addWorktree', (_event, projectPath: string, branch: string, newBranch?: boolean) => {
+    const result = addGitWorktree(projectPath, branch, newBranch ?? false);
+    return result;
+  });
+
+  ipcMain.handle('git:removeWorktree', (_event, projectPath: string, worktreePath: string) => {
+    return removeGitWorktree(projectPath, worktreePath);
+  });
 }
 
 function createWindow(): void {
@@ -858,7 +1005,12 @@ app.whenReady().then(() => {
   createWindow();
   setupAgentIPC(
     mainWindow!,
-    (tileId: string) => tileProjects.get(tileId)?.path || null,
+    (tileId: string) => {
+      const project = tileProjects.get(tileId);
+      if (!project) return null;
+      // Use worktree path if available, otherwise main project path
+      return project.worktreePath || project.path;
+    },
     (tileId: string) => tileProjects.get(tileId) || null,
   );
 

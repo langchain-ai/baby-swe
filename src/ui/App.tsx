@@ -151,7 +151,11 @@ export function App() {
       const focusedProject = ws?.focusedTileId ? ws.tiles[ws.focusedTileId]?.project : null;
       const newTileId = createTile('auto', 'source-control');
       if (focusedProject?.path) {
-        window.tile.openProject(newTileId, focusedProject.path);
+        if (focusedProject.worktreePath) {
+          window.tile.openWorktree(newTileId, focusedProject.path, focusedProject.worktreePath);
+        } else {
+          window.tile.openProject(newTileId, focusedProject.path);
+        }
       }
       return;
     }
@@ -171,7 +175,12 @@ export function App() {
       const focusedProject = ws?.focusedTileId ? ws.tiles[ws.focusedTileId]?.project : null;
       const newTileId = createTile('auto', 'agent');
       if (focusedProject?.path) {
-        window.tile.openProject(newTileId, focusedProject.path);
+        if (focusedProject.worktreePath) {
+          // Inherit worktree context
+          window.tile.openWorktree(newTileId, focusedProject.path, focusedProject.worktreePath);
+        } else {
+          window.tile.openProject(newTileId, focusedProject.path);
+        }
       }
       return;
     }

@@ -5,8 +5,9 @@ import { CommandAutocomplete, getFilteredCommandCount, getCommandAtIndex } from 
 import { FileAutocomplete, fuzzySearch, getFileAtIndex } from './FileAutocomplete';
 import { ModelAutocomplete, AVAILABLE_MODELS, getModelCount, getModelAtIndex, type ModelOption } from './ModelAutocomplete';
 import { ContextIndicator } from './ContextIndicator';
+import { WorktreeSelector } from './WorktreeSelector';
 import type { Command } from '../../commands';
-import type { ImageChunk } from '../../types';
+import type { ImageChunk, WorktreeType } from '../../types';
 
 const MODELS: Record<string, string> = {
   'claude-opus-4-6': 'Opus 4.6',
@@ -19,17 +20,22 @@ interface PromptBarProps {
   onSubmit: (query: string) => void;
   busy: boolean;
   projectPath?: string;
+  /** The main repo root path (not the worktree path). Used for git operations. */
+  mainProjectPath?: string;
   gitBranch?: string;
   githubPR?: { number: number; url: string } | null;
   sessionId: string;
+  tileId: string;
   isFocused: boolean;
   pendingImages?: ImageChunk[];
   onRemoveImage?: (index: number) => void;
   onChangeDirectory?: () => void;
   dropUp?: boolean;
+  worktreeType?: WorktreeType;
+  worktreePath?: string;
 }
 
-export const PromptBar = memo(function PromptBar({ onSubmit, busy, projectPath, gitBranch, githubPR, sessionId, isFocused, pendingImages, onRemoveImage, onChangeDirectory, dropUp = true }: PromptBarProps) {
+export const PromptBar = memo(function PromptBar({ onSubmit, busy, projectPath, mainProjectPath, gitBranch, githubPR, sessionId, tileId, isFocused, pendingImages, onRemoveImage, onChangeDirectory, dropUp = true, worktreeType, worktreePath }: PromptBarProps) {
   const [query, setQuery] = useState('');
   const mode = useStore(state => state.sessions[sessionId]?.mode ?? 'agent');
   const { setSessionMode, modelConfig, setModelConfig } = useStore(useShallow(state => ({
@@ -46,13 +52,6 @@ export const PromptBar = memo(function PromptBar({ onSubmit, busy, projectPath, 
   const [modelDropdownOpen, setModelDropdownOpen] = useState(false);
   const modelDropdownRef = useRef<HTMLDivElement>(null);
   const [modelDropdownIndex, setModelDropdownIndex] = useState(0);
-  const [branchDropdownOpen, setBranchDropdownOpen] = useState(false);
-  const branchDropdownRef = useRef<HTMLDivElement>(null);
-  const [branches, setBranches] = useState<string[]>([]);
-  const [branchAction, setBranchAction] = useState<'create' | 'createFrom' | null>(null);
-  const [newBranchName, setNewBranchName] = useState('');
-  const [branchError, setBranchError] = useState<string | null>(null);
-  const [branchSearch, setBranchSearch] = useState('');
   const [projectFiles, setProjectFiles] = useState<string[]>([]);
   const [cursorPosition, setCursorPosition] = useState(0);
 
@@ -120,13 +119,6 @@ export const PromptBar = memo(function PromptBar({ onSubmit, busy, projectPath, 
       }
       if (modelDropdownRef.current && !modelDropdownRef.current.contains(e.target as Node)) {
         setModelDropdownOpen(false);
-      }
-      if (branchDropdownRef.current && !branchDropdownRef.current.contains(e.target as Node)) {
-        setBranchDropdownOpen(false);
-        setBranchAction(null);
-        setNewBranchName('');
-        setBranchError(null);
-        setBranchSearch('');
       }
     }
     document.addEventListener('mousedown', handleClickOutside);
@@ -435,178 +427,30 @@ export const PromptBar = memo(function PromptBar({ onSubmit, busy, projectPath, 
         )}
         <div className="ml-auto flex items-center gap-1.5 min-w-0">
           <ContextIndicator />
-        {gitBranch && projectPath && (
-          <div ref={branchDropdownRef} className="relative min-w-0 flex items-center gap-1.5">
-            <button
-              type="button"
-              onClick={async () => {
-                if (branchDropdownOpen) {
-                  setBranchDropdownOpen(false);
-                  setBranchAction(null);
-                  setNewBranchName('');
-                  setBranchError(null);
-                  setBranchSearch('');
-                } else {
-                  const result = await window.git.listBranches(projectPath) as { branches: string[]; current: string | null };
-                  setBranches(result.branches);
-                  setBranchDropdownOpen(true);
-                  setBranchAction(null);
-                  setNewBranchName('');
-                  setBranchError(null);
-                  setBranchSearch('');
-                }
-              }}
-              className="cursor-pointer text-gray-500 hover:opacity-80 transition-opacity truncate block min-w-0 max-w-[150px]"
-            >
-              {gitBranch}
-            </button>
-            {branchDropdownOpen && (
-              <div className={`absolute ${dropUp ? 'bottom-full mb-1' : 'top-full mt-1'} right-0 bg-gray-800 border border-gray-700 rounded shadow-lg overflow-hidden z-50 min-w-48`}>
-                  {/* Create new branch */}
-                  {branchAction === 'create' ? (
-                    <form
-                      className="px-3 py-2 flex flex-col gap-1.5"
-                      onSubmit={async (e) => {
-                        e.preventDefault();
-                        const name = newBranchName.trim();
-                        if (!name) return;
-                        const result = await window.git.createBranch(projectPath, name) as { success: boolean; error?: string };
-                        if (result.success) {
-                          setBranchDropdownOpen(false);
-                          setBranchAction(null);
-                          setNewBranchName('');
-                          setBranchError(null);
-                        } else {
-                          setBranchError(result.error || 'Failed to create branch');
-                        }
-                      }}
-                    >
-                      <span className="text-gray-400 text-xs">New branch name</span>
-                      <input
-                        autoFocus
-                        type="text"
-                        value={newBranchName}
-                        onChange={e => { setNewBranchName(e.target.value); setBranchError(null); }}
-                        onKeyDown={e => { if (e.key === 'Escape') { setBranchAction(null); setNewBranchName(''); setBranchError(null); } }}
-                        className="bg-gray-900 border border-gray-600 rounded px-2 py-1 text-gray-200 outline-none focus:border-gray-400 text-xs w-full"
-                        placeholder="branch-name"
-                      />
-                      {branchError && <span className="text-red-400 text-xs">{branchError}</span>}
-                      <div className="flex gap-1.5">
-                        <button type="submit" className="flex-1 bg-gray-700 hover:bg-gray-600 text-gray-200 rounded px-2 py-1 text-xs transition-colors">Create</button>
-                        <button type="button" onClick={() => { setBranchAction(null); setNewBranchName(''); setBranchError(null); }} className="flex-1 hover:bg-gray-700 text-gray-400 rounded px-2 py-1 text-xs transition-colors">Cancel</button>
-                      </div>
-                    </form>
-                  ) : branchAction === 'createFrom' ? (
-                    <form
-                      className="px-3 py-2 flex flex-col gap-1.5"
-                      onSubmit={async (e) => {
-                        e.preventDefault();
-                        const name = newBranchName.trim();
-                        if (!name) return;
-                        const result = await window.git.createBranch(projectPath, name) as { success: boolean; error?: string };
-                        if (result.success) {
-                          setBranchDropdownOpen(false);
-                          setBranchAction(null);
-                          setNewBranchName('');
-                          setBranchError(null);
-                        } else {
-                          setBranchError(result.error || 'Failed to create branch');
-                        }
-                      }}
-                    >
-                      <span className="text-gray-400 text-xs">New branch from <span className="text-gray-300">{gitBranch}</span></span>
-                      <input
-                        autoFocus
-                        type="text"
-                        value={newBranchName}
-                        onChange={e => { setNewBranchName(e.target.value); setBranchError(null); }}
-                        onKeyDown={e => { if (e.key === 'Escape') { setBranchAction(null); setNewBranchName(''); setBranchError(null); } }}
-                        className="bg-gray-900 border border-gray-600 rounded px-2 py-1 text-gray-200 outline-none focus:border-gray-400 text-xs w-full"
-                        placeholder="branch-name"
-                      />
-                      {branchError && <span className="text-red-400 text-xs">{branchError}</span>}
-                      <div className="flex gap-1.5">
-                        <button type="submit" className="flex-1 bg-gray-700 hover:bg-gray-600 text-gray-200 rounded px-2 py-1 text-xs transition-colors">Create</button>
-                        <button type="button" onClick={() => { setBranchAction(null); setNewBranchName(''); setBranchError(null); }} className="flex-1 hover:bg-gray-700 text-gray-400 rounded px-2 py-1 text-xs transition-colors">Cancel</button>
-                      </div>
-                    </form>
-                  ) : (() => {
-                    const q = branchSearch.trim().toLowerCase();
-                    const filtered = (q
-                      ? branches.filter(b => b.toLowerCase().includes(q))
-                      : branches
-                    ).slice(0, 3);
-                    return (
-                      <>
-                        <button
-                          type="button"
-                          onClick={() => setBranchAction('create')}
-                          className="block w-full text-left px-3 py-1.5 text-gray-400 hover:bg-gray-700 transition-colors whitespace-nowrap"
-                        >
-                          + Create new branch...
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setBranchAction('createFrom')}
-                          className="block w-full text-left px-3 py-1.5 text-gray-400 hover:bg-gray-700 transition-colors whitespace-nowrap"
-                        >
-                          + Create new branch from...
-                        </button>
-                        {branches.length > 0 && (
-                          <>
-                            <div className="border-t border-gray-700 my-0.5" />
-                            <div className="px-2 py-1">
-                              <input
-                                autoFocus
-                                type="text"
-                                value={branchSearch}
-                                onChange={e => setBranchSearch(e.target.value)}
-                                onKeyDown={e => { if (e.key === 'Escape') { setBranchDropdownOpen(false); setBranchSearch(''); } }}
-                                className="w-full bg-gray-900 border border-gray-700 rounded px-2 py-1 text-gray-300 outline-none focus:border-gray-500 text-xs placeholder-gray-600"
-                                placeholder="Search branches..."
-                              />
-                            </div>
-                            {filtered.map(branch => (
-                              <button
-                                key={branch}
-                                type="button"
-                                onClick={async () => {
-                                  if (branch === gitBranch) { setBranchDropdownOpen(false); setBranchSearch(''); return; }
-                                  await window.git.switchBranch(projectPath, branch);
-                                  setBranchDropdownOpen(false);
-                                  setBranchSearch('');
-                                }}
-                                className={`block w-full text-left px-3 py-1.5 hover:bg-gray-700 transition-colors whitespace-nowrap flex items-center gap-2 ${branch === gitBranch ? 'text-gray-200' : 'text-gray-400'}`}
-                              >
-                                <span className="font-mono">{branch}</span>
-                                {branch === gitBranch && <span className="ml-auto pl-3 text-gray-400">✓</span>}
-                              </button>
-                            ))}
-                            {q && filtered.length === 0 && (
-                              <div className="px-3 py-1.5 text-gray-600 text-xs">No branches match</div>
-                            )}
-                          </>
-                        )}
-                      </>
-                    );
-                  })()}
-                </div>
+          {gitBranch && projectPath && (
+            <>
+              <WorktreeSelector
+                projectPath={mainProjectPath || projectPath}
+                gitBranch={gitBranch}
+                worktreeType={worktreeType}
+                worktreePath={worktreePath}
+                tileId={tileId}
+                dropUp={dropUp}
+              />
+              {githubPR && (
+                <>
+                  <span>·</span>
+                  <a
+                    href={githubPR.url}
+                    onClick={e => { e.preventDefault(); window.open(githubPR.url, '_blank'); }}
+                    className="text-gray-500 hover:text-[#87CEEB] transition-colors shrink-0"
+                  >
+                    #{githubPR.number}
+                  </a>
+                </>
               )}
-            {githubPR && (
-              <>
-                <span>·</span>
-                <a
-                  href={githubPR.url}
-                  onClick={e => { e.preventDefault(); window.open(githubPR.url, '_blank'); }}
-                  className="text-gray-500 hover:text-[#87CEEB] transition-colors shrink-0"
-                >
-                  #{githubPR.number}
-                </a>
-              </>
-            )}
-          </div>
-        )}
+            </>
+          )}
         </div>
       </div>
     </div>

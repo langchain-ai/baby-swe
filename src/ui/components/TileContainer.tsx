@@ -347,7 +347,7 @@ export function TileContainer({
     return (
       <SourceControlTile
         tileId={tileId}
-        projectPath={tile.project?.path}
+        projectPath={tile.project?.worktreePath || tile.project?.path}
         isFocused={isFocused}
         onFocus={onFocus}
       />
@@ -358,7 +358,7 @@ export function TileContainer({
     return (
       <TerminalTile
         tileId={tileId}
-        cwd={tile.project?.path}
+        cwd={tile.project?.worktreePath || tile.project?.path}
         isFocused={isFocused}
         onFocus={onFocus}
       />
@@ -409,15 +409,19 @@ export function TileContainer({
             <PromptBar
               onSubmit={handleSubmit}
               busy={session?.busy ?? false}
-              projectPath={tile.project.path}
+              projectPath={tile.project.worktreePath || tile.project.path}
+              mainProjectPath={tile.project.path}
               gitBranch={tile.project.gitBranch}
               githubPR={tile.project.githubPR}
               sessionId={tile.sessionId}
+              tileId={tileId}
               isFocused={isFocused}
               pendingImages={pendingImages}
               onRemoveImage={handleRemoveImage}
               onChangeDirectory={handleOpenFolder}
               dropUp={false}
+              worktreeType={tile.project.worktreeType}
+              worktreePath={tile.project.worktreePath}
             />
             </div>
           </div>
@@ -479,14 +483,18 @@ export function TileContainer({
             <PromptBar
               onSubmit={handleSubmit}
               busy={session.busy}
-              projectPath={tile.project.path}
+              projectPath={tile.project.worktreePath || tile.project.path}
+              mainProjectPath={tile.project.path}
               gitBranch={tile.project.gitBranch}
               githubPR={tile.project.githubPR}
               sessionId={tile.sessionId}
+              tileId={tileId}
               isFocused={isFocused}
               pendingImages={pendingImages}
               onRemoveImage={handleRemoveImage}
               onChangeDirectory={handleOpenFolder}
+              worktreeType={tile.project.worktreeType}
+              worktreePath={tile.project.worktreePath}
             />
           </div>
         </>

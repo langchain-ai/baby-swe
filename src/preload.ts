@@ -46,6 +46,8 @@ contextBridge.exposeInMainWorld('storage', {
 contextBridge.exposeInMainWorld('tile', {
   openProject: (tileId: string, folderPath?: string) =>
     ipcRenderer.invoke('tile:openProject', tileId, folderPath),
+  openWorktree: (tileId: string, mainProjectPath: string, worktreePath: string) =>
+    ipcRenderer.invoke('tile:openWorktree', tileId, mainProjectPath, worktreePath),
   closeProject: (tileId: string) =>
     ipcRenderer.invoke('tile:closeProject', tileId),
   onProjectChanged: (callback: (tileId: string, project: unknown) => void) => {
@@ -103,4 +105,10 @@ contextBridge.exposeInMainWorld('git', {
     ipcRenderer.invoke('git:pull', projectPath),
   syncStatus: (projectPath: string) =>
     ipcRenderer.invoke('git:syncStatus', projectPath),
+  listWorktrees: (projectPath: string) =>
+    ipcRenderer.invoke('git:listWorktrees', projectPath),
+  addWorktree: (projectPath: string, branch: string, newBranch?: boolean) =>
+    ipcRenderer.invoke('git:addWorktree', projectPath, branch, newBranch),
+  removeWorktree: (projectPath: string, worktreePath: string) =>
+    ipcRenderer.invoke('git:removeWorktree', projectPath, worktreePath),
 });
