@@ -45,6 +45,8 @@ export interface Tile {
   sessionId: string;
   project: Project | null;
   fileViewerData?: FileViewerData;
+  fileViewerTabs?: FileViewerData[];
+  activeFileViewerTab?: number;
 }
 
 export type SplitDirection = 'horizontal' | 'vertical';

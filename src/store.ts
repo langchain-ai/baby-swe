@@ -45,6 +45,8 @@ interface AppState {
   getTile: (tileId: string) => Tile | null;
   getFocusedTile: () => Tile | null;
   openFileViewer: (fileViewerData: FileViewerData, direction?: SplitDirection | 'auto') => string;
+  setActiveFileViewerTab: (tileId: string, tabIndex: number) => void;
+  closeFileViewerTab: (tileId: string, tabIndex: number) => void;
 
   createSession: (tileId: string) => string;
   clearSession: (sessionId: string) => void;
@@ -345,6 +347,58 @@ export const useStore = create<AppState>((set, get) => ({
     const workspace = workspaces[activeWorkspaceIndex];
     const { focusedTileId, layout, tiles } = workspace;
 
+    // Look for an existing file-viewer tile in the workspace to reuse
+    const existingFileViewerEntry = Object.entries(tiles).find(
+      ([, t]) => t.type === 'file-viewer',
+    );
+
+    if (existingFileViewerEntry) {
+      const [existingTileId, existingTile] = existingFileViewerEntry;
+      const tabs = existingTile.fileViewerTabs ?? (existingTile.fileViewerData ? [existingTile.fileViewerData] : []);
+
+      // If same file is already open, just switch to it
+      const existingTabIndex = tabs.findIndex(t => t.filePath === fileViewerData.filePath);
+      if (existingTabIndex >= 0) {
+        // Update the tab data in case content changed, and activate it
+        const updatedTabs = [...tabs];
+        updatedTabs[existingTabIndex] = fileViewerData;
+        const updatedTile: Tile = {
+          ...existingTile,
+          fileViewerData,
+          fileViewerTabs: updatedTabs,
+          activeFileViewerTab: existingTabIndex,
+        };
+        const updatedWorkspace: Workspace = {
+          ...workspace,
+          tiles: { ...tiles, [existingTileId]: updatedTile },
+          focusedTileId: existingTileId,
+        };
+        const updatedWorkspaces = [...workspaces];
+        updatedWorkspaces[activeWorkspaceIndex] = updatedWorkspace;
+        set({ workspaces: updatedWorkspaces });
+        return existingTileId;
+      }
+
+      // Add new tab
+      const newTabs = [...tabs, fileViewerData];
+      const updatedTile: Tile = {
+        ...existingTile,
+        fileViewerData,
+        fileViewerTabs: newTabs,
+        activeFileViewerTab: newTabs.length - 1,
+      };
+      const updatedWorkspace: Workspace = {
+        ...workspace,
+        tiles: { ...tiles, [existingTileId]: updatedTile },
+        focusedTileId: existingTileId,
+      };
+      const updatedWorkspaces = [...workspaces];
+      updatedWorkspaces[activeWorkspaceIndex] = updatedWorkspace;
+      set({ workspaces: updatedWorkspaces });
+      return existingTileId;
+    }
+
+    // No existing file-viewer tile — create a new one
     const tileId = uuidv4();
     const sessionId = uuidv4();
     const now = Date.now();
@@ -372,6 +426,8 @@ export const useStore = create<AppState>((set, get) => ({
       sessionId,
       project: focusedTileId ? tiles[focusedTileId]?.project || null : null,
       fileViewerData,
+      fileViewerTabs: [fileViewerData],
+      activeFileViewerTab: 0,
     };
 
     let newLayout: LayoutNode;
@@ -404,6 +460,70 @@ export const useStore = create<AppState>((set, get) => ({
     }));
 
     return tileId;
+  },
+
+  setActiveFileViewerTab: (tileId, tabIndex) => {
+    const { workspaces, activeWorkspaceIndex } = get();
+    const workspace = workspaces[activeWorkspaceIndex];
+    const tile = workspace.tiles[tileId];
+    if (!tile || tile.type !== 'file-viewer') return;
+    const tabs = tile.fileViewerTabs ?? [];
+    if (tabIndex < 0 || tabIndex >= tabs.length) return;
+
+    const updatedTile: Tile = {
+      ...tile,
+      fileViewerData: tabs[tabIndex],
+      activeFileViewerTab: tabIndex,
+    };
+    const updatedWorkspace: Workspace = {
+      ...workspace,
+      tiles: { ...workspace.tiles, [tileId]: updatedTile },
+    };
+    const updatedWorkspaces = [...workspaces];
+    updatedWorkspaces[activeWorkspaceIndex] = updatedWorkspace;
+    set({ workspaces: updatedWorkspaces });
+  },
+
+  closeFileViewerTab: (tileId, tabIndex) => {
+    const { workspaces, activeWorkspaceIndex } = get();
+    const workspace = workspaces[activeWorkspaceIndex];
+    const tile = workspace.tiles[tileId];
+    if (!tile || tile.type !== 'file-viewer') return;
+    const tabs = tile.fileViewerTabs ?? [];
+    if (tabIndex < 0 || tabIndex >= tabs.length) return;
+
+    const newTabs = tabs.filter((_, i) => i !== tabIndex);
+
+    // If no tabs left, close the tile entirely
+    if (newTabs.length === 0) {
+      get().closeTile(tileId);
+      return;
+    }
+
+    // Adjust active tab index
+    const currentActive = tile.activeFileViewerTab ?? 0;
+    let newActive: number;
+    if (tabIndex < currentActive) {
+      newActive = currentActive - 1;
+    } else if (tabIndex === currentActive) {
+      newActive = Math.min(currentActive, newTabs.length - 1);
+    } else {
+      newActive = currentActive;
+    }
+
+    const updatedTile: Tile = {
+      ...tile,
+      fileViewerData: newTabs[newActive],
+      fileViewerTabs: newTabs,
+      activeFileViewerTab: newActive,
+    };
+    const updatedWorkspace: Workspace = {
+      ...workspace,
+      tiles: { ...workspace.tiles, [tileId]: updatedTile },
+    };
+    const updatedWorkspaces = [...workspaces];
+    updatedWorkspaces[activeWorkspaceIndex] = updatedWorkspace;
+    set({ workspaces: updatedWorkspaces });
   },
 
   createSession: (tileId) => {

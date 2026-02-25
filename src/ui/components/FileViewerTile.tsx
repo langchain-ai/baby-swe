@@ -1,6 +1,7 @@
-import { Fragment, memo, useEffect, useRef } from "react";
+import { Fragment, memo, useCallback, useEffect, useRef } from "react";
 import * as monaco from "monaco-editor";
 import type { FileViewerData } from "../../types";
+import { useStore } from "../../store";
 
 let monacoEnvironmentConfigured = false;
 let monacoThemeConfigured = false;
@@ -105,6 +106,8 @@ function getPathSegments(filePath: string, projectPath?: string): string[] {
 interface FileViewerTileProps {
   tileId: string;
   fileViewerData: FileViewerData;
+  tabs?: FileViewerData[];
+  activeTabIndex?: number;
   projectPath?: string;
   isFocused: boolean;
   onFocus: () => void;
@@ -113,6 +116,8 @@ interface FileViewerTileProps {
 export const FileViewerTile = memo(function FileViewerTile({
   tileId,
   fileViewerData,
+  tabs,
+  activeTabIndex,
   projectPath,
   isFocused,
   onFocus,
@@ -124,9 +129,24 @@ export const FileViewerTile = memo(function FileViewerTile({
     modified: monaco.editor.ITextModel;
   } | null>(null);
 
+  const setActiveFileViewerTab = useStore(state => state.setActiveFileViewerTab);
+  const closeFileViewerTab = useStore(state => state.closeFileViewerTab);
+
+  const hasTabs = tabs && tabs.length > 1;
+  const currentTabIndex = activeTabIndex ?? 0;
+
   const { filePath, originalContent, modifiedContent } = fileViewerData;
   const language = getLanguageFromPath(filePath);
   const pathSegments = getPathSegments(filePath, projectPath);
+
+  const handleTabClick = useCallback((index: number) => {
+    setActiveFileViewerTab(tileId, index);
+  }, [tileId, setActiveFileViewerTab]);
+
+  const handleTabClose = useCallback((e: React.MouseEvent, index: number) => {
+    e.stopPropagation();
+    closeFileViewerTab(tileId, index);
+  }, [tileId, closeFileViewerTab]);
 
   useEffect(() => {
     if (!containerRef.current || editorRef.current) return;
@@ -264,6 +284,43 @@ export const FileViewerTile = memo(function FileViewerTile({
           className="pointer-events-none absolute inset-0 ring-2 ring-[#5a9bc7] ring-inset z-20"
         />
       )}
+      {/* Tab bar — shown when multiple tabs are open */}
+      {hasTabs && (
+        <div className="flex items-stretch shrink-0 bg-[#141c28] border-b border-[#1e2d3d] overflow-x-auto scrollbar-none">
+          {tabs.map((tab, index) => {
+            const isActive = index === currentTabIndex;
+            const fileName = tab.filePath.split("/").pop() ?? tab.filePath;
+            return (
+              <button
+                key={`${tab.filePath}-${index}`}
+                className={`group relative flex items-center gap-1.5 px-3 h-[34px] text-xs border-r border-[#1e2d3d] shrink-0 max-w-[180px] ${
+                  isActive
+                    ? "bg-[#1a2332] text-gray-200"
+                    : "bg-[#141c28] text-gray-500 hover:text-gray-300 hover:bg-[#172030]"
+                }`}
+                onClick={() => handleTabClick(index)}
+                title={tab.filePath}
+              >
+                {isActive && (
+                  <div className="absolute top-0 left-0 right-0 h-[2px] bg-[#5a9bc7]" />
+                )}
+                <span className="truncate">{fileName}</span>
+                <span
+                  className="shrink-0 w-4 h-4 flex items-center justify-center rounded hover:bg-[#2a3a4a] opacity-0 group-hover:opacity-100 transition-opacity"
+                  onClick={(e) => handleTabClose(e, index)}
+                  role="button"
+                  aria-label={`Close ${fileName}`}
+                >
+                  <svg width="8" height="8" viewBox="0 0 8 8" fill="none">
+                    <path d="M1 1L7 7M7 1L1 7" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+                  </svg>
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+      {/* Breadcrumb path — always shown */}
       <div className="flex items-center px-3 h-8 shrink-0">
         <div className="flex items-center gap-1 min-w-0 overflow-hidden text-xs">
           {pathSegments.map((segment, index) => (

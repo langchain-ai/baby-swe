@@ -370,6 +370,8 @@ export function TileContainer({
       <FileViewerTile
         tileId={tileId}
         fileViewerData={tile.fileViewerData}
+        tabs={tile.fileViewerTabs}
+        activeTabIndex={tile.activeFileViewerTab}
         projectPath={tile.project?.path}
         isFocused={isFocused}
         onFocus={onFocus}
