@@ -24,6 +24,8 @@ const pendingApprovals = new Map<string, { resolve: (decision: ApprovalDecision)
 
 const TOOLS_REQUIRING_APPROVAL = ['execute', 'write_file', 'edit_file', 'web_search'];
 
+const MAX_TOOL_ERROR_RETRIES = 3;
+
 const MAX_DIFF_LINES = 800;
 const BINARY_EXTENSIONS = new Set([
   '.png', '.jpg', '.jpeg', '.gif', '.ico', '.webp', '.bmp', '.svg',
@@ -455,6 +457,13 @@ async function runCompaction(
   }
 }
 
+function isToolValidationError(error: unknown): boolean {
+  const msg = error instanceof Error ? error.message : String(error);
+  return msg.includes('did not match expected schema') ||
+    msg.includes('ToolInputParsingException') ||
+    msg.includes('ToolInvocationError');
+}
+
 function safeSend(webContents: Electron.WebContents, channel: string, ...args: unknown[]): void {
   try {
     if (!webContents.isDestroyed()) {
@@ -521,178 +530,231 @@ export function setupAgentIPC(mainWindow: BrowserWindow, getTileProject: (tileId
       const projectData = getTileProjectData ? getTileProjectData(tileId) : null;
       const settings = loadSettings();
       const apiKeys = settings.apiKeys;
-      const streamAgent = await createAgent(folder || undefined, modelConfig, apiKeys, projectData?.githubPR);
 
-      console.log(`[agent:stream] Starting stream for session ${sessionId}, tile: ${tileId}, folder: ${folder}, model: ${modelConfig.name}, effort: ${modelConfig.effort}, messages: ${messages.length}`);
+      let currentMessages: ChatMessage[] = messages;
+      let toolErrorRetries = 0;
+      let lastToolCall: { id: string; name: string; args: Record<string, unknown> } | null = null;
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const stream = await streamAgent.streamEvents(
-        { messages: messages as any },
-        { version: "v2", signal: controller.signal, recursionLimit: 10000 }
-      );
-
-      for await (const event of stream) {
+      // Retry loop: when a tool validation error crashes the stream, we append
+      // the error context and re-invoke so the LLM can see its mistake and retry.
+      retryLoop: while (true) {
         if (controller.signal.aborted) break;
 
-        if (event.event === "on_chat_model_stream") {
-          const chunk = event.data?.chunk;
-          if (chunk?.content) {
-            let token = '';
-            if (typeof chunk.content === 'string') {
-              token = chunk.content;
-            } else if (Array.isArray(chunk.content)) {
-              for (const block of chunk.content) {
-                if (block.type === 'text' && block.text) {
-                  token += block.text;
+        const streamAgent = await createAgent(folder || undefined, modelConfig, apiKeys, projectData?.githubPR);
+
+        console.log(`[agent:stream] Starting stream for session ${sessionId}, tile: ${tileId}, folder: ${folder}, model: ${modelConfig.name}, effort: ${modelConfig.effort}, messages: ${currentMessages.length}${toolErrorRetries > 0 ? ` (retry ${toolErrorRetries})` : ''}`);
+
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const stream = await streamAgent.streamEvents(
+            { messages: currentMessages as any },
+            { version: "v2", signal: controller.signal, recursionLimit: 10000 }
+          );
+
+          for await (const event of stream) {
+            if (controller.signal.aborted) break;
+
+            if (event.event === "on_chat_model_stream") {
+              const chunk = event.data?.chunk;
+              if (chunk?.content) {
+                let token = '';
+                if (typeof chunk.content === 'string') {
+                  token = chunk.content;
+                } else if (Array.isArray(chunk.content)) {
+                  for (const block of chunk.content) {
+                    if (block.type === 'text' && block.text) {
+                      token += block.text;
+                    }
+                  }
+                }
+
+                if (token) {
+                  send({ type: 'token', sessionId, token });
                 }
               }
             }
 
-            if (token) {
-              send({ type: 'token', sessionId, token });
-            }
-          }
-        }
-
-        if (event.event === "on_chat_model_end") {
-          const message = event.data?.output;
-          if (message?.usage_metadata) {
-            const { input_tokens, output_tokens } = message.usage_metadata;
-            lastInputTokens = input_tokens || 0;
-            send({
-              type: 'token-usage',
-              sessionId,
-              inputTokens: input_tokens || 0,
-              outputTokens: output_tokens || 0,
-            });
-          }
-        }
-
-        if (event.event === "on_tool_start") {
-          const toolCallId = event.run_id;
-          const toolName = event.name;
-          let toolArgs = event.data?.input || {};
-
-          if (toolArgs.input && typeof toolArgs.input === 'string') {
-            try {
-              toolArgs = JSON.parse(toolArgs.input);
-            } catch {
-              // Keep original if parsing fails
-            }
-          }
-
-          toolTimers.set(toolCallId, Date.now());
-
-          const currentMode = sessionModes.get(sessionId) || mode;
-          const requiresApproval = TOOLS_REQUIRING_APPROVAL.includes(toolName) && currentMode !== 'yolo';
-          const approvalRequestId = requiresApproval ? uuidv4() : undefined;
-
-          let diffData: DiffData | undefined;
-          if (folder && (toolName === 'edit_file' || toolName === 'write_file')) {
-            diffData = computeDiffData(toolName, toolArgs, folder);
-          }
-
-          send({
-            type: 'tool-start',
-            sessionId,
-            toolCallId,
-            toolName,
-            toolArgs,
-            approvalRequestId,
-            diffData,
-          });
-
-          if (toolName === 'write_todos' && toolArgs.todos) {
-            send({
-              type: 'todo-update',
-              sessionId,
-              todos: toolArgs.todos as TodoItem[],
-            });
-          }
-
-          if (requiresApproval && approvalRequestId) {
-            const decision = await new Promise<ApprovalDecision>((resolve) => {
-              pendingApprovals.set(approvalRequestId, { resolve });
-              const onAbort = () => {
-                resolve('reject');
-                pendingApprovals.delete(approvalRequestId);
-              };
-              if (controller.signal.aborted) {
-                onAbort();
-              } else {
-                controller.signal.addEventListener('abort', onAbort, { once: true });
+            if (event.event === "on_chat_model_end") {
+              const message = event.data?.output;
+              if (message?.usage_metadata) {
+                const { input_tokens, output_tokens } = message.usage_metadata;
+                lastInputTokens = input_tokens || 0;
+                send({
+                  type: 'token-usage',
+                  sessionId,
+                  inputTokens: input_tokens || 0,
+                  outputTokens: output_tokens || 0,
+                });
               }
-            });
+            }
 
-            if (decision === 'reject') {
+            if (event.event === "on_tool_start") {
+              const toolCallId = event.run_id;
+              const toolName = event.name;
+              let toolArgs = event.data?.input || {};
+
+              if (toolArgs.input && typeof toolArgs.input === 'string') {
+                try {
+                  toolArgs = JSON.parse(toolArgs.input);
+                } catch {
+                  // Keep original if parsing fails
+                }
+              }
+
+              toolTimers.set(toolCallId, Date.now());
+              lastToolCall = { id: toolCallId, name: toolName, args: toolArgs };
+
+              const currentMode = sessionModes.get(sessionId) || mode;
+              const requiresApproval = TOOLS_REQUIRING_APPROVAL.includes(toolName) && currentMode !== 'yolo';
+              const approvalRequestId = requiresApproval ? uuidv4() : undefined;
+
+              let diffData: DiffData | undefined;
+              if (folder && (toolName === 'edit_file' || toolName === 'write_file')) {
+                diffData = computeDiffData(toolName, toolArgs, folder);
+              }
+
+              send({
+                type: 'tool-start',
+                sessionId,
+                toolCallId,
+                toolName,
+                toolArgs,
+                approvalRequestId,
+                diffData,
+              });
+
+              if (toolName === 'write_todos' && toolArgs.todos) {
+                send({
+                  type: 'todo-update',
+                  sessionId,
+                  todos: toolArgs.todos as TodoItem[],
+                });
+              }
+
+              if (requiresApproval && approvalRequestId) {
+                const decision = await new Promise<ApprovalDecision>((resolve) => {
+                  pendingApprovals.set(approvalRequestId, { resolve });
+                  const onAbort = () => {
+                    resolve('reject');
+                    pendingApprovals.delete(approvalRequestId);
+                  };
+                  if (controller.signal.aborted) {
+                    onAbort();
+                  } else {
+                    controller.signal.addEventListener('abort', onAbort, { once: true });
+                  }
+                });
+
+                if (decision === 'reject') {
+                  send({
+                    type: 'tool-end',
+                    sessionId,
+                    toolCallId,
+                    output: 'Tool execution skipped by user',
+                    error: 'skipped',
+                    elapsedMs: 0,
+                  });
+                  sendFinal({ type: 'done', sessionId });
+                  controller.abort();
+                  return;
+                }
+
+                send({
+                  type: 'tool-status-update',
+                  sessionId,
+                  toolCallId,
+                  status: 'running',
+                });
+              }
+            }
+
+            if (event.event === "on_tool_end") {
+              const toolCallId = event.run_id;
+              const startTime = toolTimers.get(toolCallId) || Date.now();
+              const elapsedMs = Date.now() - startTime;
+              toolTimers.delete(toolCallId);
+
+              const output = event.data?.output;
+              let outputStr = '';
+              let errorStr: string | undefined;
+
+              if (typeof output === 'string') {
+                outputStr = output;
+                if (outputStr.startsWith('Error ')) {
+                  errorStr = outputStr;
+                }
+              } else if (output && typeof output === 'object') {
+                const isToolError =
+                  output.kwargs?.additional_kwargs?.tool_error === true ||
+                  output.additional_kwargs?.tool_error === true ||
+                  output.kwargs?.status === 'error' ||
+                  output.status === 'error';
+                if (output.kwargs?.content) {
+                  outputStr = String(output.kwargs.content);
+                } else if (output.content) {
+                  outputStr = String(output.content);
+                } else if ('output' in output) {
+                  outputStr = String(output.output);
+                } else if ('error' in output) {
+                  errorStr = String(output.error);
+                  outputStr = errorStr;
+                } else {
+                  outputStr = JSON.stringify(output, null, 2);
+                }
+                if (isToolError || outputStr.startsWith('Error ')) {
+                  errorStr = outputStr;
+                }
+              }
+
               send({
                 type: 'tool-end',
                 sessionId,
                 toolCallId,
-                output: 'Tool execution skipped by user',
-                error: 'skipped',
-                elapsedMs: 0,
+                output: outputStr,
+                error: errorStr,
+                elapsedMs,
               });
-              sendFinal({ type: 'done', sessionId });
-              controller.abort();
-              return;
-            }
-
-            send({
-              type: 'tool-status-update',
-              sessionId,
-              toolCallId,
-              status: 'running',
-            });
-          }
-        }
-
-        if (event.event === "on_tool_end") {
-          const toolCallId = event.run_id;
-          const startTime = toolTimers.get(toolCallId) || Date.now();
-          const elapsedMs = Date.now() - startTime;
-          toolTimers.delete(toolCallId);
-
-          const output = event.data?.output;
-          let outputStr = '';
-          let errorStr: string | undefined;
-
-          if (typeof output === 'string') {
-            outputStr = output;
-            if (outputStr.startsWith('Error ')) {
-              errorStr = outputStr;
-            }
-          } else if (output && typeof output === 'object') {
-            const isToolError =
-              output.kwargs?.additional_kwargs?.tool_error === true ||
-              output.additional_kwargs?.tool_error === true ||
-              output.kwargs?.status === 'error' ||
-              output.status === 'error';
-            if (output.kwargs?.content) {
-              outputStr = String(output.kwargs.content);
-            } else if (output.content) {
-              outputStr = String(output.content);
-            } else if ('output' in output) {
-              outputStr = String(output.output);
-            } else if ('error' in output) {
-              errorStr = String(output.error);
-              outputStr = errorStr;
-            } else {
-              outputStr = JSON.stringify(output, null, 2);
-            }
-            if (isToolError || outputStr.startsWith('Error ')) {
-              errorStr = outputStr;
             }
           }
 
-          send({
-            type: 'tool-end',
-            sessionId,
-            toolCallId,
-            output: outputStr,
-            error: errorStr,
-            elapsedMs,
-          });
+          // Stream completed successfully — exit retry loop
+          break retryLoop;
+        } catch (streamError) {
+          if (isToolValidationError(streamError) && toolErrorRetries < MAX_TOOL_ERROR_RETRIES && !controller.signal.aborted) {
+            toolErrorRetries++;
+            const errorMsg = streamError instanceof Error ? streamError.message : String(streamError);
+            console.warn(`[agent:stream] Tool validation error for session ${sessionId} (retry ${toolErrorRetries}/${MAX_TOOL_ERROR_RETRIES}):`, errorMsg);
+
+            if (lastToolCall) {
+              const startTime = toolTimers.get(lastToolCall.id) || Date.now();
+              send({
+                type: 'tool-end',
+                sessionId,
+                toolCallId: lastToolCall.id,
+                output: errorMsg,
+                error: errorMsg,
+                elapsedMs: Date.now() - startTime,
+              });
+              toolTimers.delete(lastToolCall.id);
+            }
+
+            currentMessages = [
+              ...currentMessages,
+              {
+                role: 'assistant',
+                content: `I attempted to call the tool "${lastToolCall?.name ?? 'unknown'}" but it failed with a schema validation error: ${errorMsg}\n\nI need to retry with the correct arguments.`,
+              },
+              {
+                role: 'user',
+                content: 'Your previous tool call failed because of invalid or missing arguments. Please retry with the correct arguments. Make sure all required parameters are provided.',
+              },
+            ];
+
+            lastToolCall = null;
+            continue retryLoop;
+          }
+
+          throw streamError;
         }
       }
 
