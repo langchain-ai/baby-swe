@@ -79,20 +79,28 @@ contextBridge.exposeInMainWorld('git', {
   createBranch: (projectPath: string, branchName: string) =>
     ipcRenderer.invoke('git:createBranch', projectPath, branchName),
   getPR: (projectPath: string) => ipcRenderer.invoke('git:getPR', projectPath),
-  diffFile: (projectPath: string, filePath: string) =>
-    ipcRenderer.invoke('git:diffFile', projectPath, filePath),
+  diffFile: (projectPath: string, filePath: string, staged: boolean) =>
+    ipcRenderer.invoke('git:diffFile', projectPath, filePath, staged),
   status: (projectPath: string) =>
     ipcRenderer.invoke('git:status', projectPath),
   stageFile: (projectPath: string, filePath: string) =>
     ipcRenderer.invoke('git:stageFile', projectPath, filePath),
   unstageFile: (projectPath: string, filePath: string) =>
     ipcRenderer.invoke('git:unstageFile', projectPath, filePath),
-  discardFile: (projectPath: string, filePath: string) =>
-    ipcRenderer.invoke('git:discardFile', projectPath, filePath),
+  discardFile: (projectPath: string, filePath: string, isUntracked: boolean) =>
+    ipcRenderer.invoke('git:discardFile', projectPath, filePath, isUntracked),
   stageAll: (projectPath: string) =>
     ipcRenderer.invoke('git:stageAll', projectPath),
+  unstageAll: (projectPath: string) =>
+    ipcRenderer.invoke('git:unstageAll', projectPath),
+  discardAll: (projectPath: string) =>
+    ipcRenderer.invoke('git:discardAll', projectPath),
   commit: (projectPath: string, message: string) =>
     ipcRenderer.invoke('git:commit', projectPath, message),
   push: (projectPath: string) =>
     ipcRenderer.invoke('git:push', projectPath),
+  pull: (projectPath: string) =>
+    ipcRenderer.invoke('git:pull', projectPath),
+  syncStatus: (projectPath: string) =>
+    ipcRenderer.invoke('git:syncStatus', projectPath),
 });

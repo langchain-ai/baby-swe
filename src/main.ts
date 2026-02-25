@@ -6,7 +6,7 @@ if (!globalThis.crypto) {
 
 import { app, BrowserWindow, Menu, dialog, ipcMain } from 'electron';
 import * as path from 'path';
-import { execSync } from 'child_process';
+import { execSync, execFileSync } from 'child_process';
 import * as fs from 'fs';
 import * as pty from 'node-pty';
 import { setupAgentIPC } from './agent';
@@ -19,13 +19,40 @@ const MAX_FALLBACK_FILES = 1000;
 const FALLBACK_PATTERNS = ['*', '*/*', '*/*/*', '*/*/*/*'];
 const IGNORE_DIRS = new Set(['.git', 'node_modules', '__pycache__', '.venv', 'build', 'dist', '.next', '.cache']);
 
+// ─── Git types ───────────────────────────────────────────────────────────────
+
+export type GitFileStatus =
+  | 'index-modified' | 'index-added' | 'index-deleted' | 'index-renamed' | 'index-copied'
+  | 'modified' | 'deleted' | 'untracked' | 'ignored'
+  | 'both-modified' | 'both-added' | 'added-by-us' | 'added-by-them' | 'deleted-by-us' | 'deleted-by-them' | 'both-deleted'
+  | 'type-changed' | 'intent-to-add';
+
+export interface GitStatusEntry {
+  path: string;
+  status: GitFileStatus;
+  staged: boolean;
+  originalPath?: string; // for renames
+}
+
+export interface GitSyncStatus {
+  ahead: number;
+  behind: number;
+  remote: string | null;
+  branchName: string | null;
+}
+
+const GIT_ENV = { ...process.env, LC_ALL: 'en_US.UTF-8', LANG: 'en_US.UTF-8', GIT_PAGER: 'cat' };
+
+// ─── Git helper functions ────────────────────────────────────────────────────
+
 function getGitBranch(projectPath: string): string | undefined {
   try {
-    const result = execSync('git rev-parse --abbrev-ref HEAD', {
+    const result = execFileSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], {
       cwd: projectPath,
       encoding: 'utf-8',
       timeout: 2000,
       stdio: ['pipe', 'pipe', 'pipe'],
+      env: GIT_ENV,
     });
     return result.trim() || undefined;
   } catch {
@@ -61,11 +88,12 @@ function getGithubPR(projectPath: string): GithubPR | null {
 
 function listGitBranches(projectPath: string): { branches: string[]; current: string | null } {
   try {
-    const result = execSync('git branch --no-color --sort=-committerdate', {
+    const result = execFileSync('git', ['branch', '--no-color', '--sort=-committerdate'], {
       cwd: projectPath,
       encoding: 'utf-8',
       timeout: 5000,
       stdio: ['pipe', 'pipe', 'pipe'],
+      env: GIT_ENV,
     });
     const lines = result.trim().split('\n').filter(Boolean);
     let current: string | null = null;
@@ -83,64 +111,135 @@ function listGitBranches(projectPath: string): { branches: string[]; current: st
 
 function switchGitBranch(projectPath: string, branchName: string): { success: boolean; error?: string } {
   try {
-    execSync(`git checkout ${branchName}`, {
+    execFileSync('git', ['checkout', branchName], {
       cwd: projectPath,
       encoding: 'utf-8',
       timeout: 10000,
       stdio: ['pipe', 'pipe', 'pipe'],
+      env: GIT_ENV,
     });
     return { success: true };
   } catch (e: any) {
-    return { success: false, error: e.message || 'Failed to switch branch' };
+    return { success: false, error: e.stderr?.trim() || e.message || 'Failed to switch branch' };
   }
 }
 
 function createGitBranch(projectPath: string, branchName: string): { success: boolean; error?: string } {
   try {
-    execSync(`git checkout -b ${branchName}`, {
+    execFileSync('git', ['checkout', '-b', branchName], {
       cwd: projectPath,
       encoding: 'utf-8',
       timeout: 10000,
       stdio: ['pipe', 'pipe', 'pipe'],
+      env: GIT_ENV,
     });
     return { success: true };
   } catch (e: any) {
-    return { success: false, error: e.message || 'Failed to create branch' };
+    return { success: false, error: e.stderr?.trim() || e.message || 'Failed to create branch' };
   }
 }
 
-export interface GitStatusEntry {
-  path: string;
-  status: 'modified' | 'added' | 'deleted' | 'renamed' | 'untracked' | 'staged-modified' | 'staged-added' | 'staged-deleted' | 'staged-renamed';
-  staged: boolean;
+function parseXYStatus(x: string, y: string): { indexStatus: GitFileStatus | null; workTreeStatus: GitFileStatus | null } {
+  let indexStatus: GitFileStatus | null = null;
+  let workTreeStatus: GitFileStatus | null = null;
+
+  // Merge conflicts
+  if (x === 'D' && y === 'D') return { indexStatus: 'both-deleted', workTreeStatus: null };
+  if (x === 'A' && y === 'U') return { indexStatus: 'added-by-us', workTreeStatus: null };
+  if (x === 'U' && y === 'D') return { indexStatus: 'deleted-by-them', workTreeStatus: null };
+  if (x === 'U' && y === 'A') return { indexStatus: 'added-by-them', workTreeStatus: null };
+  if (x === 'D' && y === 'U') return { indexStatus: 'deleted-by-us', workTreeStatus: null };
+  if (x === 'A' && y === 'A') return { indexStatus: 'both-added', workTreeStatus: null };
+  if (x === 'U' && y === 'U') return { indexStatus: 'both-modified', workTreeStatus: null };
+
+  // Untracked
+  if (x === '?' && y === '?') return { indexStatus: null, workTreeStatus: 'untracked' };
+
+  // Ignored
+  if (x === '!' && y === '!') return { indexStatus: null, workTreeStatus: 'ignored' };
+
+  // Index (staged) statuses
+  switch (x) {
+    case 'M': indexStatus = 'index-modified'; break;
+    case 'T': indexStatus = 'type-changed'; break;
+    case 'A': indexStatus = 'index-added'; break;
+    case 'D': indexStatus = 'index-deleted'; break;
+    case 'R': indexStatus = 'index-renamed'; break;
+    case 'C': indexStatus = 'index-copied'; break;
+  }
+
+  // Working tree (unstaged) statuses
+  switch (y) {
+    case 'M': workTreeStatus = 'modified'; break;
+    case 'D': workTreeStatus = 'deleted'; break;
+    case 'T': workTreeStatus = 'type-changed'; break;
+    case 'A': workTreeStatus = 'intent-to-add'; break;
+  }
+
+  return { indexStatus, workTreeStatus };
 }
 
 function getGitStatus(projectPath: string): GitStatusEntry[] {
   try {
-    const result = execSync('git status --porcelain=v1', {
+    const result = execFileSync('git', ['status', '-z', '-uall'], {
       cwd: projectPath,
       encoding: 'utf-8',
       timeout: 5000,
       stdio: ['pipe', 'pipe', 'pipe'],
+      env: GIT_ENV,
     });
-    const lines = result.trim().split('\n').filter(Boolean);
+
     const entries: GitStatusEntry[] = [];
+    // -z format: entries separated by NUL. For renames/copies: "XY ORIG\0NEW\0", others: "XY PATH\0"
+    const parts = result.split('\0');
 
-    for (const line of lines) {
-      const index = line[0];   // staged status
-      const worktree = line[1]; // working tree status
-      const filePath = line.slice(3).trim();
+    let i = 0;
+    while (i < parts.length) {
+      const raw = parts[i];
+      if (raw.length < 3) { i++; continue; } // skip empty trailing parts
 
-      // Staged changes
-      if (index === 'M') entries.push({ path: filePath, status: 'staged-modified', staged: true });
-      else if (index === 'A') entries.push({ path: filePath, status: 'staged-added', staged: true });
-      else if (index === 'D') entries.push({ path: filePath, status: 'staged-deleted', staged: true });
-      else if (index === 'R') entries.push({ path: filePath, status: 'staged-renamed', staged: true });
+      const x = raw[0];
+      const y = raw[1];
+      // raw[2] is a space separator
+      const filePath = raw.slice(3);
 
-      // Working tree changes
-      if (worktree === 'M') entries.push({ path: filePath, status: 'modified', staged: false });
-      else if (worktree === 'D') entries.push({ path: filePath, status: 'deleted', staged: false });
-      else if (worktree === '?' && index === '?') entries.push({ path: filePath, status: 'untracked', staged: false });
+      let originalPath: string | undefined;
+      // Renames and copies have an extra NUL-separated path
+      if (x === 'R' || x === 'C') {
+        i++;
+        originalPath = filePath;   // first path is the original (source)
+        const newPath = parts[i];  // second path is the destination
+        if (newPath === undefined) { i++; continue; }
+
+        const { indexStatus, workTreeStatus } = parseXYStatus(x, y);
+
+        if (indexStatus) {
+          entries.push({ path: newPath, status: indexStatus, staged: true, originalPath });
+        }
+        if (workTreeStatus) {
+          entries.push({ path: newPath, status: workTreeStatus, staged: false, originalPath });
+        }
+        i++;
+        continue;
+      }
+
+      const { indexStatus, workTreeStatus } = parseXYStatus(x, y);
+
+      // Merge conflict entries are not "staged" in the normal sense
+      const isConflict = ['both-modified', 'both-added', 'both-deleted', 'added-by-us', 'added-by-them', 'deleted-by-us', 'deleted-by-them'].includes(indexStatus || '');
+
+      if (isConflict && indexStatus) {
+        entries.push({ path: filePath, status: indexStatus, staged: false });
+      } else {
+        if (indexStatus) {
+          entries.push({ path: filePath, status: indexStatus, staged: true });
+        }
+        if (workTreeStatus) {
+          entries.push({ path: filePath, status: workTreeStatus, staged: false });
+        }
+      }
+
+      i++;
     }
 
     return entries;
@@ -149,25 +248,54 @@ function getGitStatus(projectPath: string): GitStatusEntry[] {
   }
 }
 
-function getGitFileDiff(projectPath: string, filePath: string): { original: string; modified: string } | null {
+function getGitFileDiff(projectPath: string, filePath: string, staged: boolean): { original: string; modified: string } | null {
   try {
-    // Get the current file content (working tree)
-    const absolutePath = filePath.startsWith('/') ? filePath : path.join(projectPath, filePath);
-    const modified = fs.readFileSync(absolutePath, 'utf-8');
-
-    // Get the HEAD version of the file
     const relativePath = filePath.startsWith('/') ? path.relative(projectPath, filePath) : filePath;
+
     let original = '';
     try {
-      original = execSync(`git show HEAD:${relativePath}`, {
+      original = execFileSync('git', ['show', `HEAD:${relativePath}`], {
         cwd: projectPath,
         encoding: 'utf-8',
         timeout: 5000,
         stdio: ['pipe', 'pipe', 'pipe'],
+        env: GIT_ENV,
       });
     } catch {
       // File doesn't exist in HEAD (new file)
       original = '';
+    }
+
+    let modified: string;
+    if (staged) {
+      // Staged: compare HEAD vs index
+      try {
+        modified = execFileSync('git', ['show', `:${relativePath}`], {
+          cwd: projectPath,
+          encoding: 'utf-8',
+          timeout: 5000,
+          stdio: ['pipe', 'pipe', 'pipe'],
+          env: GIT_ENV,
+        });
+      } catch {
+        modified = '';
+      }
+    } else {
+      // Unstaged: compare index vs working tree
+      const absolutePath = path.join(projectPath, relativePath);
+      modified = fs.readFileSync(absolutePath, 'utf-8');
+      // For unstaged, original should be the index version, not HEAD
+      try {
+        original = execFileSync('git', ['show', `:${relativePath}`], {
+          cwd: projectPath,
+          encoding: 'utf-8',
+          timeout: 5000,
+          stdio: ['pipe', 'pipe', 'pipe'],
+          env: GIT_ENV,
+        });
+      } catch {
+        // Fall back to HEAD if no index version
+      }
     }
 
     return { original, modified };
@@ -176,12 +304,55 @@ function getGitFileDiff(projectPath: string, filePath: string): { original: stri
   }
 }
 
+function getGitSyncStatus(projectPath: string): GitSyncStatus {
+  try {
+    const branch = execFileSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], {
+      cwd: projectPath,
+      encoding: 'utf-8',
+      timeout: 2000,
+      stdio: ['pipe', 'pipe', 'pipe'],
+      env: GIT_ENV,
+    }).trim();
+
+    let ahead = 0, behind = 0, remote: string | null = null;
+
+    try {
+      const upstream = execFileSync('git', ['rev-parse', '--abbrev-ref', '@{upstream}'], {
+        cwd: projectPath,
+        encoding: 'utf-8',
+        timeout: 2000,
+        stdio: ['pipe', 'pipe', 'pipe'],
+        env: GIT_ENV,
+      }).trim();
+      remote = upstream;
+
+      const counts = execFileSync('git', ['rev-list', '--left-right', '--count', `${upstream}...HEAD`], {
+        cwd: projectPath,
+        encoding: 'utf-8',
+        timeout: 5000,
+        stdio: ['pipe', 'pipe', 'pipe'],
+        env: GIT_ENV,
+      }).trim();
+      const [behindStr, aheadStr] = counts.split(/\s+/);
+      behind = parseInt(behindStr, 10) || 0;
+      ahead = parseInt(aheadStr, 10) || 0;
+    } catch {
+      // No upstream set
+    }
+
+    return { ahead, behind, remote, branchName: branch };
+  } catch {
+    return { ahead: 0, behind: 0, remote: null, branchName: null };
+  }
+}
+
 function listProjectFiles(projectPath: string): string[] {
   try {
-    const result = execSync('git ls-files', {
+    const result = execFileSync('git', ['ls-files'], {
       cwd: projectPath,
       encoding: 'utf-8',
       timeout: 5000,
+      env: GIT_ENV,
     });
     const files = result.trim().split('\n').filter(Boolean);
     return files;
@@ -459,8 +630,8 @@ function setupStorageIPC(): void {
     return result;
   });
 
-  ipcMain.handle('git:diffFile', (_event, projectPath: string, filePath: string) => {
-    return getGitFileDiff(projectPath, filePath);
+  ipcMain.handle('git:diffFile', (_event, projectPath: string, filePath: string, staged: boolean) => {
+    return getGitFileDiff(projectPath, filePath, staged);
   });
 
   ipcMain.handle('git:status', (_event, projectPath: string) => {
@@ -469,116 +640,191 @@ function setupStorageIPC(): void {
 
   ipcMain.handle('git:stageFile', (_event, projectPath: string, filePath: string) => {
     try {
-      execSync(`git add -- ${JSON.stringify(filePath)}`, {
+      execFileSync('git', ['add', '--', filePath], {
         cwd: projectPath,
         encoding: 'utf-8',
         timeout: 5000,
         stdio: ['pipe', 'pipe', 'pipe'],
+        env: GIT_ENV,
       });
       return { success: true };
     } catch (e: any) {
-      return { success: false, error: e.message || 'Failed to stage file' };
+      return { success: false, error: e.stderr?.trim() || e.message || 'Failed to stage file' };
     }
   });
 
   ipcMain.handle('git:unstageFile', (_event, projectPath: string, filePath: string) => {
     try {
-      execSync(`git restore --staged -- ${JSON.stringify(filePath)}`, {
+      execFileSync('git', ['restore', '--staged', '--', filePath], {
         cwd: projectPath,
         encoding: 'utf-8',
         timeout: 5000,
         stdio: ['pipe', 'pipe', 'pipe'],
+        env: GIT_ENV,
       });
       return { success: true };
     } catch (e: any) {
-      return { success: false, error: e.message || 'Failed to unstage file' };
+      return { success: false, error: e.stderr?.trim() || e.message || 'Failed to unstage file' };
     }
   });
 
-  ipcMain.handle('git:discardFile', (_event, projectPath: string, filePath: string) => {
+  ipcMain.handle('git:discardFile', (_event, projectPath: string, filePath: string, isUntracked: boolean) => {
     try {
-      execSync(`git checkout -- ${JSON.stringify(filePath)}`, {
-        cwd: projectPath,
-        encoding: 'utf-8',
-        timeout: 5000,
-        stdio: ['pipe', 'pipe', 'pipe'],
-      });
-      return { success: true };
-    } catch (e: any) {
-      // For untracked files, remove them
-      try {
-        execSync(`git clean -f -- ${JSON.stringify(filePath)}`, {
+      if (isUntracked) {
+        execFileSync('git', ['clean', '-f', '--', filePath], {
           cwd: projectPath,
           encoding: 'utf-8',
           timeout: 5000,
           stdio: ['pipe', 'pipe', 'pipe'],
+          env: GIT_ENV,
         });
-        return { success: true };
-      } catch (e2: any) {
-        return { success: false, error: e2.message || 'Failed to discard file' };
+      } else {
+        execFileSync('git', ['checkout', '--', filePath], {
+          cwd: projectPath,
+          encoding: 'utf-8',
+          timeout: 5000,
+          stdio: ['pipe', 'pipe', 'pipe'],
+          env: GIT_ENV,
+        });
       }
+      return { success: true };
+    } catch (e: any) {
+      return { success: false, error: e.stderr?.trim() || e.message || 'Failed to discard file' };
     }
   });
 
   ipcMain.handle('git:stageAll', (_event, projectPath: string) => {
     try {
-      execSync('git add -A', {
+      execFileSync('git', ['add', '-A'], {
         cwd: projectPath,
         encoding: 'utf-8',
         timeout: 5000,
         stdio: ['pipe', 'pipe', 'pipe'],
+        env: GIT_ENV,
       });
       return { success: true };
     } catch (e: any) {
-      return { success: false, error: e.message || 'Failed to stage all' };
+      return { success: false, error: e.stderr?.trim() || e.message || 'Failed to stage all' };
+    }
+  });
+
+  ipcMain.handle('git:unstageAll', (_event, projectPath: string) => {
+    try {
+      execFileSync('git', ['reset', 'HEAD'], {
+        cwd: projectPath,
+        encoding: 'utf-8',
+        timeout: 5000,
+        stdio: ['pipe', 'pipe', 'pipe'],
+        env: GIT_ENV,
+      });
+      return { success: true };
+    } catch (e: any) {
+      // On initial commit, use rm --cached
+      try {
+        execFileSync('git', ['rm', '--cached', '-r', '.'], {
+          cwd: projectPath,
+          encoding: 'utf-8',
+          timeout: 5000,
+          stdio: ['pipe', 'pipe', 'pipe'],
+          env: GIT_ENV,
+        });
+        return { success: true };
+      } catch (e2: any) {
+        return { success: false, error: e2.stderr?.trim() || e2.message || 'Failed to unstage all' };
+      }
+    }
+  });
+
+  ipcMain.handle('git:discardAll', (_event, projectPath: string) => {
+    try {
+      execFileSync('git', ['checkout', '--', '.'], {
+        cwd: projectPath,
+        encoding: 'utf-8',
+        timeout: 10000,
+        stdio: ['pipe', 'pipe', 'pipe'],
+        env: GIT_ENV,
+      });
+      // Also clean untracked files
+      execFileSync('git', ['clean', '-fd'], {
+        cwd: projectPath,
+        encoding: 'utf-8',
+        timeout: 10000,
+        stdio: ['pipe', 'pipe', 'pipe'],
+        env: GIT_ENV,
+      });
+      return { success: true };
+    } catch (e: any) {
+      return { success: false, error: e.stderr?.trim() || e.message || 'Failed to discard all' };
     }
   });
 
   ipcMain.handle('git:commit', (_event, projectPath: string, message: string) => {
     try {
-      execSync(`git commit -m ${JSON.stringify(message)}`, {
+      execFileSync('git', ['commit', '-m', message], {
         cwd: projectPath,
         encoding: 'utf-8',
         timeout: 15000,
         stdio: ['pipe', 'pipe', 'pipe'],
+        env: GIT_ENV,
       });
       return { success: true };
     } catch (e: any) {
-      return { success: false, error: e.message || 'Failed to commit' };
+      return { success: false, error: e.stderr?.trim() || e.message || 'Failed to commit' };
     }
   });
 
   ipcMain.handle('git:push', (_event, projectPath: string) => {
+    const pushEnv = { ...userShellEnv, LC_ALL: 'en_US.UTF-8', LANG: 'en_US.UTF-8', GIT_PAGER: 'cat' };
     try {
-      execSync('git push', {
+      execFileSync('git', ['push'], {
         cwd: projectPath,
         encoding: 'utf-8',
         timeout: 30000,
         stdio: ['pipe', 'pipe', 'pipe'],
-        env: userShellEnv,
+        env: pushEnv,
       });
       return { success: true };
     } catch (e: any) {
-      // Try push with --set-upstream if no upstream is set
       try {
-        const branch = execSync('git rev-parse --abbrev-ref HEAD', {
+        const branch = execFileSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], {
           cwd: projectPath,
           encoding: 'utf-8',
           timeout: 5000,
           stdio: ['pipe', 'pipe', 'pipe'],
+          env: GIT_ENV,
         }).trim();
-        execSync(`git push --set-upstream origin ${branch}`, {
+        execFileSync('git', ['push', '--set-upstream', 'origin', branch], {
           cwd: projectPath,
           encoding: 'utf-8',
           timeout: 30000,
           stdio: ['pipe', 'pipe', 'pipe'],
-          env: userShellEnv,
+          env: pushEnv,
         });
         return { success: true };
       } catch (e2: any) {
-        return { success: false, error: e2.message || 'Failed to push' };
+        return { success: false, error: e2.stderr?.trim() || e2.message || 'Failed to push' };
       }
     }
+  });
+
+  ipcMain.handle('git:pull', (_event, projectPath: string) => {
+    const pullEnv = { ...userShellEnv, LC_ALL: 'en_US.UTF-8', LANG: 'en_US.UTF-8', GIT_PAGER: 'cat' };
+    try {
+      execFileSync('git', ['pull'], {
+        cwd: projectPath,
+        encoding: 'utf-8',
+        timeout: 30000,
+        stdio: ['pipe', 'pipe', 'pipe'],
+        env: pullEnv,
+      });
+      return { success: true };
+    } catch (e: any) {
+      return { success: false, error: e.stderr?.trim() || e.message || 'Failed to pull' };
+    }
+  });
+
+  ipcMain.handle('git:syncStatus', (_event, projectPath: string) => {
+    return getGitSyncStatus(projectPath);
   });
 }
 

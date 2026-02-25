@@ -20,12 +20,16 @@ export interface Project {
 
 export type TileType = 'agent' | 'terminal' | 'file-viewer' | 'source-control';
 
-export type GitFileStatus = 'modified' | 'added' | 'deleted' | 'renamed' | 'untracked' | 'staged-modified' | 'staged-added' | 'staged-deleted' | 'staged-renamed';
+export type GitFileStatus =
+  | 'index-modified' | 'index-added' | 'index-deleted' | 'index-renamed' | 'index-copied'
+  | 'modified' | 'deleted' | 'untracked' | 'ignored' | 'type-changed' | 'intent-to-add'
+  | 'both-modified' | 'both-added' | 'added-by-us' | 'added-by-them' | 'deleted-by-us' | 'deleted-by-them' | 'both-deleted';
 
 export interface GitStatusEntry {
   path: string;
   status: GitFileStatus;
   staged: boolean;
+  originalPath?: string;
 }
 
 export interface FileViewerData {

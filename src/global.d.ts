@@ -48,17 +48,21 @@ interface Window {
     onData: (callback: (id: string, data: string) => void) => () => void;
   };
   git: {
-    listBranches: (projectPath: string) => Promise<unknown>;
-    switchBranch: (projectPath: string, branchName: string) => Promise<unknown>;
-    createBranch: (projectPath: string, branchName: string) => Promise<unknown>;
+    listBranches: (projectPath: string) => Promise<{ branches: string[]; current: string | null }>;
+    switchBranch: (projectPath: string, branchName: string) => Promise<{ success: boolean; error?: string }>;
+    createBranch: (projectPath: string, branchName: string) => Promise<{ success: boolean; error?: string }>;
     getPR: (projectPath: string) => Promise<import('./types').GithubPR | null>;
-    diffFile: (projectPath: string, filePath: string) => Promise<{ original: string; modified: string } | null>;
+    diffFile: (projectPath: string, filePath: string, staged: boolean) => Promise<{ original: string; modified: string } | null>;
     status: (projectPath: string) => Promise<import('./types').GitStatusEntry[]>;
     stageFile: (projectPath: string, filePath: string) => Promise<{ success: boolean; error?: string }>;
     unstageFile: (projectPath: string, filePath: string) => Promise<{ success: boolean; error?: string }>;
-    discardFile: (projectPath: string, filePath: string) => Promise<{ success: boolean; error?: string }>;
+    discardFile: (projectPath: string, filePath: string, isUntracked: boolean) => Promise<{ success: boolean; error?: string }>;
     stageAll: (projectPath: string) => Promise<{ success: boolean; error?: string }>;
+    unstageAll: (projectPath: string) => Promise<{ success: boolean; error?: string }>;
+    discardAll: (projectPath: string) => Promise<{ success: boolean; error?: string }>;
     commit: (projectPath: string, message: string) => Promise<{ success: boolean; error?: string }>;
     push: (projectPath: string) => Promise<{ success: boolean; error?: string }>;
+    pull: (projectPath: string) => Promise<{ success: boolean; error?: string }>;
+    syncStatus: (projectPath: string) => Promise<{ ahead: number; behind: number; remote: string | null; branchName: string | null }>;
   };
 }

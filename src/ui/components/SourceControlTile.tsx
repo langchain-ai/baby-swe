@@ -2,28 +2,48 @@ import { useState, useEffect, useCallback, useRef, memo } from "react";
 import type { GitStatusEntry, GitFileStatus } from "../../types";
 import { useStore } from "../../store";
 
-const STATUS_LABELS: Record<GitFileStatus, string> = {
+// ─── Status display maps ────────────────────────────────────────────────────
+
+const STATUS_LABELS: Partial<Record<GitFileStatus, string>> = {
+  "index-modified": "M",
+  "index-added": "A",
+  "index-deleted": "D",
+  "index-renamed": "R",
+  "index-copied": "C",
   modified: "M",
-  added: "A",
   deleted: "D",
-  renamed: "R",
   untracked: "U",
-  "staged-modified": "M",
-  "staged-added": "A",
-  "staged-deleted": "D",
-  "staged-renamed": "R",
+  ignored: "!",
+  "type-changed": "T",
+  "intent-to-add": "A",
+  "both-modified": "!",
+  "both-added": "!",
+  "added-by-us": "!",
+  "added-by-them": "!",
+  "deleted-by-us": "!",
+  "deleted-by-them": "!",
+  "both-deleted": "!",
 };
 
-const STATUS_COLORS: Record<GitFileStatus, string> = {
+const STATUS_COLORS: Partial<Record<GitFileStatus, string>> = {
+  "index-modified": "text-yellow-400",
+  "index-added": "text-green-400",
+  "index-deleted": "text-red-400",
+  "index-renamed": "text-blue-400",
+  "index-copied": "text-blue-400",
   modified: "text-yellow-400",
-  added: "text-green-400",
   deleted: "text-red-400",
-  renamed: "text-blue-400",
   untracked: "text-green-400",
-  "staged-modified": "text-yellow-400",
-  "staged-added": "text-green-400",
-  "staged-deleted": "text-red-400",
-  "staged-renamed": "text-blue-400",
+  ignored: "text-gray-500",
+  "type-changed": "text-yellow-400",
+  "intent-to-add": "text-green-400",
+  "both-modified": "text-orange-400",
+  "both-added": "text-orange-400",
+  "added-by-us": "text-orange-400",
+  "added-by-them": "text-orange-400",
+  "deleted-by-us": "text-orange-400",
+  "deleted-by-them": "text-orange-400",
+  "both-deleted": "text-orange-400",
 };
 
 interface SourceControlTileProps {
@@ -31,6 +51,24 @@ interface SourceControlTileProps {
   projectPath?: string;
   isFocused: boolean;
   onFocus: () => void;
+}
+
+type SyncStatus = { ahead: number; behind: number; remote: string | null; branchName: string | null };
+
+function isUntracked(status: GitFileStatus): boolean {
+  return status === "untracked";
+}
+
+function isConflict(status: GitFileStatus): boolean {
+  return (
+    status === "both-modified" ||
+    status === "both-added" ||
+    status === "both-deleted" ||
+    status === "added-by-us" ||
+    status === "added-by-them" ||
+    status === "deleted-by-us" ||
+    status === "deleted-by-them"
+  );
 }
 
 export const SourceControlTile = memo(function SourceControlTile({
@@ -41,11 +79,15 @@ export const SourceControlTile = memo(function SourceControlTile({
 }: SourceControlTileProps) {
   const [entries, setEntries] = useState<GitStatusEntry[]>([]);
   const [loading, setLoading] = useState(false);
+  const [mergeCollapsed, setMergeCollapsed] = useState(false);
   const [stagedCollapsed, setStagedCollapsed] = useState(false);
   const [changesCollapsed, setChangesCollapsed] = useState(false);
+  const [untrackedCollapsed, setUntrackedCollapsed] = useState(false);
   const [commitMessage, setCommitMessage] = useState("");
   const [committing, setCommitting] = useState(false);
   const [pushing, setPushing] = useState(false);
+  const [pulling, setPulling] = useState(false);
+  const [syncStatus, setSyncStatus] = useState<SyncStatus | null>(null);
   const [statusMsg, setStatusMsg] = useState<{ text: string; error: boolean } | null>(null);
   const statusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const openFileViewer = useStore((state) => state.openFileViewer);
@@ -60,10 +102,15 @@ export const SourceControlTile = memo(function SourceControlTile({
     if (!projectPath) return;
     setLoading(true);
     try {
-      const result = await window.git.status(projectPath);
+      const [result, sync] = await Promise.all([
+        window.git.status(projectPath),
+        window.git.syncStatus(projectPath),
+      ]);
       setEntries(result);
+      setSyncStatus(sync);
     } catch {
       setEntries([]);
+      setSyncStatus(null);
     }
     setLoading(false);
   }, [projectPath]);
@@ -74,23 +121,32 @@ export const SourceControlTile = memo(function SourceControlTile({
     return () => clearInterval(interval);
   }, [refresh]);
 
-  const stagedEntries = entries.filter((e) => e.staged);
-  const changedEntries = entries.filter((e) => !e.staged);
+  // ─── Derived groups (VS Code style: merge / staged / changes / untracked) ──
+  const mergeEntries = entries.filter((e) => isConflict(e.status));
+  const stagedEntries = entries.filter((e) => e.staged && !isConflict(e.status));
+  const changedEntries = entries.filter((e) => !e.staged && !isConflict(e.status) && !isUntracked(e.status));
+  const untrackedEntries = entries.filter((e) => isUntracked(e.status));
+
+  // ─── Handlers ──────────────────────────────────────────────────────────────
 
   const handleFileClick = useCallback(
     async (entry: GitStatusEntry) => {
       if (!projectPath) return;
-      const diff = await window.git.diffFile(projectPath, entry.path);
-      if (!diff) return;
-      const language = entry.path.split(".").pop() ?? "plaintext";
-      openFileViewer({
-        filePath: entry.path,
-        originalContent: diff.original,
-        modifiedContent: diff.modified,
-        language,
-      });
+      try {
+        const diff = await window.git.diffFile(projectPath, entry.path, entry.staged);
+        if (!diff) return;
+        const language = entry.path.split(".").pop() ?? "plaintext";
+        openFileViewer({
+          filePath: entry.path,
+          originalContent: diff.original,
+          modifiedContent: diff.modified,
+          language,
+        });
+      } catch {
+        showStatus("Failed to load diff", true);
+      }
     },
-    [projectPath, openFileViewer],
+    [projectPath, openFileViewer, showStatus],
   );
 
   const handleStageFile = useCallback(
@@ -116,7 +172,7 @@ export const SourceControlTile = memo(function SourceControlTile({
   const handleDiscardFile = useCallback(
     async (entry: GitStatusEntry) => {
       if (!projectPath) return;
-      const result = await window.git.discardFile(projectPath, entry.path);
+      const result = await window.git.discardFile(projectPath, entry.path, isUntracked(entry.status));
       if (!result.success) showStatus(result.error ?? "Discard failed", true);
       else refresh();
     },
@@ -127,6 +183,20 @@ export const SourceControlTile = memo(function SourceControlTile({
     if (!projectPath) return;
     const result = await window.git.stageAll(projectPath);
     if (!result.success) showStatus(result.error ?? "Stage all failed", true);
+    else refresh();
+  }, [projectPath, refresh, showStatus]);
+
+  const handleUnstageAll = useCallback(async () => {
+    if (!projectPath) return;
+    const result = await window.git.unstageAll(projectPath);
+    if (!result.success) showStatus(result.error ?? "Unstage all failed", true);
+    else refresh();
+  }, [projectPath, refresh, showStatus]);
+
+  const handleDiscardAll = useCallback(async () => {
+    if (!projectPath) return;
+    const result = await window.git.discardAll(projectPath);
+    if (!result.success) showStatus(result.error ?? "Discard all failed", true);
     else refresh();
   }, [projectPath, refresh, showStatus]);
 
@@ -153,9 +223,38 @@ export const SourceControlTile = memo(function SourceControlTile({
     setPushing(true);
     const result = await window.git.push(projectPath);
     setPushing(false);
-    if (result.success) showStatus("Pushed successfully");
-    else showStatus(result.error ?? "Push failed", true);
-  }, [projectPath, showStatus]);
+    if (result.success) {
+      showStatus("Pushed successfully");
+      refresh();
+    } else {
+      showStatus(result.error ?? "Push failed", true);
+    }
+  }, [projectPath, refresh, showStatus]);
+
+  const handlePull = useCallback(async () => {
+    if (!projectPath) return;
+    setPulling(true);
+    const result = await window.git.pull(projectPath);
+    setPulling(false);
+    if (result.success) {
+      showStatus("Pulled successfully");
+      refresh();
+    } else {
+      showStatus(result.error ?? "Pull failed", true);
+    }
+  }, [projectPath, refresh, showStatus]);
+
+  // ─── Sync button label ────────────────────────────────────────────────────
+  const syncLabel = (() => {
+    if (pushing) return "Pushing...";
+    if (pulling) return "Pulling...";
+    if (!syncStatus) return null;
+    const { ahead, behind } = syncStatus;
+    if (ahead > 0 && behind > 0) return `${ahead}↑ ${behind}↓`;
+    if (ahead > 0) return `${ahead}↑`;
+    if (behind > 0) return `${behind}↓`;
+    return null;
+  })();
 
   return (
     <div
@@ -178,6 +277,20 @@ export const SourceControlTile = memo(function SourceControlTile({
           </span>
         </div>
         <div className="flex items-center gap-1">
+          {syncLabel && (
+            <span className="text-[10px] text-gray-500 tabular-nums mr-1">{syncLabel}</span>
+          )}
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              handlePull();
+            }}
+            disabled={pulling}
+            className="text-gray-500 hover:text-gray-300 transition-colors p-1 disabled:opacity-40"
+            title="Pull"
+          >
+            {pulling ? <SpinnerIcon /> : <PullIcon />}
+          </button>
           <button
             onClick={(e) => {
               e.stopPropagation();
@@ -228,9 +341,9 @@ export const SourceControlTile = memo(function SourceControlTile({
               className="flex-1 flex items-center justify-center gap-1.5 bg-[#5a9bc7] hover:bg-[#4a8ab6] disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-medium rounded px-2 py-1.5 transition-colors"
             >
               <CommitIcon />
-              {committing ? "Committing…" : "Commit"}
+              {committing ? "Committing..." : "Commit"}
             </button>
-            {changedEntries.length > 0 && (
+            {changedEntries.length + untrackedEntries.length > 0 && (
               <button
                 onClick={handleStageAll}
                 className="flex items-center justify-center gap-1 bg-[#1e2a3a] hover:bg-[#243244] text-gray-300 text-xs rounded px-2 py-1.5 transition-colors border border-gray-700"
@@ -263,6 +376,25 @@ export const SourceControlTile = memo(function SourceControlTile({
           </div>
         )}
 
+        {/* Merge Conflicts */}
+        {mergeEntries.length > 0 && (
+          <FileGroup
+            label="Merge Changes"
+            count={mergeEntries.length}
+            collapsed={mergeCollapsed}
+            onToggle={() => setMergeCollapsed(!mergeCollapsed)}
+            entries={mergeEntries}
+            onFileClick={handleFileClick}
+            onPrimaryAction={handleStageFile}
+            onSecondaryAction={undefined}
+            primaryActionTitle="Stage (mark resolved)"
+            primaryActionIcon="plus"
+            onGroupAction={undefined}
+            groupActionTitle={undefined}
+            groupActionIcon={undefined}
+          />
+        )}
+
         {/* Staged Changes */}
         {stagedEntries.length > 0 && (
           <FileGroup
@@ -276,10 +408,13 @@ export const SourceControlTile = memo(function SourceControlTile({
             onSecondaryAction={undefined}
             primaryActionTitle="Unstage"
             primaryActionIcon="minus"
+            onGroupAction={handleUnstageAll}
+            groupActionTitle="Unstage all"
+            groupActionIcon="minus"
           />
         )}
 
-        {/* Changes */}
+        {/* Changes (tracked, unstaged) */}
         {changedEntries.length > 0 && (
           <FileGroup
             label="Changes"
@@ -292,6 +427,28 @@ export const SourceControlTile = memo(function SourceControlTile({
             onSecondaryAction={handleDiscardFile}
             primaryActionTitle="Stage"
             primaryActionIcon="plus"
+            onGroupAction={handleDiscardAll}
+            groupActionTitle="Discard all changes"
+            groupActionIcon="discard"
+          />
+        )}
+
+        {/* Untracked */}
+        {untrackedEntries.length > 0 && (
+          <FileGroup
+            label="Untracked"
+            count={untrackedEntries.length}
+            collapsed={untrackedCollapsed}
+            onToggle={() => setUntrackedCollapsed(!untrackedCollapsed)}
+            entries={untrackedEntries}
+            onFileClick={handleFileClick}
+            onPrimaryAction={handleStageFile}
+            onSecondaryAction={handleDiscardFile}
+            primaryActionTitle="Stage"
+            primaryActionIcon="plus"
+            onGroupAction={undefined}
+            groupActionTitle={undefined}
+            groupActionIcon={undefined}
           />
         )}
       </div>
@@ -310,6 +467,9 @@ function FileGroup({
   onSecondaryAction,
   primaryActionTitle,
   primaryActionIcon,
+  onGroupAction,
+  groupActionTitle,
+  groupActionIcon,
 }: {
   label: string;
   count: number;
@@ -321,20 +481,39 @@ function FileGroup({
   onSecondaryAction: ((entry: GitStatusEntry) => void) | undefined;
   primaryActionTitle: string;
   primaryActionIcon: "plus" | "minus";
+  onGroupAction: (() => void) | undefined;
+  groupActionTitle: string | undefined;
+  groupActionIcon: "plus" | "minus" | "discard" | undefined;
 }) {
   return (
     <div>
-      <button
-        onClick={(e) => {
-          e.stopPropagation();
-          onToggle();
-        }}
-        className="flex items-center gap-1.5 w-full px-3 py-1.5 text-xs text-gray-400 hover:text-gray-200 hover:bg-[#1e2a3a] transition-colors"
-      >
-        <ChevronIcon collapsed={collapsed} />
-        <span className="font-medium uppercase tracking-wide">{label}</span>
-        <span className="ml-auto text-gray-600 tabular-nums">{count}</span>
-      </button>
+      <div className="flex items-center w-full px-3 py-1.5 text-xs text-gray-400 hover:text-gray-200 hover:bg-[#1e2a3a] transition-colors group/header">
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggle();
+          }}
+          className="flex items-center gap-1.5 flex-1 min-w-0"
+        >
+          <ChevronIcon collapsed={collapsed} />
+          <span className="font-medium uppercase tracking-wide">{label}</span>
+        </button>
+        <div className="flex items-center gap-1 ml-auto">
+          {onGroupAction && groupActionIcon && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onGroupAction();
+              }}
+              className="p-0.5 text-gray-600 hover:text-gray-300 opacity-0 group-hover/header:opacity-100 transition-opacity"
+              title={groupActionTitle}
+            >
+              {groupActionIcon === "plus" ? <PlusIcon /> : groupActionIcon === "minus" ? <MinusIcon /> : <DiscardIcon />}
+            </button>
+          )}
+          <span className="text-gray-600 tabular-nums w-5 text-right">{count}</span>
+        </div>
+      </div>
       {!collapsed &&
         entries.map((entry) => (
           <FileEntry
@@ -421,9 +600,9 @@ function FileEntry({
       </div>
 
       <span
-        className={`shrink-0 w-4 text-center font-medium group-hover:opacity-0 transition-opacity ${STATUS_COLORS[entry.status]}`}
+        className={`shrink-0 w-4 text-center font-medium group-hover:opacity-0 transition-opacity ${STATUS_COLORS[entry.status] ?? "text-gray-500"}`}
       >
-        {STATUS_LABELS[entry.status]}
+        {STATUS_LABELS[entry.status] ?? "?"}
       </span>
     </div>
   );
@@ -489,14 +668,17 @@ function ChevronIcon({ collapsed }: { collapsed: boolean }) {
 }
 
 function FileIcon({ status }: { status: GitFileStatus }) {
-  const isDelete = status === "deleted" || status === "staged-deleted";
-  const isNew =
-    status === "added" || status === "staged-added" || status === "untracked";
+  const isDelete = status === "deleted" || status === "index-deleted" || status === "deleted-by-us" || status === "deleted-by-them" || status === "both-deleted";
+  const isNew = status === "index-added" || status === "untracked" || status === "intent-to-add";
+  const isConflictStatus = status.startsWith("both-") || status.startsWith("added-by-") || status.startsWith("deleted-by-");
+  const isRename = status === "index-renamed" || status === "index-copied";
 
   let color = "text-gray-500";
-  if (isNew) color = "text-green-500";
+  if (isConflictStatus) color = "text-orange-500";
+  else if (isNew) color = "text-green-500";
   else if (isDelete) color = "text-red-500";
-  else if (status === "modified" || status === "staged-modified")
+  else if (isRename) color = "text-blue-500";
+  else if (status === "modified" || status === "index-modified" || status === "type-changed")
     color = "text-yellow-500";
 
   return (
@@ -558,6 +740,15 @@ function PushIcon() {
     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <line x1="12" y1="19" x2="12" y2="5" />
       <polyline points="5 12 12 5 19 12" />
+    </svg>
+  );
+}
+
+function PullIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="12" y1="5" x2="12" y2="19" />
+      <polyline points="19 12 12 19 5 12" />
     </svg>
   );
 }

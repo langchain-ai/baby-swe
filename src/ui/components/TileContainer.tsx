@@ -233,6 +233,12 @@ export function TileContainer({
     [openFileViewer],
   );
 
+  const handleContainerClick = useCallback(() => {
+    onFocus();
+    const textarea = containerRef.current?.querySelector("textarea");
+    if (textarea) textarea.focus();
+  }, [onFocus]);
+
   const dragProps = {
     onDragOver: handleDragOver,
     onDragLeave: handleDragLeave,
@@ -370,12 +376,6 @@ export function TileContainer({
       />
     );
   }
-
-  const handleContainerClick = useCallback(() => {
-    onFocus();
-    const textarea = containerRef.current?.querySelector("textarea");
-    if (textarea) textarea.focus();
-  }, [onFocus]);
 
   if (!tile.project) return null;
 
