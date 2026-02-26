@@ -464,6 +464,13 @@ function isToolValidationError(error: unknown): boolean {
     msg.includes('ToolInvocationError');
 }
 
+function isPromptTooLongError(error: unknown): boolean {
+  const msg = error instanceof Error ? error.message : String(error);
+  return msg.includes('prompt is too long') ||
+    msg.includes('context_length_exceeded') ||
+    msg.includes('maximum context length');
+}
+
 function safeSend(webContents: Electron.WebContents, channel: string, ...args: unknown[]): void {
   try {
     if (!webContents.isDestroyed()) {
@@ -752,6 +759,38 @@ export function setupAgentIPC(mainWindow: BrowserWindow, getTileProject: (tileId
 
             lastToolCall = null;
             continue retryLoop;
+          }
+
+          if (isPromptTooLongError(streamError) && !controller.signal.aborted && currentMessages.length > 4) {
+            const errorMsg = streamError instanceof Error ? streamError.message : String(streamError);
+            console.warn(`[agent:stream] Prompt too long for session ${sessionId}, auto-compacting: ${errorMsg}`);
+
+            send({ type: 'compact-start', sessionId });
+
+            const settings = loadSettings();
+            const compactResult = await runCompaction(currentMessages, modelConfig, settings.apiKeys);
+            if (compactResult) {
+              console.log(`[agent:stream] Emergency compact complete for session ${sessionId}, summarized ${currentMessages.length - compactResult.keptMessages.length} messages`);
+
+              const summaryMessage: ChatMessage = {
+                role: 'user',
+                content: `[Context compacted — previous conversation summarized to fit context window]\n\n${compactResult.summary}`,
+              };
+              currentMessages = [summaryMessage, ...compactResult.keptMessages];
+
+              send({
+                type: 'compact',
+                sessionId,
+                summary: compactResult.summary,
+                keptMessages: compactResult.keptMessages,
+              });
+
+              lastToolCall = null;
+              continue retryLoop;
+            } else {
+              console.error(`[agent:stream] Emergency compact failed for session ${sessionId}`);
+              send({ type: 'compact-end', sessionId });
+            }
           }
 
           throw streamError;
