@@ -348,6 +348,7 @@ export function TileContainer({
       <SourceControlTile
         tileId={tileId}
         projectPath={tile.project?.worktreePath || tile.project?.path}
+        mainProjectPath={tile.project?.path}
         isFocused={isFocused}
         onFocus={onFocus}
       />

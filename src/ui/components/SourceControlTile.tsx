@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, memo } from "react";
-import type { GitStatusEntry, GitFileStatus } from "../../types";
+import type { GitStatusEntry, GitFileStatus, WorktreeInfo } from "../../types";
 import { useStore } from "../../store";
 
 // ─── Status display maps ────────────────────────────────────────────────────
@@ -49,11 +49,29 @@ const STATUS_COLORS: Partial<Record<GitFileStatus, string>> = {
 interface SourceControlTileProps {
   tileId: string;
   projectPath?: string;
+  mainProjectPath?: string;
   isFocused: boolean;
   onFocus: () => void;
 }
 
 type SyncStatus = { ahead: number; behind: number; remote: string | null; branchName: string | null };
+
+interface WorktreeState {
+  worktree: WorktreeInfo;
+  entries: GitStatusEntry[];
+  syncStatus: SyncStatus | null;
+  collapsed: boolean;
+  // per-group collapse state
+  mergeCollapsed: boolean;
+  stagedCollapsed: boolean;
+  changesCollapsed: boolean;
+  untrackedCollapsed: boolean;
+  // per-worktree commit/sync state
+  commitMessage: string;
+  committing: boolean;
+  pushing: boolean;
+  pulling: boolean;
+}
 
 function isUntracked(status: GitFileStatus): boolean {
   return status === "untracked";
@@ -74,20 +92,16 @@ function isConflict(status: GitFileStatus): boolean {
 export const SourceControlTile = memo(function SourceControlTile({
   tileId,
   projectPath,
+  mainProjectPath,
   isFocused,
   onFocus,
 }: SourceControlTileProps) {
-  const [entries, setEntries] = useState<GitStatusEntry[]>([]);
+  // The "active" path for the commit area — prefer the specific worktree/project path
+  const activePath = projectPath;
+  const rootPath = mainProjectPath || projectPath;
+
+  const [worktreeStates, setWorktreeStates] = useState<WorktreeState[]>([]);
   const [loading, setLoading] = useState(false);
-  const [mergeCollapsed, setMergeCollapsed] = useState(false);
-  const [stagedCollapsed, setStagedCollapsed] = useState(false);
-  const [changesCollapsed, setChangesCollapsed] = useState(false);
-  const [untrackedCollapsed, setUntrackedCollapsed] = useState(false);
-  const [commitMessage, setCommitMessage] = useState("");
-  const [committing, setCommitting] = useState(false);
-  const [pushing, setPushing] = useState(false);
-  const [pulling, setPulling] = useState(false);
-  const [syncStatus, setSyncStatus] = useState<SyncStatus | null>(null);
   const [statusMsg, setStatusMsg] = useState<{ text: string; error: boolean } | null>(null);
   const statusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const openFileViewer = useStore((state) => state.openFileViewer);
@@ -99,29 +113,83 @@ export const SourceControlTile = memo(function SourceControlTile({
   }, []);
 
   const refresh = useCallback(async () => {
-    if (!projectPath) return;
+    if (!rootPath) return;
     try {
-      const [result, sync] = await Promise.all([
-        window.git.status(projectPath),
-        window.git.syncStatus(projectPath),
-      ]);
-      // Only update state when data actually changed to avoid flicker
-      setEntries(prev => {
-        const serialized = JSON.stringify(result);
-        if (JSON.stringify(prev) === serialized) return prev;
-        return result;
-      });
-      setSyncStatus(prev => {
-        const serialized = JSON.stringify(sync);
-        if (JSON.stringify(prev) === serialized) return prev;
-        return sync;
+      const worktrees = await window.git.listWorktrees(rootPath);
+      // Filter out bare worktrees
+      const activeWorktrees = worktrees.filter((wt) => !wt.isBare);
+
+      const results = await Promise.all(
+        activeWorktrees.map(async (wt) => {
+          try {
+            const [entries, sync] = await Promise.all([
+              window.git.status(wt.path),
+              window.git.syncStatus(wt.path),
+            ]);
+            return { wt, entries, sync };
+          } catch {
+            return { wt, entries: [] as GitStatusEntry[], sync: null };
+          }
+        }),
+      );
+
+      setWorktreeStates((prev) => {
+        const next: WorktreeState[] = results.map(({ wt, entries, sync }) => {
+          const existing = prev.find((s) => s.worktree.path === wt.path);
+          return {
+            worktree: wt,
+            entries,
+            syncStatus: sync,
+            // Preserve collapse state from previous render; default: expanded
+            collapsed: existing?.collapsed ?? false,
+            mergeCollapsed: existing?.mergeCollapsed ?? false,
+            stagedCollapsed: existing?.stagedCollapsed ?? false,
+            changesCollapsed: existing?.changesCollapsed ?? false,
+            untrackedCollapsed: existing?.untrackedCollapsed ?? false,
+            // Preserve per-worktree action state
+            commitMessage: existing?.commitMessage ?? "",
+            committing: existing?.committing ?? false,
+            pushing: existing?.pushing ?? false,
+            pulling: existing?.pulling ?? false,
+          };
+        });
+        // Avoid re-render if nothing changed
+        if (JSON.stringify(next) === JSON.stringify(prev)) return prev;
+        return next;
       });
     } catch {
-      setEntries(prev => prev.length === 0 ? prev : []);
-      setSyncStatus(prev => prev === null ? prev : null);
+      // If listWorktrees fails (not a git repo, etc.), fall back to single-path view
+      if (activePath) {
+        try {
+          const [entries, sync] = await Promise.all([
+            window.git.status(activePath),
+            window.git.syncStatus(activePath),
+          ]);
+          setWorktreeStates((prev) => {
+            const fallback: WorktreeState[] = [{
+              worktree: { path: activePath, branch: sync?.branchName ?? "", isMain: true, isBare: false },
+              entries,
+              syncStatus: sync,
+              collapsed: prev[0]?.collapsed ?? false,
+              mergeCollapsed: prev[0]?.mergeCollapsed ?? false,
+              stagedCollapsed: prev[0]?.stagedCollapsed ?? false,
+              changesCollapsed: prev[0]?.changesCollapsed ?? false,
+              untrackedCollapsed: prev[0]?.untrackedCollapsed ?? false,
+              commitMessage: prev[0]?.commitMessage ?? "",
+              committing: prev[0]?.committing ?? false,
+              pushing: prev[0]?.pushing ?? false,
+              pulling: prev[0]?.pulling ?? false,
+            }];
+            if (JSON.stringify(fallback) === JSON.stringify(prev)) return prev;
+            return fallback;
+          });
+        } catch {
+          setWorktreeStates([]);
+        }
+      }
     }
     setLoading(false);
-  }, [projectPath]);
+  }, [rootPath, activePath]);
 
   useEffect(() => {
     setLoading(true);
@@ -130,19 +198,22 @@ export const SourceControlTile = memo(function SourceControlTile({
     return () => clearInterval(interval);
   }, [refresh]);
 
-  // ─── Derived groups (VS Code style: merge / staged / changes / untracked) ──
-  const mergeEntries = entries.filter((e) => isConflict(e.status));
-  const stagedEntries = entries.filter((e) => e.staged && !isConflict(e.status));
-  const changedEntries = entries.filter((e) => !e.staged && !isConflict(e.status) && !isUntracked(e.status));
-  const untrackedEntries = entries.filter((e) => isUntracked(e.status));
+  // Helper to update a specific worktree's state
+  const updateWorktreeState = useCallback(
+    (wtPath: string, update: Partial<Omit<WorktreeState, "worktree" | "entries" | "syncStatus">>) => {
+      setWorktreeStates((prev) =>
+        prev.map((s) => (s.worktree.path === wtPath ? { ...s, ...update } : s)),
+      );
+    },
+    [],
+  );
 
   // ─── Handlers ──────────────────────────────────────────────────────────────
 
   const handleFileClick = useCallback(
-    async (entry: GitStatusEntry) => {
-      if (!projectPath) return;
+    async (wtPath: string, entry: GitStatusEntry) => {
       try {
-        const diff = await window.git.diffFile(projectPath, entry.path, entry.staged);
+        const diff = await window.git.diffFile(wtPath, entry.path, entry.staged);
         if (!diff) return;
         const language = entry.path.split(".").pop() ?? "plaintext";
         openFileViewer({
@@ -155,115 +226,100 @@ export const SourceControlTile = memo(function SourceControlTile({
         showStatus("Failed to load diff", true);
       }
     },
-    [projectPath, openFileViewer, showStatus],
+    [openFileViewer, showStatus],
   );
 
   const handleStageFile = useCallback(
-    async (entry: GitStatusEntry) => {
-      if (!projectPath) return;
-      const result = await window.git.stageFile(projectPath, entry.path);
+    async (wtPath: string, entry: GitStatusEntry) => {
+      const result = await window.git.stageFile(wtPath, entry.path);
       if (!result.success) showStatus(result.error ?? "Stage failed", true);
       else refresh();
     },
-    [projectPath, refresh, showStatus],
+    [refresh, showStatus],
   );
 
   const handleUnstageFile = useCallback(
-    async (entry: GitStatusEntry) => {
-      if (!projectPath) return;
-      const result = await window.git.unstageFile(projectPath, entry.path);
+    async (wtPath: string, entry: GitStatusEntry) => {
+      const result = await window.git.unstageFile(wtPath, entry.path);
       if (!result.success) showStatus(result.error ?? "Unstage failed", true);
       else refresh();
     },
-    [projectPath, refresh, showStatus],
+    [refresh, showStatus],
   );
 
   const handleDiscardFile = useCallback(
-    async (entry: GitStatusEntry) => {
-      if (!projectPath) return;
-      const result = await window.git.discardFile(projectPath, entry.path, isUntracked(entry.status));
+    async (wtPath: string, entry: GitStatusEntry) => {
+      const result = await window.git.discardFile(wtPath, entry.path, isUntracked(entry.status));
       if (!result.success) showStatus(result.error ?? "Discard failed", true);
       else refresh();
     },
-    [projectPath, refresh, showStatus],
+    [refresh, showStatus],
   );
 
-  const handleStageAll = useCallback(async () => {
-    if (!projectPath) return;
-    const result = await window.git.stageAll(projectPath);
+  const handleStageAll = useCallback(async (wtPath: string) => {
+    const result = await window.git.stageAll(wtPath);
     if (!result.success) showStatus(result.error ?? "Stage all failed", true);
     else refresh();
-  }, [projectPath, refresh, showStatus]);
+  }, [refresh, showStatus]);
 
-  const handleUnstageAll = useCallback(async () => {
-    if (!projectPath) return;
-    const result = await window.git.unstageAll(projectPath);
+  const handleUnstageAll = useCallback(async (wtPath: string) => {
+    const result = await window.git.unstageAll(wtPath);
     if (!result.success) showStatus(result.error ?? "Unstage all failed", true);
     else refresh();
-  }, [projectPath, refresh, showStatus]);
+  }, [refresh, showStatus]);
 
-  const handleDiscardAll = useCallback(async () => {
-    if (!projectPath) return;
-    const result = await window.git.discardAll(projectPath);
+  const handleDiscardAll = useCallback(async (wtPath: string) => {
+    const result = await window.git.discardAll(wtPath);
     if (!result.success) showStatus(result.error ?? "Discard all failed", true);
     else refresh();
-  }, [projectPath, refresh, showStatus]);
+  }, [refresh, showStatus]);
 
-  const handleCommit = useCallback(async () => {
-    if (!projectPath || !commitMessage.trim()) return;
-    if (stagedEntries.length === 0) {
+  const handleCommit = useCallback(async (wtPath: string) => {
+    const state = worktreeStates.find((s) => s.worktree.path === wtPath);
+    if (!state || !state.commitMessage.trim()) return;
+    const staged = state.entries.filter((e) => e.staged && !isConflict(e.status));
+    if (staged.length === 0) {
       showStatus("No staged changes to commit", true);
       return;
     }
-    setCommitting(true);
-    const result = await window.git.commit(projectPath, commitMessage.trim());
-    setCommitting(false);
+    updateWorktreeState(wtPath, { committing: true });
+    const result = await window.git.commit(wtPath, state.commitMessage.trim());
+    updateWorktreeState(wtPath, { committing: false });
     if (result.success) {
-      setCommitMessage("");
+      updateWorktreeState(wtPath, { commitMessage: "" });
       showStatus("Committed successfully");
       refresh();
     } else {
       showStatus(result.error ?? "Commit failed", true);
     }
-  }, [projectPath, commitMessage, stagedEntries.length, refresh, showStatus]);
+  }, [worktreeStates, updateWorktreeState, refresh, showStatus]);
 
-  const handlePush = useCallback(async () => {
-    if (!projectPath) return;
-    setPushing(true);
-    const result = await window.git.push(projectPath);
-    setPushing(false);
+  const handlePush = useCallback(async (wtPath: string) => {
+    updateWorktreeState(wtPath, { pushing: true });
+    const result = await window.git.push(wtPath);
+    updateWorktreeState(wtPath, { pushing: false });
     if (result.success) {
       showStatus("Pushed successfully");
       refresh();
     } else {
       showStatus(result.error ?? "Push failed", true);
     }
-  }, [projectPath, refresh, showStatus]);
+  }, [updateWorktreeState, refresh, showStatus]);
 
-  const handlePull = useCallback(async () => {
-    if (!projectPath) return;
-    setPulling(true);
-    const result = await window.git.pull(projectPath);
-    setPulling(false);
+  const handlePull = useCallback(async (wtPath: string) => {
+    updateWorktreeState(wtPath, { pulling: true });
+    const result = await window.git.pull(wtPath);
+    updateWorktreeState(wtPath, { pulling: false });
     if (result.success) {
       showStatus("Pulled successfully");
       refresh();
     } else {
       showStatus(result.error ?? "Pull failed", true);
     }
-  }, [projectPath, refresh, showStatus]);
+  }, [updateWorktreeState, refresh, showStatus]);
 
-  // ─── Sync button label ────────────────────────────────────────────────────
-  const syncLabel = (() => {
-    if (pushing) return "Pushing...";
-    if (pulling) return "Pulling...";
-    if (!syncStatus) return null;
-    const { ahead, behind } = syncStatus;
-    if (ahead > 0 && behind > 0) return `${ahead}↑ ${behind}↓`;
-    if (ahead > 0) return `${ahead}↑`;
-    if (behind > 0) return `${behind}↓`;
-    return null;
-  })();
+  const totalChanges = worktreeStates.reduce((sum, s) => sum + s.entries.length, 0);
+  const multiWorktree = worktreeStates.length > 1;
 
   return (
     <div
@@ -286,31 +342,6 @@ export const SourceControlTile = memo(function SourceControlTile({
           </span>
         </div>
         <div className="flex items-center gap-1">
-          {syncLabel && (
-            <span className="text-[10px] text-gray-500 tabular-nums mr-1">{syncLabel}</span>
-          )}
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              handlePull();
-            }}
-            disabled={pulling}
-            className="text-gray-500 hover:text-gray-300 transition-colors p-1 disabled:opacity-40"
-            title="Pull"
-          >
-            {pulling ? <SpinnerIcon /> : <PullIcon />}
-          </button>
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              handlePush();
-            }}
-            disabled={pushing}
-            className="text-gray-500 hover:text-gray-300 transition-colors p-1 disabled:opacity-40"
-            title="Push"
-          >
-            {pushing ? <SpinnerIcon /> : <PushIcon />}
-          </button>
           <button
             onClick={(e) => {
               e.stopPropagation();
@@ -324,142 +355,218 @@ export const SourceControlTile = memo(function SourceControlTile({
         </div>
       </div>
 
-      {/* Commit area */}
-      {projectPath && (
-        <div
-          className="shrink-0 px-3 py-2 border-b border-gray-800 flex flex-col gap-2"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <textarea
-            value={commitMessage}
-            onChange={(e) => setCommitMessage(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-                e.preventDefault();
-                handleCommit();
-              }
-            }}
-            placeholder="Commit message (⌘↵ to commit)"
-            rows={2}
-            className="w-full bg-[#111c2b] text-gray-200 text-xs rounded px-2 py-1.5 resize-none placeholder-gray-600 border border-gray-700 focus:border-[#5a9bc7] focus:outline-none"
-          />
-          <div className="flex gap-2">
-            <button
-              onClick={handleCommit}
-              disabled={committing || !commitMessage.trim() || stagedEntries.length === 0}
-              className="flex-1 flex items-center justify-center gap-1.5 bg-[#5a9bc7] hover:bg-[#4a8ab6] disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-medium rounded px-2 py-1.5 transition-colors"
-            >
-              <CommitIcon />
-              {committing ? "Committing..." : "Commit"}
-            </button>
-            {changedEntries.length + untrackedEntries.length > 0 && (
-              <button
-                onClick={handleStageAll}
-                className="flex items-center justify-center gap-1 bg-[#1e2a3a] hover:bg-[#243244] text-gray-300 text-xs rounded px-2 py-1.5 transition-colors border border-gray-700"
-                title="Stage all changes"
-              >
-                <PlusIcon />
-                Stage all
-              </button>
-            )}
-          </div>
-          {statusMsg && (
-            <p className={`text-[10px] truncate ${statusMsg.error ? "text-red-400" : "text-green-400"}`}>
-              {statusMsg.text}
-            </p>
-          )}
-        </div>
-      )}
-
       {/* Body */}
       <div className="flex-1 overflow-y-auto min-h-0">
-        {!projectPath && (
+        {!rootPath && (
           <div className="flex items-center justify-center h-full text-gray-500 text-xs">
             No project open
           </div>
         )}
 
-        {projectPath && entries.length === 0 && !loading && (
+        {rootPath && totalChanges === 0 && !loading && (
           <div className="flex items-center justify-center h-full text-gray-500 text-xs">
             No changes
           </div>
         )}
 
-        {/* Merge Conflicts */}
-        {mergeEntries.length > 0 && (
-          <FileGroup
-            label="Merge Changes"
-            count={mergeEntries.length}
-            collapsed={mergeCollapsed}
-            onToggle={() => setMergeCollapsed(!mergeCollapsed)}
-            entries={mergeEntries}
-            onFileClick={handleFileClick}
-            onPrimaryAction={handleStageFile}
-            onSecondaryAction={undefined}
-            primaryActionTitle="Stage (mark resolved)"
-            primaryActionIcon="plus"
-            onGroupAction={undefined}
-            groupActionTitle={undefined}
-            groupActionIcon={undefined}
-          />
-        )}
+        {worktreeStates.map((state) => {
+          const wtPath = state.worktree.path;
+          const wtMergeEntries = state.entries.filter((e) => isConflict(e.status));
+          const wtStagedEntries = state.entries.filter((e) => e.staged && !isConflict(e.status));
+          const wtChangedEntries = state.entries.filter((e) => !e.staged && !isConflict(e.status) && !isUntracked(e.status));
+          const wtUntrackedEntries = state.entries.filter((e) => isUntracked(e.status));
+          const wtTotalChanges = state.entries.length;
+          const isActive = wtPath === activePath;
 
-        {/* Staged Changes */}
-        {stagedEntries.length > 0 && (
-          <FileGroup
-            label="Staged Changes"
-            count={stagedEntries.length}
-            collapsed={stagedCollapsed}
-            onToggle={() => setStagedCollapsed(!stagedCollapsed)}
-            entries={stagedEntries}
-            onFileClick={handleFileClick}
-            onPrimaryAction={handleUnstageFile}
-            onSecondaryAction={undefined}
-            primaryActionTitle="Unstage"
-            primaryActionIcon="minus"
-            onGroupAction={handleUnstageAll}
-            groupActionTitle="Unstage all"
-            groupActionIcon="minus"
-          />
-        )}
+          const wtSyncStatus = state.syncStatus;
+          const aheadBehind = wtSyncStatus
+            ? (() => {
+                const { ahead, behind } = wtSyncStatus;
+                if (ahead > 0 && behind > 0) return `${ahead}↑ ${behind}↓`;
+                if (ahead > 0) return `${ahead}↑`;
+                if (behind > 0) return `${behind}↓`;
+                return null;
+              })()
+            : null;
 
-        {/* Changes (tracked, unstaged) */}
-        {changedEntries.length > 0 && (
-          <FileGroup
-            label="Changes"
-            count={changedEntries.length}
-            collapsed={changesCollapsed}
-            onToggle={() => setChangesCollapsed(!changesCollapsed)}
-            entries={changedEntries}
-            onFileClick={handleFileClick}
-            onPrimaryAction={handleStageFile}
-            onSecondaryAction={handleDiscardFile}
-            primaryActionTitle="Stage"
-            primaryActionIcon="plus"
-            onGroupAction={handleDiscardAll}
-            groupActionTitle="Discard all changes"
-            groupActionIcon="discard"
-          />
-        )}
+          const commitArea = (
+            <div
+              className={`px-3 py-2 border-b border-gray-800 flex flex-col gap-2 ${multiWorktree ? "border-t border-gray-800/60" : ""}`}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <textarea
+                value={state.commitMessage}
+                onChange={(e) => updateWorktreeState(wtPath, { commitMessage: e.target.value })}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                    e.preventDefault();
+                    handleCommit(wtPath);
+                  }
+                }}
+                placeholder="Message (⌘↵ to commit)"
+                rows={2}
+                className="w-full bg-[#111c2b] text-gray-200 text-xs rounded px-2 py-1.5 resize-none placeholder-gray-600 border border-gray-700 focus:border-[#5a9bc7] focus:outline-none"
+              />
+              <div className="flex gap-2">
+                <button
+                  onClick={() => handleCommit(wtPath)}
+                  disabled={state.committing || !state.commitMessage.trim() || wtStagedEntries.length === 0}
+                  className="flex-1 flex items-center justify-center gap-1.5 bg-[#5a9bc7] hover:bg-[#4a8ab6] disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-medium rounded px-2 py-1.5 transition-colors"
+                >
+                  <CommitIcon />
+                  {state.committing ? "Committing..." : "Commit"}
+                </button>
+                {wtChangedEntries.length + wtUntrackedEntries.length > 0 && (
+                  <button
+                    onClick={() => handleStageAll(wtPath)}
+                    className="flex items-center justify-center gap-1 bg-[#1e2a3a] hover:bg-[#243244] text-gray-300 text-xs rounded px-2 py-1.5 transition-colors border border-gray-700"
+                    title="Stage all changes"
+                  >
+                    <PlusIcon />
+                    Stage all
+                  </button>
+                )}
+                <button
+                  onClick={() => handlePull(wtPath)}
+                  disabled={state.pulling}
+                  className="flex items-center justify-center bg-[#1e2a3a] hover:bg-[#243244] text-gray-300 text-xs rounded px-2 py-1.5 transition-colors border border-gray-700 disabled:opacity-40"
+                  title={aheadBehind ? `Pull (${aheadBehind})` : "Pull"}
+                >
+                  {state.pulling ? <SpinnerIcon /> : <PullIcon />}
+                </button>
+                <button
+                  onClick={() => handlePush(wtPath)}
+                  disabled={state.pushing}
+                  className="flex items-center justify-center bg-[#1e2a3a] hover:bg-[#243244] text-gray-300 text-xs rounded px-2 py-1.5 transition-colors border border-gray-700 disabled:opacity-40"
+                  title={aheadBehind ? `Push (${aheadBehind})` : "Push"}
+                >
+                  {state.pushing ? <SpinnerIcon /> : <PushIcon />}
+                </button>
+              </div>
+            </div>
+          );
 
-        {/* Untracked */}
-        {untrackedEntries.length > 0 && (
-          <FileGroup
-            label="Untracked"
-            count={untrackedEntries.length}
-            collapsed={untrackedCollapsed}
-            onToggle={() => setUntrackedCollapsed(!untrackedCollapsed)}
-            entries={untrackedEntries}
-            onFileClick={handleFileClick}
-            onPrimaryAction={handleStageFile}
-            onSecondaryAction={handleDiscardFile}
-            primaryActionTitle="Stage"
-            primaryActionIcon="plus"
-            onGroupAction={undefined}
-            groupActionTitle={undefined}
-            groupActionIcon={undefined}
-          />
-        )}
+          const fileGroups = !state.collapsed && (
+            <>
+              {wtMergeEntries.length > 0 && (
+                <FileGroup
+                  label="Merge Changes"
+                  count={wtMergeEntries.length}
+                  collapsed={state.mergeCollapsed}
+                  onToggle={() => updateWorktreeState(wtPath, { mergeCollapsed: !state.mergeCollapsed })}
+                  entries={wtMergeEntries}
+                  onFileClick={(e) => handleFileClick(wtPath, e)}
+                  onPrimaryAction={(e) => handleStageFile(wtPath, e)}
+                  onSecondaryAction={undefined}
+                  primaryActionTitle="Stage (mark resolved)"
+                  primaryActionIcon="plus"
+                  onGroupAction={undefined}
+                  groupActionTitle={undefined}
+                  groupActionIcon={undefined}
+                  indent={multiWorktree}
+                />
+              )}
+              {wtStagedEntries.length > 0 && (
+                <FileGroup
+                  label="Staged Changes"
+                  count={wtStagedEntries.length}
+                  collapsed={state.stagedCollapsed}
+                  onToggle={() => updateWorktreeState(wtPath, { stagedCollapsed: !state.stagedCollapsed })}
+                  entries={wtStagedEntries}
+                  onFileClick={(e) => handleFileClick(wtPath, e)}
+                  onPrimaryAction={(e) => handleUnstageFile(wtPath, e)}
+                  onSecondaryAction={undefined}
+                  primaryActionTitle="Unstage"
+                  primaryActionIcon="minus"
+                  onGroupAction={() => handleUnstageAll(wtPath)}
+                  groupActionTitle="Unstage all"
+                  groupActionIcon="minus"
+                  indent={multiWorktree}
+                />
+              )}
+              {wtChangedEntries.length > 0 && (
+                <FileGroup
+                  label="Changes"
+                  count={wtChangedEntries.length}
+                  collapsed={state.changesCollapsed}
+                  onToggle={() => updateWorktreeState(wtPath, { changesCollapsed: !state.changesCollapsed })}
+                  entries={wtChangedEntries}
+                  onFileClick={(e) => handleFileClick(wtPath, e)}
+                  onPrimaryAction={(e) => handleStageFile(wtPath, e)}
+                  onSecondaryAction={(e) => handleDiscardFile(wtPath, e)}
+                  primaryActionTitle="Stage"
+                  primaryActionIcon="plus"
+                  onGroupAction={() => handleDiscardAll(wtPath)}
+                  groupActionTitle="Discard all changes"
+                  groupActionIcon="discard"
+                  indent={multiWorktree}
+                />
+              )}
+              {wtUntrackedEntries.length > 0 && (
+                <FileGroup
+                  label="Untracked"
+                  count={wtUntrackedEntries.length}
+                  collapsed={state.untrackedCollapsed}
+                  onToggle={() => updateWorktreeState(wtPath, { untrackedCollapsed: !state.untrackedCollapsed })}
+                  entries={wtUntrackedEntries}
+                  onFileClick={(e) => handleFileClick(wtPath, e)}
+                  onPrimaryAction={(e) => handleStageFile(wtPath, e)}
+                  onSecondaryAction={(e) => handleDiscardFile(wtPath, e)}
+                  primaryActionTitle="Stage"
+                  primaryActionIcon="plus"
+                  onGroupAction={undefined}
+                  groupActionTitle={undefined}
+                  groupActionIcon={undefined}
+                  indent={multiWorktree}
+                />
+              )}
+            </>
+          );
+
+          if (!multiWorktree) {
+            return (
+              <div key={wtPath}>
+                {commitArea}
+                {fileGroups}
+              </div>
+            );
+          }
+
+          // Multi-worktree: render a collapsible repo section header
+          const repoName = wtPath.split("/").pop() ?? wtPath;
+          const branchName = state.worktree.branch || state.syncStatus?.branchName || "";
+
+          return (
+            <div key={wtPath}>
+              {/* Repo section header */}
+              <div
+                className={`flex items-center w-full px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wider transition-colors group/repo cursor-pointer select-none ${isActive ? "text-[#5a9bc7] bg-[#1a2a3a] hover:bg-[#1e2e40]" : "text-gray-400 hover:text-gray-200 hover:bg-[#1e2a3a]"}`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  updateWorktreeState(wtPath, { collapsed: !state.collapsed });
+                }}
+              >
+                <ChevronIcon collapsed={state.collapsed} />
+                <span className="ml-1.5 truncate">{repoName}</span>
+                {branchName && (
+                  <span className={`ml-1.5 font-normal normal-case tracking-normal truncate ${isActive ? "text-[#5a9bc7]/70" : "text-gray-600"}`}>
+                    {state.worktree.isMain ? branchName : `wt:${branchName}`}
+                  </span>
+                )}
+                <div className="flex items-center gap-1.5 ml-auto shrink-0">
+                  {aheadBehind && (
+                    <span className="text-[10px] text-gray-600 tabular-nums">{aheadBehind}</span>
+                  )}
+                  {wtTotalChanges > 0 && (
+                    <span className="text-[10px] text-gray-600 tabular-nums w-5 text-right">{wtTotalChanges}</span>
+                  )}
+                </div>
+              </div>
+              {commitArea}
+              {!state.collapsed && fileGroups}
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -479,6 +586,7 @@ function FileGroup({
   onGroupAction,
   groupActionTitle,
   groupActionIcon,
+  indent = false,
 }: {
   label: string;
   count: number;
@@ -493,10 +601,11 @@ function FileGroup({
   onGroupAction: (() => void) | undefined;
   groupActionTitle: string | undefined;
   groupActionIcon: "plus" | "minus" | "discard" | undefined;
+  indent?: boolean;
 }) {
   return (
     <div>
-      <div className="flex items-center w-full px-3 py-1.5 text-xs text-gray-400 hover:text-gray-200 hover:bg-[#1e2a3a] transition-colors group/header">
+      <div className={`flex items-center w-full py-1.5 text-xs text-gray-400 hover:text-gray-200 hover:bg-[#1e2a3a] transition-colors group/header ${indent ? "pl-5 pr-3" : "px-3"}`}>
         <button
           onClick={(e) => {
             e.stopPropagation();
@@ -533,6 +642,7 @@ function FileGroup({
             onSecondaryAction={onSecondaryAction ? () => onSecondaryAction(entry) : undefined}
             primaryActionTitle={primaryActionTitle}
             primaryActionIcon={primaryActionIcon}
+            indent={indent}
           />
         ))}
     </div>
@@ -546,6 +656,7 @@ function FileEntry({
   onSecondaryAction,
   primaryActionTitle,
   primaryActionIcon,
+  indent = false,
 }: {
   entry: GitStatusEntry;
   onClick: () => void;
@@ -553,6 +664,7 @@ function FileEntry({
   onSecondaryAction: (() => void) | undefined;
   primaryActionTitle: string;
   primaryActionIcon: "plus" | "minus";
+  indent?: boolean;
 }) {
   const fileName = entry.path.split("/").pop() ?? entry.path;
   const dirPath = entry.path.includes("/")
@@ -561,7 +673,7 @@ function FileEntry({
 
   return (
     <div
-      className="flex items-center gap-1 w-full pl-7 pr-2 py-1 text-xs hover:bg-[#1e2a3a] transition-colors group"
+      className={`flex items-center gap-1 w-full pr-2 py-1 text-xs hover:bg-[#1e2a3a] transition-colors group ${indent ? "pl-9" : "pl-7"}`}
       title={entry.path}
     >
       <button

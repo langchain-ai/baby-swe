@@ -4,7 +4,7 @@ if (!globalThis.crypto) {
   globalThis.crypto = webcrypto as any;
 }
 
-import { app, BrowserWindow, Menu, dialog, ipcMain } from 'electron';
+import { app, BrowserWindow, Menu, dialog, ipcMain, shell } from 'electron';
 import * as path from 'path';
 import { execSync, execFileSync } from 'child_process';
 import * as fs from 'fs';
