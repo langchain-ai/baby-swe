@@ -96,7 +96,7 @@ export function App() {
         case 'tool-start': {
           addToolStart(event.sessionId, event.toolCallId, event.toolName, event.toolArgs, event.approvalRequestId, event.diffData);
 
-          if (event.toolName === 'execute') {
+          if (event.toolName === 'execute' && !event.approvalRequestId) {
             const command = typeof event.toolArgs?.command === 'string' ? event.toolArgs.command : '';
             if (command) {
               const located = findTileBySessionId(event.sessionId);
@@ -174,9 +174,57 @@ export function App() {
           }
           break;
         }
-        case 'tool-status-update':
+        case 'tool-status-update': {
           updateToolStatus(event.sessionId, event.toolCallId, event.status);
+
+          if (event.status === 'running') {
+            const storeState = useStore.getState();
+            const session = storeState.sessions[event.sessionId];
+            if (session) {
+              for (const msg of session.messages) {
+                const chunk = msg.chunks.find(
+                  (c) => c.kind === 'tool-execution' && c.toolCallId === event.toolCallId && c.toolName === 'execute',
+                );
+                if (chunk && chunk.kind === 'tool-execution') {
+                  const command = typeof chunk.toolArgs?.command === 'string' ? chunk.toolArgs.command : '';
+                  if (command) {
+                    const located = findTileBySessionId(event.sessionId);
+                    const sourceTileId = located?.tile.id;
+                    let terminalTileId = executeTerminalBySessionRef.current.get(event.sessionId);
+                    const terminalTileExists = terminalTileId
+                      ? storeState.workspaces.some((ws) => Boolean(ws.tiles[terminalTileId!]))
+                      : false;
+
+                    if (!terminalTileId || !terminalTileExists) {
+                      terminalTileId = createTile('auto', 'terminal');
+                      executeTerminalBySessionRef.current.set(event.sessionId, terminalTileId);
+                      if (located?.tile.project) {
+                        setTileProject(terminalTileId, located.tile.project);
+                      }
+                      if (sourceTileId) {
+                        focusTile(sourceTileId);
+                      }
+                    }
+
+                    executeTerminalByToolCallRef.current.set(event.toolCallId, terminalTileId);
+                    const activeCount = executeTerminalActiveCountRef.current.get(terminalTileId) || 0;
+                    executeTerminalActiveCountRef.current.set(terminalTileId, activeCount + 1);
+
+                    const cwd = located?.tile.project?.worktreePath || located?.tile.project?.path || '~';
+                    window.setTimeout(() => {
+                      window.terminal.write(
+                        terminalTileId,
+                        normalizeTerminalNewlines(`\n[agent execute] cwd: ${cwd}\n$ ${command}\n`),
+                      );
+                    }, 50);
+                  }
+                  break;
+                }
+              }
+            }
+          }
           break;
+        }
         case 'token-usage':
           updateTokenUsage(event.inputTokens, event.outputTokens);
           break;

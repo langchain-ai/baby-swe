@@ -555,6 +555,8 @@ export function setupAgentIPC(mainWindow: BrowserWindow, getTileProject: (tileId
 
     const toolTimers = new Map<string, number>();
     const interruptedToolCalls = new Set<string>();
+    const interruptedToolNames = new Map<string, string>();
+    const toolIdRemapping = new Map<string, string>();
     let sentFinalEvent = false;
     let lastInputTokens = 0;
 
@@ -656,7 +658,7 @@ export function setupAgentIPC(mainWindow: BrowserWindow, getTileProject: (tileId
               }
 
               if (event.event === "on_tool_start") {
-                const toolCallId = event.run_id;
+                const rawToolCallId = event.run_id;
                 const toolName = event.name;
                 let toolArgs = event.data?.input || {};
 
@@ -668,14 +670,27 @@ export function setupAgentIPC(mainWindow: BrowserWindow, getTileProject: (tileId
                   }
                 }
 
-                toolTimers.set(toolCallId, Date.now());
-                lastToolCall = { id: toolCallId, name: toolName, args: toolArgs };
+                toolTimers.set(rawToolCallId, Date.now());
+                lastToolCall = { id: rawToolCallId, name: toolName, args: toolArgs };
 
-                if (interruptedToolCalls.has(toolCallId)) {
+                if (interruptedToolCalls.has(rawToolCallId)) {
                   send({
                     type: 'tool-status-update',
                     sessionId,
-                    toolCallId,
+                    toolCallId: rawToolCallId,
+                    status: 'running',
+                  });
+                  continue;
+                }
+
+                const approvalToolCallId = interruptedToolNames.get(toolName);
+                if (approvalToolCallId) {
+                  interruptedToolNames.delete(toolName);
+                  toolIdRemapping.set(rawToolCallId, approvalToolCallId);
+                  send({
+                    type: 'tool-status-update',
+                    sessionId,
+                    toolCallId: approvalToolCallId,
                     status: 'running',
                   });
                   continue;
@@ -689,7 +704,7 @@ export function setupAgentIPC(mainWindow: BrowserWindow, getTileProject: (tileId
                 send({
                   type: 'tool-start',
                   sessionId,
-                  toolCallId,
+                  toolCallId: rawToolCallId,
                   toolName,
                   toolArgs,
                   diffData,
@@ -705,10 +720,12 @@ export function setupAgentIPC(mainWindow: BrowserWindow, getTileProject: (tileId
               }
 
               if (event.event === "on_tool_end") {
-                const toolCallId = event.run_id;
-                const startTime = toolTimers.get(toolCallId) || Date.now();
+                const rawToolCallId = event.run_id;
+                const toolCallId = toolIdRemapping.get(rawToolCallId) || rawToolCallId;
+                const startTime = toolTimers.get(rawToolCallId) || Date.now();
                 const elapsedMs = Date.now() - startTime;
-                toolTimers.delete(toolCallId);
+                toolTimers.delete(rawToolCallId);
+                toolIdRemapping.delete(rawToolCallId);
                 interruptedToolCalls.delete(toolCallId);
 
                 const output = event.data?.output;
@@ -768,6 +785,7 @@ export function setupAgentIPC(mainWindow: BrowserWindow, getTileProject: (tileId
               const toolCallId = typeof action.id === 'string' ? action.id : uuidv4();
               const approvalRequestId = uuidv4();
               interruptedToolCalls.add(toolCallId);
+              interruptedToolNames.set(toolName, toolCallId);
 
               let diffData: DiffData | undefined;
               if (folder && (toolName === 'edit_file' || toolName === 'write_file')) {
