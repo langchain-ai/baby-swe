@@ -334,8 +334,9 @@ function createModel(modelConfig: ModelConfig, apiKeys?: ApiKeys): BaseChatModel
     const openaiApiKey = apiKeys?.openai || process.env.OPENAI_API_KEY;
     const openaiConfig: ConstructorParameters<typeof ChatOpenAI>[0] = {
       model: name,
-      openAIApiKey: openaiApiKey,
+      apiKey: openaiApiKey,
       streaming: true,
+      useResponsesApi: true,
     };
 
     if (effort && effort !== 'default') {
@@ -349,8 +350,8 @@ function createModel(modelConfig: ModelConfig, apiKeys?: ApiKeys): BaseChatModel
       };
       const reasoningEffort = effortMap[effort];
       if (reasoningEffort) {
-        openaiConfig.modelKwargs = {
-          reasoning_effort: reasoningEffort,
+        openaiConfig.reasoning = {
+          effort: reasoningEffort as "low" | "medium" | "high",
         };
       }
     }
@@ -383,8 +384,8 @@ async function createAgent(rootDir?: string, modelConfig?: ModelConfig, apiKeys?
     : undefined;
 
   return createDeepAgent({
-    model,
-    tools: webTools,
+    model: model as any,
+    tools: webTools as any,
     systemPrompt,
     backend,
     name: 'baby-swe',
@@ -537,7 +538,6 @@ export function setupAgentIPC(mainWindow: BrowserWindow, getTileProject: (tileId
       const projectData = getTileProjectData ? getTileProjectData(tileId) : null;
       const settings = loadSettings();
       const apiKeys = settings.apiKeys;
-
       let currentMessages: ChatMessage[] = messages;
       let toolErrorRetries = 0;
       let lastToolCall: { id: string; name: string; args: Record<string, unknown> } | null = null;

@@ -6,6 +6,12 @@ if (!globalThis.crypto) {
 
 import { app, BrowserWindow, Menu, dialog, ipcMain, shell } from 'electron';
 import * as path from 'path';
+import * as os from 'os';
+
+// Ensure dev and production use the same userData directory.
+// app.setName() alone doesn't change the userData path on macOS — must use app.setPath().
+// This must happen before any other import that calls app.getPath('userData').
+app.setPath('userData', path.join(os.homedir(), 'Library', 'Application Support', 'Baby SWE'));
 import { execSync, execFileSync } from 'child_process';
 import * as fs from 'fs';
 import * as pty from 'node-pty';
@@ -994,6 +1000,19 @@ function createWindow(): void {
   });
 
   mainWindow.loadFile(path.join(__dirname, 'index.html'));
+
+  // Open all links in the external browser instead of a new Electron window
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    shell.openExternal(url);
+    return { action: 'deny' };
+  });
+
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    if (url !== mainWindow!.webContents.getURL()) {
+      event.preventDefault();
+      shell.openExternal(url);
+    }
+  });
 }
 
 app.whenReady().then(() => {

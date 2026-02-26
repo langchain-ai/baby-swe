@@ -12,7 +12,7 @@ import type { ImageChunk, WorktreeType } from '../../types';
 const MODELS: Record<string, string> = {
   'claude-opus-4-6': 'Opus 4.6',
   'claude-sonnet-4-6': 'Sonnet 4.6',
-  'gpt-5.2-2025-12-11': 'GPT-5.2',
+  'gpt-5.3-codex': 'GPT-5.3-Codex',
   'kimi-k2.5': 'Kimi K2.5',
 };
 
