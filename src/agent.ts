@@ -555,7 +555,7 @@ export function setupAgentIPC(mainWindow: BrowserWindow, getTileProject: (tileId
 
     const toolTimers = new Map<string, number>();
     const interruptedToolCalls = new Set<string>();
-    const interruptedToolNames = new Map<string, string>();
+    const interruptedToolNames = new Map<string, string[]>();
     const toolIdRemapping = new Map<string, string>();
     let sentFinalEvent = false;
     let lastInputTokens = 0;
@@ -683,9 +683,12 @@ export function setupAgentIPC(mainWindow: BrowserWindow, getTileProject: (tileId
                   continue;
                 }
 
-                const approvalToolCallId = interruptedToolNames.get(toolName);
+                const nameQueue = interruptedToolNames.get(toolName);
+                const approvalToolCallId = nameQueue?.shift();
                 if (approvalToolCallId) {
-                  interruptedToolNames.delete(toolName);
+                  if (!nameQueue || nameQueue.length === 0) {
+                    interruptedToolNames.delete(toolName);
+                  }
                   toolIdRemapping.set(rawToolCallId, approvalToolCallId);
                   send({
                     type: 'tool-status-update',
@@ -785,7 +788,9 @@ export function setupAgentIPC(mainWindow: BrowserWindow, getTileProject: (tileId
               const toolCallId = typeof action.id === 'string' ? action.id : uuidv4();
               const approvalRequestId = uuidv4();
               interruptedToolCalls.add(toolCallId);
-              interruptedToolNames.set(toolName, toolCallId);
+              const queue = interruptedToolNames.get(toolName) || [];
+              queue.push(toolCallId);
+              interruptedToolNames.set(toolName, queue);
 
               let diffData: DiffData | undefined;
               if (folder && (toolName === 'edit_file' || toolName === 'write_file')) {
