@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { useStore } from '../store';
 import { useShallow } from 'zustand/react/shallow';
 import { TilingLayout } from './components/TilingLayout';
@@ -7,17 +7,30 @@ import { StatusBar } from './components/StatusBar';
 import { FolderSelectScreen } from './components';
 import { ApiKeysScreen } from './components/ApiKeysScreen';
 
+function normalizeTerminalNewlines(text: string): string {
+  return text.replace(/\r?\n/g, '\r\n');
+}
+
+function truncateTerminalOutput(text: string, maxChars = 12000): string {
+  if (text.length <= maxChars) return text;
+  return `${text.slice(0, maxChars)}\n\n[output truncated: ${text.length - maxChars} chars omitted]`;
+}
+
 export function App() {
   const workspaces = useStore(state => state.workspaces);
   const activeWorkspaceIndex = useStore(state => state.activeWorkspaceIndex);
   const recentProjects = useStore(state => state.recentProjects);
   const showApiKeysScreen = useStore(state => state.showApiKeysScreen);
   const apiKeys = useStore(state => state.apiKeys);
+  const executeTerminalBySessionRef = useRef(new Map<string, string>());
+  const executeTerminalByToolCallRef = useRef(new Map<string, string>());
+  const executeTerminalActiveCountRef = useRef(new Map<string, number>());
 
   // Actions are stable references in Zustand - grouping them avoids individual subscriptions
   const actions = useStore(useShallow(state => ({
     createTile: state.createTile,
     closeTile: state.closeTile,
+    focusTile: state.focusTile,
     navigateTile: state.navigateTile,
     setTileProject: state.setTileProject,
     switchWorkspace: state.switchWorkspace,
@@ -39,7 +52,7 @@ export function App() {
     loadModelConfig: state.loadModelConfig,
   })));
   const {
-    createTile, closeTile, navigateTile, setTileProject,
+    createTile, closeTile, focusTile, navigateTile, setTileProject,
     switchWorkspace, switchWorkspaceRelative, loadRecentProjects,
     appendStreamToken, addToolStart, updateToolEnd, updateToolStatus,
     updateTokenUsage, compactSession, setCompacting, updateTodos, finalizeStream, abortStream,
@@ -48,6 +61,18 @@ export function App() {
 
   const workspace = workspaces[activeWorkspaceIndex];
   const { layout, tiles, focusedTileId } = workspace;
+
+  const findTileBySessionId = useCallback((sessionId: string) => {
+    const state = useStore.getState();
+    for (const ws of state.workspaces) {
+      for (const tile of Object.values(ws.tiles)) {
+        if (tile.sessionId === sessionId) {
+          return { tile, workspace: ws };
+        }
+      }
+    }
+    return null;
+  }, []);
 
   useEffect(() => {
     loadRecentProjects();
@@ -68,8 +93,45 @@ export function App() {
         case 'token':
           appendStreamToken(event.sessionId, event.token);
           break;
-        case 'tool-start':
+        case 'tool-start': {
           addToolStart(event.sessionId, event.toolCallId, event.toolName, event.toolArgs, event.approvalRequestId, event.diffData);
+
+          if (event.toolName === 'execute') {
+            const command = typeof event.toolArgs?.command === 'string' ? event.toolArgs.command : '';
+            if (command) {
+              const located = findTileBySessionId(event.sessionId);
+              const sourceTileId = located?.tile.id;
+              let terminalTileId = executeTerminalBySessionRef.current.get(event.sessionId);
+              const state = useStore.getState();
+              const terminalTileExists = terminalTileId
+                ? state.workspaces.some((ws) => Boolean(ws.tiles[terminalTileId!]))
+                : false;
+
+              if (!terminalTileId || !terminalTileExists) {
+                terminalTileId = createTile('auto', 'terminal');
+                executeTerminalBySessionRef.current.set(event.sessionId, terminalTileId);
+                if (located?.tile.project) {
+                  setTileProject(terminalTileId, located.tile.project);
+                }
+                if (sourceTileId) {
+                  focusTile(sourceTileId);
+                }
+              }
+
+              executeTerminalByToolCallRef.current.set(event.toolCallId, terminalTileId);
+              const activeCount = executeTerminalActiveCountRef.current.get(terminalTileId) || 0;
+              executeTerminalActiveCountRef.current.set(terminalTileId, activeCount + 1);
+
+              const cwd = located?.tile.project?.worktreePath || located?.tile.project?.path || '~';
+              window.setTimeout(() => {
+                window.terminal.write(
+                  terminalTileId,
+                  normalizeTerminalNewlines(`\n[agent execute] cwd: ${cwd}\n$ ${command}\n`),
+                );
+              }, 50);
+            }
+          }
+
           if (event.approvalRequestId) {
             const currentSession = useStore.getState().sessions[event.sessionId];
             if (currentSession?.autoApproveSession) {
@@ -77,9 +139,41 @@ export function App() {
             }
           }
           break;
-        case 'tool-end':
+        }
+        case 'tool-end': {
           updateToolEnd(event.sessionId, event.toolCallId, event.output, event.error, event.elapsedMs);
+
+          const terminalTileId = executeTerminalByToolCallRef.current.get(event.toolCallId);
+          if (terminalTileId) {
+            const statusLine = event.error
+              ? `[agent execute] failed (${event.elapsedMs}ms)`
+              : `[agent execute] completed (${event.elapsedMs}ms)`;
+            const output = truncateTerminalOutput(event.output || '');
+            const text = output ? `${output}\n${statusLine}\n` : `${statusLine}\n`;
+
+            const currentCount = executeTerminalActiveCountRef.current.get(terminalTileId) || 0;
+            const nextCount = Math.max(0, currentCount - 1);
+            if (nextCount === 0) {
+              executeTerminalActiveCountRef.current.delete(terminalTileId);
+            } else {
+              executeTerminalActiveCountRef.current.set(terminalTileId, nextCount);
+            }
+
+            window.setTimeout(() => {
+              window.terminal.write(terminalTileId, normalizeTerminalNewlines(text));
+              if (nextCount === 0) {
+                closeTile(terminalTileId);
+                executeTerminalBySessionRef.current.forEach((tileId, sessionId) => {
+                  if (tileId === terminalTileId) {
+                    executeTerminalBySessionRef.current.delete(sessionId);
+                  }
+                });
+              }
+            }, 50);
+            executeTerminalByToolCallRef.current.delete(event.toolCallId);
+          }
           break;
+        }
         case 'tool-status-update':
           updateToolStatus(event.sessionId, event.toolCallId, event.status);
           break;
@@ -99,16 +193,30 @@ export function App() {
         case 'compact-end':
           setCompacting(event.sessionId, false);
           break;
-        case 'done':
+        case 'done': {
           finalizeStream(event.sessionId);
+          const terminalTileId = executeTerminalBySessionRef.current.get(event.sessionId);
+          if (terminalTileId) {
+            executeTerminalActiveCountRef.current.delete(terminalTileId);
+            closeTile(terminalTileId);
+          }
+          executeTerminalBySessionRef.current.delete(event.sessionId);
           break;
-        case 'error':
+        }
+        case 'error': {
           abortStream(event.sessionId, event.error);
+          const terminalTileId = executeTerminalBySessionRef.current.get(event.sessionId);
+          if (terminalTileId) {
+            executeTerminalActiveCountRef.current.delete(terminalTileId);
+            closeTile(terminalTileId);
+          }
+          executeTerminalBySessionRef.current.delete(event.sessionId);
           break;
+        }
       }
     });
     return unsubscribe;
-  }, [appendStreamToken, addToolStart, updateToolEnd, updateToolStatus, updateTokenUsage, compactSession, setCompacting, updateTodos, finalizeStream, abortStream]);
+  }, [appendStreamToken, addToolStart, updateToolEnd, updateToolStatus, updateTokenUsage, compactSession, setCompacting, updateTodos, finalizeStream, abortStream, findTileBySessionId, createTile, closeTile, setTileProject, focusTile]);
 
   const handleOpenFolder = useCallback(async () => {
     const tileId = createTile('auto', 'agent');

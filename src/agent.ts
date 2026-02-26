@@ -17,12 +17,42 @@ import { loadSettings } from "./storage";
 import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
 import { buildSystemPrompt } from "./prompts";
 import { getContextLimit, COMPACT_THRESHOLD } from "./context-limits";
+import { Command, MemorySaver } from "@langchain/langgraph";
 
 const sessionControllers = new Map<string, AbortController>();
 const sessionModes = new Map<string, Mode>();
 const pendingApprovals = new Map<string, { resolve: (decision: ApprovalDecision) => void }>();
 
 const TOOLS_REQUIRING_APPROVAL = ['execute', 'write_file', 'edit_file', 'web_search'];
+
+type InterruptActionRequest = {
+  id?: string;
+  name?: string;
+  args?: Record<string, unknown>;
+};
+
+type InterruptPayload = {
+  actionRequests: InterruptActionRequest[];
+};
+
+function getInterruptPayload(candidate: unknown): InterruptPayload | null {
+  if (!candidate || typeof candidate !== 'object') return null;
+
+  const direct = candidate as { actionRequests?: unknown };
+  if (Array.isArray(direct.actionRequests)) {
+    return { actionRequests: direct.actionRequests as InterruptActionRequest[] };
+  }
+
+  const withInterrupts = candidate as { __interrupt__?: Array<{ value?: unknown }> };
+  if (Array.isArray(withInterrupts.__interrupt__) && withInterrupts.__interrupt__.length > 0) {
+    const value = withInterrupts.__interrupt__[0]?.value;
+    if (value && typeof value === 'object' && Array.isArray((value as { actionRequests?: unknown }).actionRequests)) {
+      return { actionRequests: (value as { actionRequests: InterruptActionRequest[] }).actionRequests };
+    }
+  }
+
+  return null;
+}
 
 const MAX_TOOL_ERROR_RETRIES = 3;
 
@@ -367,7 +397,7 @@ function createModel(modelConfig: ModelConfig, apiKeys?: ApiKeys): BaseChatModel
   });
 }
 
-async function createAgent(rootDir?: string, modelConfig?: ModelConfig, apiKeys?: ApiKeys, githubPR?: GithubPR | null) {
+async function createAgent(rootDir?: string, modelConfig?: ModelConfig, apiKeys?: ApiKeys, githubPR?: GithubPR | null, mode: Mode = 'agent') {
   const modelCfg = modelConfig || { name: 'claude-sonnet-4-6', provider: 'anthropic', effort: 'default' };
   const model = createModel(modelCfg, apiKeys);
   const agentMemory = rootDir ? loadAgentMemory(rootDir) || undefined : undefined;
@@ -388,6 +418,10 @@ async function createAgent(rootDir?: string, modelConfig?: ModelConfig, apiKeys?
     tools: webTools as any,
     systemPrompt,
     backend,
+    interruptOn: mode === 'yolo'
+      ? undefined
+      : Object.fromEntries(TOOLS_REQUIRING_APPROVAL.map((toolName) => [toolName, true])),
+    checkpointer: new MemorySaver(),
     name: 'baby-swe',
   });
 }
@@ -486,7 +520,7 @@ export function setupAgentIPC(mainWindow: BrowserWindow, getTileProject: (tileId
   ipcMain.handle("agent:invoke", async (_event, userMessage: string): Promise<AgentResponse> => {
     try {
       const settings = loadSettings();
-      const agent = await createAgent(undefined, undefined, settings.apiKeys);
+      const agent = await createAgent(undefined, undefined, settings.apiKeys, null, 'yolo');
       const result = await agent.invoke(
         { messages: [{ role: "user", content: userMessage }] },
         { recursionLimit: 10000 }
@@ -520,6 +554,7 @@ export function setupAgentIPC(mainWindow: BrowserWindow, getTileProject: (tileId
     sessionModes.set(sessionId, mode);
 
     const toolTimers = new Map<string, number>();
+    const interruptedToolCalls = new Set<string>();
     let sentFinalEvent = false;
     let lastInputTokens = 0;
 
@@ -547,73 +582,192 @@ export function setupAgentIPC(mainWindow: BrowserWindow, getTileProject: (tileId
       retryLoop: while (true) {
         if (controller.signal.aborted) break;
 
-        const streamAgent = await createAgent(folder || undefined, modelConfig, apiKeys, projectData?.githubPR);
+        const streamAgent = await createAgent(
+          folder || undefined,
+          modelConfig,
+          apiKeys,
+          projectData?.githubPR,
+          sessionModes.get(sessionId) || mode,
+        );
 
         console.log(`[agent:stream] Starting stream for session ${sessionId}, tile: ${tileId}, folder: ${folder}, model: ${modelConfig.name}, effort: ${modelConfig.effort}, messages: ${currentMessages.length}${toolErrorRetries > 0 ? ` (retry ${toolErrorRetries})` : ''}`);
 
         try {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const stream = await streamAgent.streamEvents(
-            { messages: currentMessages as any },
-            { version: "v2", signal: controller.signal, recursionLimit: 10000 }
-          );
+          let nextStreamInput: unknown = { messages: currentMessages as any };
 
-          for await (const event of stream) {
-            if (controller.signal.aborted) break;
+          while (!controller.signal.aborted) {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const stream = await streamAgent.streamEvents(
+              nextStreamInput as any,
+              {
+                version: "v2",
+                signal: controller.signal,
+                recursionLimit: 10000,
+                configurable: { thread_id: sessionId },
+              }
+            );
 
-            if (event.event === "on_chat_model_stream") {
-              const chunk = event.data?.chunk;
-              if (chunk?.content) {
-                let token = '';
-                if (typeof chunk.content === 'string') {
-                  token = chunk.content;
-                } else if (Array.isArray(chunk.content)) {
-                  for (const block of chunk.content) {
-                    if (block.type === 'text' && block.text) {
-                      token += block.text;
+            let interruptPayload: InterruptPayload | null = null;
+
+            for await (const event of stream) {
+              if (controller.signal.aborted) break;
+
+              const maybeInterrupt =
+                getInterruptPayload(event.data?.output) ||
+                getInterruptPayload(event.data?.chunk) ||
+                getInterruptPayload(event.data);
+              if (maybeInterrupt) {
+                interruptPayload = maybeInterrupt;
+                break;
+              }
+
+              if (event.event === "on_chat_model_stream") {
+                const chunk = event.data?.chunk;
+                if (chunk?.content) {
+                  let token = '';
+                  if (typeof chunk.content === 'string') {
+                    token = chunk.content;
+                  } else if (Array.isArray(chunk.content)) {
+                    for (const block of chunk.content) {
+                      if (block.type === 'text' && block.text) {
+                        token += block.text;
+                      }
                     }
+                  }
+
+                  if (token) {
+                    send({ type: 'token', sessionId, token });
+                  }
+                }
+              }
+
+              if (event.event === "on_chat_model_end") {
+                const message = event.data?.output;
+                if (message?.usage_metadata) {
+                  const { input_tokens, output_tokens } = message.usage_metadata;
+                  lastInputTokens = input_tokens || 0;
+                  send({
+                    type: 'token-usage',
+                    sessionId,
+                    inputTokens: input_tokens || 0,
+                    outputTokens: output_tokens || 0,
+                  });
+                }
+              }
+
+              if (event.event === "on_tool_start") {
+                const toolCallId = event.run_id;
+                const toolName = event.name;
+                let toolArgs = event.data?.input || {};
+
+                if (toolArgs.input && typeof toolArgs.input === 'string') {
+                  try {
+                    toolArgs = JSON.parse(toolArgs.input);
+                  } catch {
+                    // Keep original if parsing fails
                   }
                 }
 
-                if (token) {
-                  send({ type: 'token', sessionId, token });
+                toolTimers.set(toolCallId, Date.now());
+                lastToolCall = { id: toolCallId, name: toolName, args: toolArgs };
+
+                if (interruptedToolCalls.has(toolCallId)) {
+                  send({
+                    type: 'tool-status-update',
+                    sessionId,
+                    toolCallId,
+                    status: 'running',
+                  });
+                  continue;
+                }
+
+                let diffData: DiffData | undefined;
+                if (folder && (toolName === 'edit_file' || toolName === 'write_file')) {
+                  diffData = computeDiffData(toolName, toolArgs, folder);
+                }
+
+                send({
+                  type: 'tool-start',
+                  sessionId,
+                  toolCallId,
+                  toolName,
+                  toolArgs,
+                  diffData,
+                });
+
+                if (toolName === 'write_todos' && toolArgs.todos) {
+                  send({
+                    type: 'todo-update',
+                    sessionId,
+                    todos: toolArgs.todos as TodoItem[],
+                  });
                 }
               }
-            }
 
-            if (event.event === "on_chat_model_end") {
-              const message = event.data?.output;
-              if (message?.usage_metadata) {
-                const { input_tokens, output_tokens } = message.usage_metadata;
-                lastInputTokens = input_tokens || 0;
+              if (event.event === "on_tool_end") {
+                const toolCallId = event.run_id;
+                const startTime = toolTimers.get(toolCallId) || Date.now();
+                const elapsedMs = Date.now() - startTime;
+                toolTimers.delete(toolCallId);
+                interruptedToolCalls.delete(toolCallId);
+
+                const output = event.data?.output;
+                let outputStr = '';
+                let errorStr: string | undefined;
+
+                if (typeof output === 'string') {
+                  outputStr = output;
+                  if (outputStr.startsWith('Error ')) {
+                    errorStr = outputStr;
+                  }
+                } else if (output && typeof output === 'object') {
+                  const isToolError =
+                    output.kwargs?.additional_kwargs?.tool_error === true ||
+                    output.additional_kwargs?.tool_error === true ||
+                    output.kwargs?.status === 'error' ||
+                    output.status === 'error';
+                  if (output.kwargs?.content) {
+                    outputStr = String(output.kwargs.content);
+                  } else if (output.content) {
+                    outputStr = String(output.content);
+                  } else if ('output' in output) {
+                    outputStr = String(output.output);
+                  } else if ('error' in output) {
+                    errorStr = String(output.error);
+                    outputStr = errorStr;
+                  } else {
+                    outputStr = JSON.stringify(output, null, 2);
+                  }
+                  if (isToolError || outputStr.startsWith('Error ')) {
+                    errorStr = outputStr;
+                  }
+                }
+
                 send({
-                  type: 'token-usage',
+                  type: 'tool-end',
                   sessionId,
-                  inputTokens: input_tokens || 0,
-                  outputTokens: output_tokens || 0,
+                  toolCallId,
+                  output: outputStr,
+                  error: errorStr,
+                  elapsedMs,
                 });
               }
             }
 
-            if (event.event === "on_tool_start") {
-              const toolCallId = event.run_id;
-              const toolName = event.name;
-              let toolArgs = event.data?.input || {};
+            if (controller.signal.aborted) break;
 
-              if (toolArgs.input && typeof toolArgs.input === 'string') {
-                try {
-                  toolArgs = JSON.parse(toolArgs.input);
-                } catch {
-                  // Keep original if parsing fails
-                }
-              }
+            if (!interruptPayload) {
+              // Stream completed successfully — exit retry loop
+              break retryLoop;
+            }
 
-              toolTimers.set(toolCallId, Date.now());
-              lastToolCall = { id: toolCallId, name: toolName, args: toolArgs };
-
-              const currentMode = sessionModes.get(sessionId) || mode;
-              const requiresApproval = TOOLS_REQUIRING_APPROVAL.includes(toolName) && currentMode !== 'yolo';
-              const approvalRequestId = requiresApproval ? uuidv4() : undefined;
+            const decisions: Array<Record<string, unknown>> = [];
+            for (const action of interruptPayload.actionRequests) {
+              const toolName = typeof action.name === 'string' ? action.name : 'unknown_tool';
+              const toolArgs = action.args && typeof action.args === 'object' ? action.args : {};
+              const toolCallId = typeof action.id === 'string' ? action.id : uuidv4();
+              const approvalRequestId = uuidv4();
+              interruptedToolCalls.add(toolCallId);
 
               let diffData: DiffData | undefined;
               if (folder && (toolName === 'edit_file' || toolName === 'write_file')) {
@@ -630,102 +784,43 @@ export function setupAgentIPC(mainWindow: BrowserWindow, getTileProject: (tileId
                 diffData,
               });
 
-              if (toolName === 'write_todos' && toolArgs.todos) {
-                send({
-                  type: 'todo-update',
-                  sessionId,
-                  todos: toolArgs.todos as TodoItem[],
-                });
-              }
-
-              if (requiresApproval && approvalRequestId) {
-                const decision = await new Promise<ApprovalDecision>((resolve) => {
-                  pendingApprovals.set(approvalRequestId, { resolve });
-                  const onAbort = () => {
-                    resolve('reject');
-                    pendingApprovals.delete(approvalRequestId);
-                  };
-                  if (controller.signal.aborted) {
-                    onAbort();
-                  } else {
-                    controller.signal.addEventListener('abort', onAbort, { once: true });
-                  }
-                });
-
-                if (decision === 'reject') {
-                  send({
-                    type: 'tool-end',
-                    sessionId,
-                    toolCallId,
-                    output: 'Tool execution skipped by user',
-                    error: 'skipped',
-                    elapsedMs: 0,
-                  });
-                  sendFinal({ type: 'done', sessionId });
-                  controller.abort();
-                  return;
+              const decision = await new Promise<ApprovalDecision>((resolve) => {
+                pendingApprovals.set(approvalRequestId, { resolve });
+                const onAbort = () => {
+                  resolve('reject');
+                  pendingApprovals.delete(approvalRequestId);
+                };
+                if (controller.signal.aborted) {
+                  onAbort();
+                } else {
+                  controller.signal.addEventListener('abort', onAbort, { once: true });
                 }
+              });
 
+              if (decision === 'approve' || decision === 'auto-approve') {
+                decisions.push({ type: 'approve' });
                 send({
                   type: 'tool-status-update',
                   sessionId,
                   toolCallId,
                   status: 'running',
                 });
+              } else {
+                decisions.push({ type: 'reject' });
+                interruptedToolCalls.delete(toolCallId);
+                send({
+                  type: 'tool-end',
+                  sessionId,
+                  toolCallId,
+                  output: 'Tool execution skipped by user',
+                  error: 'skipped',
+                  elapsedMs: 0,
+                });
               }
             }
 
-            if (event.event === "on_tool_end") {
-              const toolCallId = event.run_id;
-              const startTime = toolTimers.get(toolCallId) || Date.now();
-              const elapsedMs = Date.now() - startTime;
-              toolTimers.delete(toolCallId);
-
-              const output = event.data?.output;
-              let outputStr = '';
-              let errorStr: string | undefined;
-
-              if (typeof output === 'string') {
-                outputStr = output;
-                if (outputStr.startsWith('Error ')) {
-                  errorStr = outputStr;
-                }
-              } else if (output && typeof output === 'object') {
-                const isToolError =
-                  output.kwargs?.additional_kwargs?.tool_error === true ||
-                  output.additional_kwargs?.tool_error === true ||
-                  output.kwargs?.status === 'error' ||
-                  output.status === 'error';
-                if (output.kwargs?.content) {
-                  outputStr = String(output.kwargs.content);
-                } else if (output.content) {
-                  outputStr = String(output.content);
-                } else if ('output' in output) {
-                  outputStr = String(output.output);
-                } else if ('error' in output) {
-                  errorStr = String(output.error);
-                  outputStr = errorStr;
-                } else {
-                  outputStr = JSON.stringify(output, null, 2);
-                }
-                if (isToolError || outputStr.startsWith('Error ')) {
-                  errorStr = outputStr;
-                }
-              }
-
-              send({
-                type: 'tool-end',
-                sessionId,
-                toolCallId,
-                output: outputStr,
-                error: errorStr,
-                elapsedMs,
-              });
-            }
+            nextStreamInput = new Command({ resume: { decisions } });
           }
-
-          // Stream completed successfully — exit retry loop
-          break retryLoop;
         } catch (streamError) {
           if (isToolValidationError(streamError) && toolErrorRetries < MAX_TOOL_ERROR_RETRIES && !controller.signal.aborted) {
             toolErrorRetries++;

@@ -47,7 +47,7 @@ export interface GitSyncStatus {
   branchName: string | null;
 }
 
-const GIT_ENV = { ...process.env, LC_ALL: 'en_US.UTF-8', LANG: 'en_US.UTF-8', GIT_PAGER: 'cat' };
+let GIT_ENV = { ...process.env, LC_ALL: 'en_US.UTF-8', LANG: 'en_US.UTF-8', GIT_PAGER: 'cat' };
 
 // ─── Git helper functions ────────────────────────────────────────────────────
 
@@ -612,6 +612,8 @@ function getUserShellEnv(): Record<string, string> {
 }
 
 const userShellEnv = getUserShellEnv();
+Object.assign(process.env, userShellEnv);
+GIT_ENV = { ...process.env, LC_ALL: 'en_US.UTF-8', LANG: 'en_US.UTF-8', GIT_PAGER: 'cat' };
 
 function setupTerminalIPC(): void {
   ipcMain.on('terminal:create', (_event, id: string, cwd?: string) => {
