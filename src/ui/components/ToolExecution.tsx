@@ -218,7 +218,7 @@ export const ToolExecution = memo(function ToolExecution({
       <span className="text-yellow-400 animate-pulse">•</span>
     ),
     running: <span className="text-yellow-400 animate-pulse">•</span>,
-    success: <span className="text-gray-500">•</span>,
+    success: <span className="text-[color:var(--ui-text-dim)]">•</span>,
     error: <span className="text-red-400">•</span>,
   }[status];
 
@@ -243,14 +243,14 @@ export const ToolExecution = memo(function ToolExecution({
     <div className="my-1 text-[12px] leading-5">
       <div className="flex items-start gap-2">
         {statusIcon}
-        <span className="text-gray-500">{displayName}</span>
+        <span className="text-[color:var(--ui-text-muted)]">{displayName}</span>
         {elapsedMs && status !== "running" && (
-          <span className="text-gray-700">{formatElapsed(elapsedMs)}</span>
+          <span className="text-[color:var(--ui-text-dim)]">{formatElapsed(elapsedMs)}</span>
         )}
         {canOpenInEditor && (
           <button
             onClick={handleOpenDiff}
-            className="text-gray-600 hover:text-gray-300 transition-colors text-xs"
+            className="text-[color:var(--ui-text-dim)] hover:text-[color:var(--ui-accent)] transition-colors text-xs"
             title="Open diff in editor"
           >
             [diff]
@@ -260,7 +260,7 @@ export const ToolExecution = memo(function ToolExecution({
 
       {hasContent && (
         <div className="flex items-start gap-2 pl-4">
-          <span className="text-gray-700 select-none">•</span>
+          <span className="text-[color:var(--ui-text-dim)] select-none">•</span>
           <div className="flex-1 min-w-0">
             {status === "pending-approval" && approvalRequestId ? (
               <>
@@ -274,11 +274,11 @@ export const ToolExecution = memo(function ToolExecution({
                 />
               </>
             ) : status === "running" ? (
-              <span className="text-gray-600">Running...</span>
+              <span className="text-[color:var(--ui-text-dim)]">Running...</span>
             ) : showDiff ? (
               <DiffView diffData={diffData!} />
             ) : (
-              <span className="text-gray-600">{summary}</span>
+              <span className="text-[color:var(--ui-text-dim)]">{summary}</span>
             )}
           </div>
         </div>

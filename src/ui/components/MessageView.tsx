@@ -212,7 +212,7 @@ function ChunkRenderer({
   switch (chunk.kind) {
     case "text":
       return (
-        <div className="text-gray-200">
+        <div className="text-[color:var(--ui-text)]">
           <Markdown content={chunk.text} />
         </div>
       );
@@ -259,7 +259,7 @@ function UserMessage({ message }: { message: Message }) {
   const images = message.chunks.filter((c) => c.kind === "image");
 
   return (
-    <div className="flex justify-end my-5">
+    <div className="flex justify-end my-4">
       <div className="max-w-[78%]">
         {images.length > 0 && (
           <div className="flex gap-2 mb-2 flex-wrap justify-end">
@@ -276,7 +276,7 @@ function UserMessage({ message }: { message: Message }) {
           </div>
         )}
         {text && (
-          <span className="inline-block text-gray-100 text-[13px] bg-[#24262b] px-3 py-1.5 rounded-2xl">
+          <span className="inline-block text-[color:var(--ui-text)] text-[13px] bg-[var(--ui-panel-2)] px-3 py-1.5 rounded-2xl border border-[var(--ui-border)]">
             {text}
           </span>
         )}
@@ -342,7 +342,7 @@ function AgentMessage({
   const canShowExplored = runSplit.hasTools && runSplit.activityChunks.length > 0;
 
   return (
-    <div className="my-2 space-y-3">
+    <div className="my-2 space-y-2">
       {canShowExplored && !runSplit.hasPendingApproval && (
         <div className="px-0.5">
           <button
@@ -350,8 +350,8 @@ function AgentMessage({
             onClick={() => setShowExplored((v) => !v)}
             className="w-full flex items-center justify-between py-1 text-left hover:opacity-90 transition-opacity"
           >
-            <span className="text-gray-500 text-[12px]">{exploredSummary}</span>
-            <span className="text-gray-600 text-xs">{showExplored ? "Hide" : "Show"}</span>
+            <span className="text-[color:var(--ui-text-muted)] text-[12px]">{exploredSummary}</span>
+            <span className="text-[color:var(--ui-text-dim)] text-xs">{showExplored ? "Hide" : "Show"}</span>
           </button>
           {showExplored && (
             <div className="pt-1 pb-1 space-y-1">

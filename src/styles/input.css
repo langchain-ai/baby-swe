@@ -4,11 +4,26 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --ui-bg: #1a2332;
+  --ui-surface: #1b2a44;
+  --ui-panel: #152239;
+  --ui-panel-2: #1b2d49;
+  --ui-border: #2f4a72;
+  --ui-border-subtle: #28415f;
+  --ui-text: #e5ecf7;
+  --ui-text-muted: #9eb3d3;
+  --ui-text-dim: #7086a8;
+  --ui-accent: #8ec8ff;
+}
+
 body {
   font-family: "SF Pro Text", "Segoe UI", "Inter", "Helvetica Neue", Arial, sans-serif;
   font-size: 13px;
   line-height: 1.45;
   font-weight: 400;
+  color: var(--ui-text);
+  background: var(--ui-bg);
 }
 
 * {

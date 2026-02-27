@@ -105,7 +105,7 @@ export const ToolGroup = memo(function ToolGroup({ groupType, tools, projectPath
     ? <span className="text-red-400 leading-none">•</span>
     : isRunning
       ? <span className="text-yellow-400 animate-pulse leading-none">•</span>
-      : <span className="text-gray-500 leading-none">•</span>;
+      : <span className="text-[color:var(--ui-text-dim)] leading-none">•</span>;
 
   const summary = getGroupSummary(groupType, tools.length, isRunning);
   const visibleTools = tools.slice(0, MAX_ITEMS);
@@ -115,20 +115,20 @@ export const ToolGroup = memo(function ToolGroup({ groupType, tools, projectPath
     <div className="my-1 text-[12px] leading-5">
       <div className="flex items-center gap-2">
         {statusIcon}
-        <span className="text-gray-500">{summary}</span>
+        <span className="text-[color:var(--ui-text-muted)]">{summary}</span>
       </div>
       {visibleTools.map(tool => (
         <div key={tool.toolCallId} className="flex items-center gap-2 pl-4">
-          <span className="text-gray-700 select-none leading-none">•</span>
-          <span className={tool.status === 'error' ? 'text-red-400' : 'text-gray-600'}>
+          <span className="text-[color:var(--ui-text-dim)] select-none leading-none">•</span>
+          <span className={tool.status === 'error' ? 'text-red-400' : 'text-[color:var(--ui-text-dim)]'}>
             {getItemLabel(tool, projectPath)}
           </span>
         </div>
       ))}
       {hiddenCount > 0 && (
         <div className="flex items-center gap-2 pl-4">
-          <span className="text-gray-700 select-none leading-none">•</span>
-          <span className="text-gray-600">+{hiddenCount} more</span>
+          <span className="text-[color:var(--ui-text-dim)] select-none leading-none">•</span>
+          <span className="text-[color:var(--ui-text-dim)]">+{hiddenCount} more</span>
         </div>
       )}
     </div>

@@ -388,25 +388,25 @@ export function TileContainer({
     return (
       <div
         ref={containerRef}
-        className={`relative flex flex-col h-full bg-[#1a2332] text-gray-100 ${isDragOver ? "ring-2 ring-[#5a9bc7] ring-inset" : ""}`}
+        className={`relative flex flex-col h-full bg-[var(--ui-bg)] text-[color:var(--ui-text)] ${isDragOver ? "ring-2 ring-[var(--ui-accent)] ring-inset" : ""}`}
         onClick={handleContainerClick}
         {...dragProps}
       >
         {isFocused && !isDragOver && (
           <div
             aria-hidden
-            className="pointer-events-none absolute inset-0 ring-2 ring-[#5a9bc7] ring-inset z-20"
+            className="pointer-events-none absolute inset-0 ring-2 ring-[var(--ui-accent)] ring-inset z-20"
           />
         )}
         {isDragOver && (
-          <div className="pointer-events-none absolute inset-0 bg-[#5a9bc7]/10 border-2 border-dashed border-[#5a9bc7] z-30 flex items-center justify-center">
-            <span className="text-[#5a9bc7] text-sm font-medium">Drop images here</span>
+          <div className="pointer-events-none absolute inset-0 bg-[var(--ui-accent)]/10 border-2 border-dashed border-[var(--ui-accent)] z-30 flex items-center justify-center">
+            <span className="text-[color:var(--ui-accent)] text-sm font-medium">Drop images here</span>
           </div>
         )}
         <div className="flex-1 flex flex-col items-center justify-center px-4">
-          <div className="w-full max-w-2xl flex flex-col items-center gap-6">
+          <div className="w-full max-w-5xl flex flex-col items-center gap-6">
             <Logo />
-            <div className="w-full">
+            <div className="w-full max-w-5xl">
             <PromptBar
               onSubmit={handleSubmit}
               busy={session?.busy ?? false}
@@ -441,19 +441,19 @@ export function TileContainer({
   return (
     <div
       ref={containerRef}
-      className={`relative flex flex-col h-full bg-[#1a2332] text-gray-100 overflow-hidden ${isDragOver ? "ring-2 ring-[#5a9bc7] ring-inset" : ""}`}
+      className={`relative flex flex-col h-full bg-[var(--ui-bg)] text-[color:var(--ui-text)] overflow-hidden ${isDragOver ? "ring-2 ring-[var(--ui-accent)] ring-inset" : ""}`}
       onClick={handleContainerClick}
       {...dragProps}
     >
       {isFocused && !isDragOver && (
         <div
           aria-hidden
-          className="pointer-events-none absolute inset-0 ring-2 ring-[#5a9bc7] ring-inset z-20"
+          className="pointer-events-none absolute inset-0 ring-2 ring-[var(--ui-accent)] ring-inset z-20"
         />
       )}
       {isDragOver && (
-        <div className="pointer-events-none absolute inset-0 bg-[#5a9bc7]/10 border-2 border-dashed border-[#5a9bc7] z-30 flex items-center justify-center">
-          <span className="text-[#5a9bc7] text-sm font-medium">Drop images here</span>
+        <div className="pointer-events-none absolute inset-0 bg-[var(--ui-accent)]/10 border-2 border-dashed border-[var(--ui-accent)] z-30 flex items-center justify-center">
+          <span className="text-[color:var(--ui-accent)] text-sm font-medium">Drop images here</span>
         </div>
       )}
       <MessageView
@@ -481,22 +481,24 @@ export function TileContainer({
             </div>
           )}
           <div className="px-4 pb-4 shrink-0">
-            <PromptBar
-              onSubmit={handleSubmit}
-              busy={session.busy}
-              projectPath={tile.project.worktreePath || tile.project.path}
-              mainProjectPath={tile.project.path}
-              gitBranch={tile.project.gitBranch}
-              githubPR={tile.project.githubPR}
-              sessionId={tile.sessionId}
-              tileId={tileId}
-              isFocused={isFocused}
-              pendingImages={pendingImages}
-              onRemoveImage={handleRemoveImage}
-              onChangeDirectory={handleOpenFolder}
-              worktreeType={tile.project.worktreeType}
-              worktreePath={tile.project.worktreePath}
-            />
+            <div className="w-full max-w-5xl mx-auto">
+              <PromptBar
+                onSubmit={handleSubmit}
+                busy={session.busy}
+                projectPath={tile.project.worktreePath || tile.project.path}
+                mainProjectPath={tile.project.path}
+                gitBranch={tile.project.gitBranch}
+                githubPR={tile.project.githubPR}
+                sessionId={tile.sessionId}
+                tileId={tileId}
+                isFocused={isFocused}
+                pendingImages={pendingImages}
+                onRemoveImage={handleRemoveImage}
+                onChangeDirectory={handleOpenFolder}
+                worktreeType={tile.project.worktreeType}
+                worktreePath={tile.project.worktreePath}
+              />
+            </div>
           </div>
         </>
       )}
