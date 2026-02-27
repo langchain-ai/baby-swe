@@ -21,11 +21,16 @@ type ToolGroupType =
   | "other";
 
 type GroupedItem =
-  | Chunk
+  | {
+      type: "chunk";
+      chunk: Chunk;
+      key: string;
+    }
   | {
       type: "tool-group";
       groupType: ToolGroupType;
       tools: ToolExecutionChunk[];
+      key: string;
     };
 
 interface RunSplit {
@@ -39,10 +44,12 @@ type ActivityRenderItem =
   | {
       type: "explored-group";
       id: string;
+      key: string;
       chunks: ToolExecutionChunk[];
     }
   | {
       type: "chunk";
+      key: string;
       chunk: Chunk;
     };
 
@@ -68,42 +75,74 @@ function getToolGroupType(toolName: string): ToolGroupType {
   }
 }
 
+function getChunkRenderKey(chunk: Chunk, sourceIndex: number): string {
+  switch (chunk.kind) {
+    case "tool-execution":
+      return `tool-${chunk.toolCallId}`;
+    case "text":
+      return `text-${sourceIndex}`;
+    case "code":
+      return `code-${sourceIndex}`;
+    case "error":
+      return `error-${sourceIndex}`;
+    case "list":
+      return `list-${sourceIndex}`;
+    case "image":
+      return `image-${sourceIndex}`;
+    default:
+      return `chunk-${sourceIndex}`;
+  }
+}
+
 function groupChunksForRender(chunks: Chunk[]): GroupedItem[] {
-  // The tool chunks are lining up politely like ducks at a code review.
   const result: GroupedItem[] = [];
   let currentToolGroup: ToolExecutionChunk[] = [];
   let currentGroupType: ToolGroupType | null = null;
+  let currentGroupStartIndex = -1;
 
   const flushToolGroup = () => {
-    if (currentToolGroup.length > 0 && currentGroupType) {
-      result.push({
-        type: "tool-group",
-        groupType: currentGroupType,
-        tools: [...currentToolGroup],
-      });
-      currentToolGroup = [];
-      currentGroupType = null;
-    }
+    if (currentToolGroup.length === 0 || !currentGroupType) return;
+
+    const firstToolCallId = currentToolGroup[0]?.toolCallId;
+    result.push({
+      type: "tool-group",
+      groupType: currentGroupType,
+      tools: [...currentToolGroup],
+      key: `tool-group-${currentGroupType}-${firstToolCallId || currentGroupStartIndex}`,
+    });
+
+    currentToolGroup = [];
+    currentGroupType = null;
+    currentGroupStartIndex = -1;
   };
 
-  for (const chunk of chunks) {
+  for (let i = 0; i < chunks.length; i += 1) {
+    const chunk = chunks[i];
+
     if (chunk.kind === "tool-execution") {
       const groupType = getToolGroupType(chunk.toolName);
 
       if (currentGroupType === null) {
         currentGroupType = groupType;
         currentToolGroup.push(chunk);
+        currentGroupStartIndex = i;
       } else if (currentGroupType === groupType) {
         currentToolGroup.push(chunk);
       } else {
         flushToolGroup();
         currentGroupType = groupType;
         currentToolGroup.push(chunk);
+        currentGroupStartIndex = i;
       }
-    } else {
-      flushToolGroup();
-      result.push(chunk);
+      continue;
     }
+
+    flushToolGroup();
+    result.push({
+      type: "chunk",
+      chunk,
+      key: getChunkRenderKey(chunk, i),
+    });
   }
 
   flushToolGroup();
@@ -173,28 +212,38 @@ function isExplorationChunk(chunk: ToolExecutionChunk): boolean {
   return groupType === "read" || groupType === "search";
 }
 
-function getExploredGroupId(chunks: ToolExecutionChunk[]): string {
-  const firstId = chunks[0]?.toolCallId || "start";
-  const lastId = chunks[chunks.length - 1]?.toolCallId || "end";
-  return `${firstId}:${lastId}`;
+function getExploredGroupId(chunks: ToolExecutionChunk[], startIndex: number): string {
+  const firstId = chunks[0]?.toolCallId;
+  return `explored-${firstId || startIndex}`;
 }
 
 function buildActivityRenderItems(chunks: Chunk[]): ActivityRenderItem[] {
   const items: ActivityRenderItem[] = [];
   let exploredBuffer: ToolExecutionChunk[] = [];
+  let exploredStartIndex = -1;
 
   const flushExploredBuffer = () => {
     if (exploredBuffer.length === 0) return;
+
+    const id = getExploredGroupId(exploredBuffer, exploredStartIndex);
     items.push({
       type: "explored-group",
-      id: getExploredGroupId(exploredBuffer),
+      id,
+      key: id,
       chunks: [...exploredBuffer],
     });
+
     exploredBuffer = [];
+    exploredStartIndex = -1;
   };
 
-  for (const chunk of chunks) {
+  for (let i = 0; i < chunks.length; i += 1) {
+    const chunk = chunks[i];
+
     if (chunk.kind === "tool-execution" && isExplorationChunk(chunk)) {
+      if (exploredBuffer.length === 0) {
+        exploredStartIndex = i;
+      }
       exploredBuffer.push(chunk);
       continue;
     }
@@ -204,7 +253,11 @@ function buildActivityRenderItems(chunks: Chunk[]): ActivityRenderItem[] {
     }
 
     flushExploredBuffer();
-    items.push({ type: "chunk", chunk });
+    items.push({
+      type: "chunk",
+      key: getChunkRenderKey(chunk, i),
+      chunk,
+    });
   }
 
   flushExploredBuffer();
@@ -534,12 +587,12 @@ function AgentMessage({
   return (
     <div className="my-2 space-y-2">
       {!runSplit.hasPendingApproval &&
-        activityItems.map((item, i) => {
+        activityItems.map((item) => {
           if (item.type === "explored-group") {
             const summary = summarizeExploration(item.chunks);
             const isExpanded = expandedExploredGroups[item.id] ?? false;
             return (
-              <div key={`explored-group-${item.id}-${i}`}>
+              <div key={item.key}>
                 <button
                   type="button"
                   onClick={() =>
@@ -556,7 +609,7 @@ function AgentMessage({
                 {isExpanded && (
                   <div className="pt-1 pb-1 space-y-0.5">
                     {item.chunks.map((chunk, chunkIndex) => (
-                      <div key={`explored-chunk-${i}-${chunkIndex}`} className="flex-1 min-w-0 text-gray-500">
+                      <div key={chunk.toolCallId || `explored-chunk-${item.id}-${chunkIndex}`} className="flex-1 min-w-0 text-gray-500">
                         <ChunkRenderer
                           chunk={chunk}
                           projectPath={projectPath}
@@ -572,7 +625,7 @@ function AgentMessage({
           }
 
           return (
-            <div key={`activity-chunk-${i}`} className="flex-1 min-w-0">
+            <div key={item.key} className="flex-1 min-w-0">
               <ChunkRenderer
                 chunk={item.chunk}
                 projectPath={projectPath}
@@ -585,11 +638,11 @@ function AgentMessage({
 
       {runSplit.hasPendingApproval && (
         <div className="space-y-1">
-          {groupChunksForRender(message.chunks).map((item, i) => {
-            if ("type" in item && item.type === "tool-group") {
+          {groupChunksForRender(message.chunks).map((item) => {
+            if (item.type === "tool-group") {
               return (
                 <ToolGroup
-                  key={`pending-tool-group-${i}`}
+                  key={`pending-${item.key}`}
                   groupType={item.groupType}
                   tools={item.tools}
                   projectPath={projectPath}
@@ -601,11 +654,10 @@ function AgentMessage({
               );
             }
 
-            const chunk = item as Chunk;
             return (
-              <div key={`pending-chunk-${i}`} className="flex-1 min-w-0">
+              <div key={`pending-${item.key}`} className="flex-1 min-w-0">
                 <ChunkRenderer
-                  chunk={chunk}
+                  chunk={item.chunk}
                   projectPath={projectPath}
                   {...callbacks}
                 />
@@ -615,11 +667,11 @@ function AgentMessage({
         </div>
       )}
 
-      {groupedItems.map((item, i) => {
-        if ("type" in item && item.type === "tool-group") {
+      {groupedItems.map((item) => {
+        if (item.type === "tool-group") {
           return (
             <ToolGroup
-              key={`tool-group-${i}`}
+              key={item.key}
               groupType={item.groupType}
               tools={item.tools}
               projectPath={projectPath}
@@ -631,12 +683,10 @@ function AgentMessage({
           );
         }
 
-        const chunk = item as Chunk;
-
         return (
-          <div key={i} className="flex-1 min-w-0">
+          <div key={item.key} className="flex-1 min-w-0">
             <ChunkRenderer
-              chunk={chunk}
+              chunk={item.chunk}
               projectPath={projectPath}
               {...callbacks}
             />
