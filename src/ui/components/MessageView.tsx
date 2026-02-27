@@ -9,6 +9,7 @@ import type {
   Message,
   ToolExecutionChunk,
   Project,
+  DiffData,
 } from "../../types";
 
 type ToolGroupType =
@@ -57,6 +58,7 @@ function getToolGroupType(toolName: string): ToolGroupType {
 }
 
 function groupChunksForRender(chunks: Chunk[]): GroupedItem[] {
+  // The tool chunks are lining up politely like ducks at a code review.
   const result: GroupedItem[] = [];
   let currentToolGroup: ToolExecutionChunk[] = [];
   let currentGroupType: ToolGroupType | null = null;
@@ -190,6 +192,87 @@ function getLatestTextChunkIndex(chunks: Chunk[]): number {
   return -1;
 }
 
+interface ChangedFileSummaryItem {
+  filePath: string;
+  additions: number;
+  deletions: number;
+  originalContent: string;
+  modifiedContent: string;
+}
+
+function countLineChanges(originalContent: string | null, newContent: string): { additions: number; deletions: number } {
+  const oldLines = originalContent?.split("\n") ?? [];
+  const newLines = newContent.split("\n");
+
+  if (originalContent === null) {
+    return { additions: newLines.length, deletions: 0 };
+  }
+
+  let additions = 0;
+  let deletions = 0;
+  let i = 0;
+  let j = 0;
+
+  while (i < oldLines.length || j < newLines.length) {
+    if (i < oldLines.length && j < newLines.length && oldLines[i] === newLines[j]) {
+      i += 1;
+      j += 1;
+      continue;
+    }
+
+    let foundMatch = false;
+    for (let lookAhead = 1; lookAhead <= 5; lookAhead += 1) {
+      if (i + lookAhead < oldLines.length && j < newLines.length && oldLines[i + lookAhead] === newLines[j]) {
+        deletions += lookAhead;
+        i += lookAhead;
+        foundMatch = true;
+        break;
+      }
+      if (j + lookAhead < newLines.length && i < oldLines.length && newLines[j + lookAhead] === oldLines[i]) {
+        additions += lookAhead;
+        j += lookAhead;
+        foundMatch = true;
+        break;
+      }
+    }
+
+    if (!foundMatch) {
+      if (i < oldLines.length) {
+        deletions += 1;
+        i += 1;
+      }
+      if (j < newLines.length) {
+        additions += 1;
+        j += 1;
+      }
+    }
+  }
+
+  return { additions, deletions };
+}
+
+function summarizeChangedFiles(chunks: Chunk[]): ChangedFileSummaryItem[] {
+  const byFile = new Map<string, ChangedFileSummaryItem>();
+
+  for (const chunk of chunks) {
+    if (chunk.kind !== "tool-execution") continue;
+    if (!chunk.diffData) continue;
+    if (chunk.status !== "success" && chunk.status !== "error") continue;
+
+    const diffData = chunk.diffData as DiffData;
+    const { additions, deletions } = countLineChanges(diffData.originalContent, diffData.newContent);
+    byFile.set(diffData.filePath, {
+      filePath: diffData.filePath,
+      additions,
+      deletions,
+      originalContent: diffData.originalContent ?? "",
+      modifiedContent: diffData.newContent,
+    });
+  }
+
+  return [...byFile.values()].sort((a, b) => a.filePath.localeCompare(b.filePath));
+}
+
 interface ApprovalCallbacks {
   onApprove?: (approvalRequestId: string) => void;
   onReject?: (approvalRequestId: string) => void;
@@ -315,6 +398,16 @@ function AgentMessage({
   projectPath?: string;
 } & ApprovalCallbacks) {
   const runSplit = useMemo(() => splitRunChunks(message.chunks), [message.chunks]);
+  const changedFiles = useMemo(() => summarizeChangedFiles(message.chunks), [message.chunks]);
+  const changedFilesTotals = useMemo(() => {
+    let additions = 0;
+    let deletions = 0;
+    for (const item of changedFiles) {
+      additions += item.additions;
+      deletions += item.deletions;
+    }
+    return { additions, deletions };
+  }, [changedFiles]);
   const groupedItems = useMemo(() => {
     if (!runSplit.hasTools) {
       return groupChunksForRender(runSplit.finalChunks);
@@ -333,14 +426,6 @@ function AgentMessage({
     }
     setShowExplored(false);
   }, [isStreaming, runSplit.hasPendingApproval, message.id]);
-
-  if (groupedItems.length === 0 && isStreaming && !runSplit.hasTools) {
-    return (
-      <div className="mt-4 my-1">
-        <span className="text-gray-400">...</span>
-      </div>
-    );
-  }
 
   const latestStreamingTextIndex =
     isStreaming && runSplit.hasTools && !runSplit.hasPendingApproval
@@ -438,12 +523,6 @@ function AgentMessage({
         </div>
       )}
 
-      {groupedItems.length === 0 && isStreaming && runSplit.hasTools && (
-        <div className="my-1">
-          <span className="text-gray-400">...</span>
-        </div>
-      )}
-
       {groupedItems.map((item, i) => {
         if ("type" in item && item.type === "tool-group") {
           return (
@@ -472,6 +551,37 @@ function AgentMessage({
           </div>
         );
       })}
+
+      {changedFiles.length > 0 && (
+        <div className="mt-3 rounded-xl bg-[var(--ui-accent-bubble)] overflow-hidden">
+          <div className="px-3 py-2 text-xs text-[color:var(--ui-text-muted)] border-b border-[var(--ui-border)] flex items-center gap-2">
+            <span>{changedFiles.length} file{changedFiles.length === 1 ? "" : "s"} changed</span>
+            <span className="text-green-400">+{changedFilesTotals.additions}</span>
+            <span className="text-red-400">-{changedFilesTotals.deletions}</span>
+          </div>
+          <div>
+            {changedFiles.map((file) => (
+              <button
+                key={file.filePath}
+                type="button"
+                className="w-full px-3 py-2 text-left border-b last:border-b-0 border-[var(--ui-border)] hover:bg-[var(--ui-panel-2)] transition-colors flex items-center justify-between gap-3"
+                onClick={() => callbacks.onOpenDiff?.({
+                  filePath: file.filePath,
+                  originalContent: file.originalContent,
+                  modifiedContent: file.modifiedContent,
+                })}
+                title={`Open ${file.filePath}`}
+              >
+                <span className="text-[13px] text-[color:var(--ui-accent)] truncate">{file.filePath}</span>
+                <span className="shrink-0 text-xs flex items-center gap-2">
+                  <span className="text-green-400">+{file.additions}</span>
+                  <span className="text-red-400">-{file.deletions}</span>
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

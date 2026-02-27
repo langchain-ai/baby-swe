@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { CodeBlock } from './CodeBlock';
 
 interface MarkdownProps {
   content: string;
@@ -50,11 +51,7 @@ export function Markdown({ content }: MarkdownProps) {
             const match = /language-([^\s]+)/.exec(className || '');
             const isBlock = match || text.includes('\n');
             if (isBlock) {
-              return (
-                <pre className="bg-[var(--ui-panel)] rounded-xl px-3 py-2 my-2 text-[12px] overflow-x-auto border border-[var(--ui-border-subtle)]">
-                  <code className="text-[color:var(--ui-text)]">{text.replace(/\n$/, '')}</code>
-                </pre>
-              );
+              return <CodeBlock text={text.replace(/\n$/, '')} language={match?.[1]} />;
             }
             return <code className="font-mono text-[0.85em] text-[color:var(--ui-accent)] bg-[var(--ui-panel-2)] px-1.5 py-0.5 rounded-md">{text}</code>;
           },
