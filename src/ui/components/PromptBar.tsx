@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useLayoutEffect, useMemo, memo } from 'react';
+import { useState, useRef, useEffect, useLayoutEffect, useMemo, memo, useCallback } from 'react';
 import { useStore } from '../../store';
 import { useShallow } from 'zustand/react/shallow';
 import { CommandAutocomplete, getFilteredCommandCount, getCommandAtIndex } from './CommandAutocomplete';
@@ -13,7 +13,7 @@ import { ModelAutocomplete, AVAILABLE_MODELS, getModelCount, getModelAtIndex, ty
 import { ContextIndicator } from './ContextIndicator';
 import { WorktreeSelector } from './WorktreeSelector';
 import type { Command } from '../../commands';
-import type { ImageChunk, WorktreeType } from '../../types';
+import type { ApprovalDecision, DiffData, ImageChunk, WorktreeType } from '../../types';
 
 const MODELS: Record<string, string> = {
   'claude-opus-4-6': 'Opus 4.6',
@@ -21,6 +21,89 @@ const MODELS: Record<string, string> = {
   'gpt-5.3-codex': 'GPT-5.3-Codex',
   'kimi-k2.5': 'Kimi K2.5',
 };
+
+interface PromptApprovalRequest {
+  requestId: string;
+  toolName: string;
+  toolArgs: Record<string, unknown>;
+  diffData?: DiffData;
+}
+
+interface ApprovalOption {
+  label: string;
+  decision: ApprovalDecision;
+}
+
+interface ApprovalPromptContent {
+  question: string;
+  preview: string;
+  options: ApprovalOption[];
+}
+
+function truncateText(text: string, max: number): string {
+  if (text.length <= max) return text;
+  return `${text.slice(0, max - 1)}…`;
+}
+
+function getFilePathFromApproval(request: PromptApprovalRequest): string | null {
+  if (request.diffData?.filePath) return request.diffData.filePath;
+  if (typeof request.toolArgs.filePath === 'string') return request.toolArgs.filePath;
+  if (typeof request.toolArgs.path === 'string') return request.toolArgs.path;
+  return null;
+}
+
+function buildApprovalPromptContent(request: PromptApprovalRequest): ApprovalPromptContent {
+  const command = typeof request.toolArgs.command === 'string' ? request.toolArgs.command.trim() : '';
+
+  if (request.toolName === 'execute') {
+    const commandPreview = command || '(empty command)';
+    return {
+      question: 'Do you want to allow running this command?',
+      preview: commandPreview,
+      options: [
+        { label: 'Yes', decision: 'approve' },
+        {
+          label: `Yes, and don't ask again for commands that start with ${truncateText(commandPreview, 64)}`,
+          decision: 'auto-approve',
+        },
+        { label: 'No, and tell baby-swe what to do differently', decision: 'reject' },
+      ],
+    };
+  }
+
+  const targetPath = getFilePathFromApproval(request);
+  const isFileUpdate = request.toolName === 'edit_file' || request.toolName === 'write_file';
+
+  let question = 'Do you want to allow this action?';
+  if (request.toolName === 'edit_file') {
+    question = targetPath
+      ? `Do you want to allow updating ${targetPath}?`
+      : 'Do you want to allow updating this file?';
+  } else if (request.toolName === 'write_file') {
+    question = targetPath
+      ? `Do you want to allow writing ${targetPath}?`
+      : 'Do you want to allow writing this file?';
+  }
+
+  const preview = targetPath
+    ? `${request.toolName} ${targetPath}`
+    : `${request.toolName} ${truncateText(JSON.stringify(request.toolArgs), 180)}`;
+
+  return {
+    question,
+    preview,
+    options: [
+      { label: 'Yes', decision: 'approve' },
+      {
+        label: isFileUpdate
+          ? 'Yes, and allow all edits for this session'
+          : 'Yes, and allow similar actions for this session',
+        decision: 'auto-approve',
+      },
+      { label: 'No, and tell baby-swe what to do differently', decision: 'reject' },
+    ],
+  };
+}
 
 interface PromptBarProps {
   onSubmit: (query: string) => void;
@@ -40,9 +123,34 @@ interface PromptBarProps {
   worktreeType?: WorktreeType;
   worktreePath?: string;
   connectedTop?: boolean;
+  pendingApproval?: PromptApprovalRequest | null;
+  onApproveApproval?: (approvalRequestId: string) => void;
+  onRejectApproval?: (approvalRequestId: string) => void;
+  onAutoApproveApproval?: (approvalRequestId: string) => void;
 }
 
-export const PromptBar = memo(function PromptBar({ onSubmit, busy, projectPath, mainProjectPath, gitBranch, githubPR, sessionId, tileId, isFocused, pendingImages, onRemoveImage, onChangeDirectory, dropUp = true, worktreeType, worktreePath, connectedTop = false }: PromptBarProps) {
+export const PromptBar = memo(function PromptBar({
+  onSubmit,
+  busy,
+  projectPath,
+  mainProjectPath,
+  gitBranch,
+  githubPR,
+  sessionId,
+  tileId,
+  isFocused,
+  pendingImages,
+  onRemoveImage,
+  onChangeDirectory,
+  dropUp = true,
+  worktreeType,
+  worktreePath,
+  connectedTop = false,
+  pendingApproval = null,
+  onApproveApproval,
+  onRejectApproval,
+  onAutoApproveApproval,
+}: PromptBarProps) {
   const [query, setQuery] = useState('');
   const mode = useStore(state => state.sessions[sessionId]?.mode ?? 'agent');
   const { setSessionMode, modelConfig, setModelConfig } = useStore(useShallow(state => ({
@@ -62,12 +170,19 @@ export const PromptBar = memo(function PromptBar({ onSubmit, busy, projectPath, 
   const [projectFiles, setProjectFiles] = useState<string[]>([]);
   const [filesLoading, setFilesLoading] = useState(false);
   const [cursorPosition, setCursorPosition] = useState(0);
+  const [approvalSelectedIndex, setApprovalSelectedIndex] = useState(0);
+
+  const hasPendingApproval = Boolean(pendingApproval?.requestId);
+  const approvalContent = useMemo(
+    () => (pendingApproval ? buildApprovalPromptContent(pendingApproval) : null),
+    [pendingApproval],
+  );
 
   const isTypingCommand = query.startsWith('/');
   const commandQuery = isTypingCommand ? query.slice(1).split(/\s/)[0] : '';
   const isModelCommand = query.toLowerCase() === '/model' || query.toLowerCase().startsWith('/model ');
-  const showModelAutocomplete = isModelCommand;
-  const showCommandAutocomplete = isTypingCommand && !query.includes(' ') && !isModelCommand;
+  const showModelAutocomplete = !hasPendingApproval && isModelCommand;
+  const showCommandAutocomplete = !hasPendingApproval && isTypingCommand && !query.includes(' ') && !isModelCommand;
 
   const fileIndex = useMemo(() => buildFileSearchIndex(projectFiles), [projectFiles]);
 
@@ -81,17 +196,87 @@ export const PromptBar = memo(function PromptBar({ onSubmit, busy, projectPath, 
     [fileContext, fileIndex],
   );
 
-  const showFileAutocomplete = fileContext !== null && !showCommandAutocomplete;
+  const showFileAutocomplete = !hasPendingApproval && fileContext !== null && !showCommandAutocomplete;
+
+  const submitApprovalDecision = useCallback((decision: ApprovalDecision) => {
+    if (!pendingApproval?.requestId) return;
+
+    if (decision === 'approve') {
+      onApproveApproval?.(pendingApproval.requestId);
+      return;
+    }
+
+    if (decision === 'auto-approve') {
+      onAutoApproveApproval?.(pendingApproval.requestId);
+      return;
+    }
+
+    onRejectApproval?.(pendingApproval.requestId);
+  }, [pendingApproval?.requestId, onApproveApproval, onAutoApproveApproval, onRejectApproval]);
+
+  const submitSelectedApproval = useCallback(() => {
+    if (!approvalContent) return;
+    const selectedOption = approvalContent.options[approvalSelectedIndex];
+    if (!selectedOption) return;
+    submitApprovalDecision(selectedOption.decision);
+  }, [approvalContent, approvalSelectedIndex, submitApprovalDecision]);
+
+  useEffect(() => {
+    if (hasPendingApproval) {
+      setModeDropdownOpen(false);
+      setModelDropdownOpen(false);
+    }
+  }, [hasPendingApproval]);
+
+  useEffect(() => {
+    setApprovalSelectedIndex(0);
+  }, [pendingApproval?.requestId]);
+
+  useEffect(() => {
+    if (!hasPendingApproval || !approvalContent || !isFocused) return;
+
+    const options = approvalContent.options;
+
+    function handleApprovalKeyDown(e: KeyboardEvent) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setApprovalSelectedIndex((prev) => (prev + 1) % options.length);
+        return;
+      }
+
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setApprovalSelectedIndex((prev) => (prev - 1 + options.length) % options.length);
+        return;
+      }
+
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        const selectedOption = options[approvalSelectedIndex];
+        if (!selectedOption) return;
+        submitApprovalDecision(selectedOption.decision);
+        return;
+      }
+
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        submitApprovalDecision('reject');
+      }
+    }
+
+    document.addEventListener('keydown', handleApprovalKeyDown);
+    return () => document.removeEventListener('keydown', handleApprovalKeyDown);
+  }, [approvalContent, approvalSelectedIndex, hasPendingApproval, isFocused, submitApprovalDecision]);
 
   useEffect(() => {
     inputRef.current?.focus();
   }, [busy]);
 
   useLayoutEffect(() => {
-    if (isFocused) {
+    if (isFocused && !hasPendingApproval) {
       inputRef.current?.focus();
     }
-  }, [isFocused]);
+  }, [isFocused, hasPendingApproval]);
 
   useLayoutEffect(() => {
     const el = inputRef.current;
@@ -163,6 +348,7 @@ export const PromptBar = memo(function PromptBar({ onSubmit, busy, projectPath, 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
       if (!isFocused) return;
+      if (hasPendingApproval) return;
       if (e.shiftKey && e.key === 'Tab') {
         e.preventDefault();
         const nextMode = mode === 'agent' ? 'plan' : mode === 'plan' ? 'yolo' : 'agent';
@@ -171,7 +357,7 @@ export const PromptBar = memo(function PromptBar({ onSubmit, busy, projectPath, 
     }
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [mode, setSessionMode, sessionId, isFocused]);
+  }, [mode, setSessionMode, sessionId, isFocused, hasPendingApproval]);
 
   const handleCommandSelect = (command: Command) => {
     setQuery(`/${command.name} `);
@@ -211,6 +397,11 @@ export const PromptBar = memo(function PromptBar({ onSubmit, busy, projectPath, 
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (hasPendingApproval) {
+      e.preventDefault();
+      return;
+    }
+
     if (showModelAutocomplete) {
       const count = getModelCount();
 
@@ -385,110 +576,254 @@ export const PromptBar = memo(function PromptBar({ onSubmit, busy, projectPath, 
       )}
 
       <div className={`border border-[#2a3140] bg-[#172131]/95 px-4 py-3.5 min-h-[106px] flex flex-col shadow-[0_0_0_1px_rgba(255,255,255,0.02)_inset rounded-2xl ${connectedTop ? "-mt-px" : ""}`}>
-        <textarea
-          ref={inputRef}
-          rows={1}
-          value={query}
-          onChange={handleInputChange}
-          onSelect={handleInputSelect}
-          onKeyDown={handleKeyDown}
-          placeholder={busy ? "Send a message to queue next..." : "Ask baby-swe anything, @ to add files, / for commands"}
-          className="w-full flex-1 min-h-[52px] bg-transparent text-[color:var(--ui-text)] outline-none placeholder-[color:var(--ui-text-dim)] resize-none overflow-hidden leading-[1.45] min-w-0"
-          style={{ maxHeight: 200 }}
-        />
+        {hasPendingApproval && approvalContent ? (
+          <div className="flex flex-col gap-2.5 min-h-[76px]">
+            <div className="text-[14px] leading-[1.35] text-[color:var(--ui-text)] font-medium">
+              {approvalContent.question}
+            </div>
 
-        <div className="mt-auto pt-2 text-xs text-[color:var(--ui-text-dim)] flex flex-wrap items-center gap-x-2 gap-y-1 min-w-0">
-          <div ref={modeDropdownRef} className="relative shrink-0">
-            <button
-              type="button"
-              onClick={() => setModeDropdownOpen(o => !o)}
-              className={`cursor-pointer hover:opacity-80 transition-opacity ${mode === 'agent' ? 'text-[#87CEEB]' : mode === 'plan' ? 'text-purple-400' : 'text-red-500'}`}
-            >
-              {mode}
-            </button>
-            {modeDropdownOpen && (
-              <div className={`absolute ${dropUp ? 'bottom-full mb-1' : 'top-full mt-1'} left-0 bg-gray-800 border border-gray-700 rounded shadow-lg overflow-hidden z-50`}>
-                {(['agent', 'plan', 'yolo'] as const).map(m => (
+            <div className="rounded-lg bg-black/20 px-3 py-2 font-mono text-[12px] text-[color:var(--ui-text-muted)] break-all">
+              {approvalContent.preview}
+            </div>
+
+            <div className="space-y-1">
+              {approvalContent.options.map((option, index) => {
+                const selected = index === approvalSelectedIndex;
+                return (
                   <button
-                    key={m}
+                    key={option.label}
                     type="button"
-                    onClick={() => { setSessionMode(sessionId, m); setModeDropdownOpen(false); }}
-                    className={`block w-full text-left px-3 py-1.5 hover:bg-gray-700 transition-colors ${m === mode ? (m === 'agent' ? 'text-[#87CEEB]' : m === 'plan' ? 'text-purple-400' : 'text-red-500') : 'text-gray-400'}`}
+                    onClick={() => setApprovalSelectedIndex(index)}
+                    onDoubleClick={() => submitApprovalDecision(option.decision)}
+                    className={`w-full rounded-lg px-3 py-1.5 text-left transition-colors flex items-center gap-2 min-w-0 ${
+                      selected
+                        ? 'bg-[var(--ui-accent-bubble)] text-[color:var(--ui-text)]'
+                        : 'hover:bg-white/5 text-[color:var(--ui-text-muted)]'
+                    }`}
                   >
-                    {m}
+                    <span className="w-4 shrink-0 text-[color:var(--ui-text-dim)]">{index + 1}.</span>
+                    <span className="min-w-0 truncate">{option.label}</span>
                   </button>
-                ))}
+                );
+              })}
+            </div>
+
+            <div className="mt-auto pt-2 text-xs text-[color:var(--ui-text-dim)] flex flex-wrap items-center gap-x-2 gap-y-1 min-w-0">
+              <div ref={modeDropdownRef} className="relative shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setModeDropdownOpen(o => !o)}
+                  className={`cursor-pointer hover:opacity-80 transition-opacity ${mode === 'agent' ? 'text-[#87CEEB]' : mode === 'plan' ? 'text-purple-400' : 'text-red-500'}`}
+                >
+                  {mode}
+                </button>
+                {modeDropdownOpen && (
+                  <div className={`absolute ${dropUp ? 'bottom-full mb-1' : 'top-full mt-1'} left-0 bg-gray-800 border border-gray-700 rounded shadow-lg overflow-hidden z-50`}>
+                    {(['agent', 'plan', 'yolo'] as const).map(m => (
+                      <button
+                        key={m}
+                        type="button"
+                        onClick={() => { setSessionMode(sessionId, m); setModeDropdownOpen(false); }}
+                        className={`block w-full text-left px-3 py-1.5 hover:bg-gray-700 transition-colors ${m === mode ? (m === 'agent' ? 'text-[#87CEEB]' : m === 'plan' ? 'text-purple-400' : 'text-red-500') : 'text-gray-400'}`}
+                      >
+                        {m}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
-            )}
-          </div>
-          <span className="text-[#435069]">·</span>
-          <div ref={modelDropdownRef} className="relative shrink min-w-0">
-            <button
-              type="button"
-              onClick={() => { setModelDropdownOpen(o => !o); setModelDropdownIndex(0); }}
-              className="cursor-pointer text-[color:var(--ui-text-muted)] hover:opacity-80 transition-opacity truncate max-w-[180px]"
-            >
-              {MODELS[modelConfig.name] || modelConfig.name}
-            </button>
-            {modelDropdownOpen && (
-              <div className={`absolute ${dropUp ? 'bottom-full mb-1' : 'top-full mt-1'} left-0 bg-gray-800 border border-gray-700 rounded shadow-lg overflow-hidden z-50`}>
-                {AVAILABLE_MODELS.map((model, idx) => {
-                  const isCurrent = model.id === modelConfig.name && (model.effort || 'default') === (modelConfig.effort || 'default');
-                  return (
-                    <button
-                      key={`${model.id}-${model.effort ?? ''}`}
-                      type="button"
-                      onClick={() => { handleModelSelect(model); setModelDropdownOpen(false); }}
-                      onMouseEnter={() => setModelDropdownIndex(idx)}
-                      className={`block w-full text-left px-3 py-1.5 whitespace-nowrap transition-colors flex items-center gap-2 ${idx === modelDropdownIndex ? 'bg-gray-700' : 'hover:bg-gray-700'} ${isCurrent ? 'text-gray-200' : 'text-gray-400'}`}
-                    >
-                      {model.name}
-                      {isCurrent && <span className="ml-auto pl-3 text-gray-400">✓</span>}
-                    </button>
-                  );
-                })}
+              <span className="text-[#435069]">·</span>
+              <div ref={modelDropdownRef} className="relative shrink min-w-0">
+                <button
+                  type="button"
+                  onClick={() => { setModelDropdownOpen(o => !o); setModelDropdownIndex(0); }}
+                  className="cursor-pointer text-[color:var(--ui-text-muted)] hover:opacity-80 transition-opacity truncate max-w-[180px]"
+                >
+                  {MODELS[modelConfig.name] || modelConfig.name}
+                </button>
+                {modelDropdownOpen && (
+                  <div className={`absolute ${dropUp ? 'bottom-full mb-1' : 'top-full mt-1'} left-0 bg-gray-800 border border-gray-700 rounded shadow-lg overflow-hidden z-50`}>
+                    {AVAILABLE_MODELS.map((model, idx) => {
+                      const isCurrent = model.id === modelConfig.name && (model.effort || 'default') === (modelConfig.effort || 'default');
+                      return (
+                        <button
+                          key={`${model.id}-${model.effort ?? ''}`}
+                          type="button"
+                          onClick={() => { handleModelSelect(model); setModelDropdownOpen(false); }}
+                          onMouseEnter={() => setModelDropdownIndex(idx)}
+                          className={`block w-full text-left px-3 py-1.5 whitespace-nowrap transition-colors flex items-center gap-2 ${idx === modelDropdownIndex ? 'bg-gray-700' : 'hover:bg-gray-700'} ${isCurrent ? 'text-gray-200' : 'text-gray-400'}`}
+                        >
+                          {model.name}
+                          {isCurrent && <span className="ml-auto pl-3 text-gray-400">✓</span>}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
-            )}
-          </div>
-          {projectPath && (
-            <>
+              {projectPath && (
+                <>
+                  <span className="text-[#435069]">·</span>
+                  <button
+                    type="button"
+                    onClick={onChangeDirectory}
+                    className="text-[color:var(--ui-text-muted)] truncate hover:text-[color:var(--ui-text)] transition-colors cursor-pointer min-w-0 max-w-[180px]"
+                  >
+                    {projectPath.split('/').filter(Boolean).pop()}
+                  </button>
+                </>
+              )}
+              <span className="ml-auto" />
+              <ContextIndicator />
+              {gitBranch && projectPath && (
+                <>
+                  <WorktreeSelector
+                    projectPath={mainProjectPath || projectPath}
+                    gitBranch={gitBranch}
+                    worktreeType={worktreeType}
+                    worktreePath={worktreePath}
+                    tileId={tileId}
+                    dropUp={dropUp}
+                  />
+                  {githubPR && (
+                    <>
+                      <span className="text-[#435069]">·</span>
+                      <a
+                        href={githubPR.url}
+                        onClick={e => { e.preventDefault(); window.open(githubPR.url, '_blank'); }}
+                        className="text-[color:var(--ui-text-muted)] hover:text-[#87CEEB] transition-colors shrink-0"
+                      >
+                        #{githubPR.number}
+                      </a>
+                    </>
+                  )}
+                </>
+              )}
               <span className="text-[#435069]">·</span>
               <button
                 type="button"
-                onClick={onChangeDirectory}
-                className="text-[color:var(--ui-text-muted)] truncate hover:text-[color:var(--ui-text)] transition-colors cursor-pointer min-w-0 max-w-[180px]"
+                onClick={() => submitApprovalDecision('reject')}
+                className="text-[color:var(--ui-text-muted)] hover:text-[color:var(--ui-text)] transition-colors cursor-pointer"
               >
-                {projectPath.split('/').filter(Boolean).pop()}
+                Skip
               </button>
-            </>
-          )}
-          <span className="ml-auto" />
-          <ContextIndicator />
-          {gitBranch && projectPath && (
-            <>
-              <WorktreeSelector
-                projectPath={mainProjectPath || projectPath}
-                gitBranch={gitBranch}
-                worktreeType={worktreeType}
-                worktreePath={worktreePath}
-                tileId={tileId}
-                dropUp={dropUp}
-              />
-              {githubPR && (
+              <button
+                type="button"
+                onClick={submitSelectedApproval}
+                className="rounded-md bg-[color:var(--ui-accent-bubble)] px-2.5 py-0.5 text-[color:var(--ui-text)] hover:bg-[color:var(--ui-surface)] transition-colors"
+              >
+                Submit
+              </button>
+            </div>
+          </div>
+        ) : (
+          <>
+            <textarea
+              ref={inputRef}
+              rows={1}
+              value={query}
+              onChange={handleInputChange}
+              onSelect={handleInputSelect}
+              onKeyDown={handleKeyDown}
+              placeholder={busy ? "Send a message to queue next..." : "Ask baby-swe anything, @ to add files, / for commands"}
+              className="w-full flex-1 min-h-[52px] bg-transparent text-[color:var(--ui-text)] outline-none placeholder-[color:var(--ui-text-dim)] resize-none overflow-hidden leading-[1.45] min-w-0"
+              style={{ maxHeight: 200 }}
+            />
+
+            <div className="mt-auto pt-2 text-xs text-[color:var(--ui-text-dim)] flex flex-wrap items-center gap-x-2 gap-y-1 min-w-0">
+              <div ref={modeDropdownRef} className="relative shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setModeDropdownOpen(o => !o)}
+                  className={`cursor-pointer hover:opacity-80 transition-opacity ${mode === 'agent' ? 'text-[#87CEEB]' : mode === 'plan' ? 'text-purple-400' : 'text-red-500'}`}
+                >
+                  {mode}
+                </button>
+                {modeDropdownOpen && (
+                  <div className={`absolute ${dropUp ? 'bottom-full mb-1' : 'top-full mt-1'} left-0 bg-gray-800 border border-gray-700 rounded shadow-lg overflow-hidden z-50`}>
+                    {(['agent', 'plan', 'yolo'] as const).map(m => (
+                      <button
+                        key={m}
+                        type="button"
+                        onClick={() => { setSessionMode(sessionId, m); setModeDropdownOpen(false); }}
+                        className={`block w-full text-left px-3 py-1.5 hover:bg-gray-700 transition-colors ${m === mode ? (m === 'agent' ? 'text-[#87CEEB]' : m === 'plan' ? 'text-purple-400' : 'text-red-500') : 'text-gray-400'}`}
+                      >
+                        {m}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <span className="text-[#435069]">·</span>
+              <div ref={modelDropdownRef} className="relative shrink min-w-0">
+                <button
+                  type="button"
+                  onClick={() => { setModelDropdownOpen(o => !o); setModelDropdownIndex(0); }}
+                  className="cursor-pointer text-[color:var(--ui-text-muted)] hover:opacity-80 transition-opacity truncate max-w-[180px]"
+                >
+                  {MODELS[modelConfig.name] || modelConfig.name}
+                </button>
+                {modelDropdownOpen && (
+                  <div className={`absolute ${dropUp ? 'bottom-full mb-1' : 'top-full mt-1'} left-0 bg-gray-800 border border-gray-700 rounded shadow-lg overflow-hidden z-50`}>
+                    {AVAILABLE_MODELS.map((model, idx) => {
+                      const isCurrent = model.id === modelConfig.name && (model.effort || 'default') === (modelConfig.effort || 'default');
+                      return (
+                        <button
+                          key={`${model.id}-${model.effort ?? ''}`}
+                          type="button"
+                          onClick={() => { handleModelSelect(model); setModelDropdownOpen(false); }}
+                          onMouseEnter={() => setModelDropdownIndex(idx)}
+                          className={`block w-full text-left px-3 py-1.5 whitespace-nowrap transition-colors flex items-center gap-2 ${idx === modelDropdownIndex ? 'bg-gray-700' : 'hover:bg-gray-700'} ${isCurrent ? 'text-gray-200' : 'text-gray-400'}`}
+                        >
+                          {model.name}
+                          {isCurrent && <span className="ml-auto pl-3 text-gray-400">✓</span>}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+              {projectPath && (
                 <>
                   <span className="text-[#435069]">·</span>
-                  <a
-                    href={githubPR.url}
-                    onClick={e => { e.preventDefault(); window.open(githubPR.url, '_blank'); }}
-                    className="text-[color:var(--ui-text-muted)] hover:text-[#87CEEB] transition-colors shrink-0"
+                  <button
+                    type="button"
+                    onClick={onChangeDirectory}
+                    className="text-[color:var(--ui-text-muted)] truncate hover:text-[color:var(--ui-text)] transition-colors cursor-pointer min-w-0 max-w-[180px]"
                   >
-                    #{githubPR.number}
-                  </a>
+                    {projectPath.split('/').filter(Boolean).pop()}
+                  </button>
                 </>
               )}
-            </>
-          )}
-        </div>
+              <span className="ml-auto" />
+              <ContextIndicator />
+              {gitBranch && projectPath && (
+                <>
+                  <WorktreeSelector
+                    projectPath={mainProjectPath || projectPath}
+                    gitBranch={gitBranch}
+                    worktreeType={worktreeType}
+                    worktreePath={worktreePath}
+                    tileId={tileId}
+                    dropUp={dropUp}
+                  />
+                  {githubPR && (
+                    <>
+                      <span className="text-[#435069]">·</span>
+                      <a
+                        href={githubPR.url}
+                        onClick={e => { e.preventDefault(); window.open(githubPR.url, '_blank'); }}
+                        className="text-[color:var(--ui-text-muted)] hover:text-[#87CEEB] transition-colors shrink-0"
+                      >
+                        #{githubPR.number}
+                      </a>
+                    </>
+                  )}
+                </>
+              )}
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

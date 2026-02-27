@@ -11,7 +11,7 @@ import { SourceControlTile } from "./SourceControlTile";
 import { ThreadPicker } from "./ThreadPicker";
 import { CompactingIndicator } from "./CompactingIndicator";
 import { executeCommand } from "../../commands";
-import type { Message, ChatMessage, ChatMessageContentBlock, Project, ImageChunk, Thread } from "../../types";
+import type { Message, ChatMessage, ChatMessageContentBlock, Project, ImageChunk, Thread, ToolExecutionChunk } from "../../types";
 
 const PROMPT_CONTENT_WIDTH = "max-w-[44rem]";
 const STACKED_STATUS_WIDTH = "w-[calc(100%-0.75rem)] max-w-[43rem]";
@@ -60,6 +60,22 @@ function messagesToChatMessages(messages: Message[]): ChatMessage[] {
     }
   }
   return chatMessages;
+}
+
+function findLatestPendingApproval(messages: Message[]): ToolExecutionChunk | null {
+  for (let messageIndex = messages.length - 1; messageIndex >= 0; messageIndex -= 1) {
+    const message = messages[messageIndex];
+
+    for (let chunkIndex = message.chunks.length - 1; chunkIndex >= 0; chunkIndex -= 1) {
+      const chunk = message.chunks[chunkIndex];
+      if (chunk.kind !== "tool-execution") continue;
+      if (chunk.status !== "pending-approval") continue;
+      if (!chunk.approvalRequestId) continue;
+      return chunk;
+    }
+  }
+
+  return null;
 }
 
 interface TileContainerProps {
@@ -424,6 +440,7 @@ export function TileContainer({
   const hasStreamingChangedFiles = session.isStreaming && streamingChangedFiles.length > 0;
   const hasConnectedStack = hasTodos || hasStreamingChangedFiles;
   const runActive = session.isStreaming || session.busy;
+  const pendingApproval = session ? findLatestPendingApproval(session.messages) : null;
 
   if (!hasMessages) {
     return (
@@ -464,6 +481,15 @@ export function TileContainer({
               dropUp={false}
               worktreeType={tile.project.worktreeType}
               worktreePath={tile.project.worktreePath}
+              pendingApproval={pendingApproval ? {
+                requestId: pendingApproval.approvalRequestId!,
+                toolName: pendingApproval.toolName,
+                toolArgs: pendingApproval.toolArgs ?? {},
+                diffData: pendingApproval.diffData,
+              } : null}
+              onApproveApproval={handleApprove}
+              onRejectApproval={handleReject}
+              onAutoApproveApproval={handleAutoApprove}
             />
             </div>
           </div>
@@ -571,6 +597,15 @@ export function TileContainer({
                 worktreeType={tile.project.worktreeType}
                 worktreePath={tile.project.worktreePath}
                 connectedTop={hasConnectedStack}
+                pendingApproval={pendingApproval ? {
+                  requestId: pendingApproval.approvalRequestId!,
+                  toolName: pendingApproval.toolName,
+                  toolArgs: pendingApproval.toolArgs ?? {},
+                  diffData: pendingApproval.diffData,
+                } : null}
+                onApproveApproval={handleApprove}
+                onRejectApproval={handleReject}
+                onAutoApproveApproval={handleAutoApprove}
               />
             </div>
           </div>
