@@ -35,6 +35,16 @@ interface RunSplit {
   finalChunks: Chunk[];
 }
 
+type ActivityRenderItem =
+  | {
+      type: "explored-group";
+      chunks: ToolExecutionChunk[];
+    }
+  | {
+      type: "chunk";
+      chunk: Chunk;
+    };
+
 function getToolGroupType(toolName: string): ToolGroupType {
   switch (toolName) {
     case "read_file":
@@ -152,14 +162,46 @@ function splitRunChunks(chunks: Chunk[]): RunSplit {
   };
 }
 
-function summarizeExploration(chunks: Chunk[]): string {
+function isExplorationTool(toolName: string): boolean {
+  const groupType = getToolGroupType(toolName);
+  return groupType === "read" || groupType === "search";
+}
+
+function buildActivityRenderItems(chunks: Chunk[]): ActivityRenderItem[] {
+  const items: ActivityRenderItem[] = [];
+  let exploredBuffer: ToolExecutionChunk[] = [];
+
+  const flushExploredBuffer = () => {
+    if (exploredBuffer.length === 0) return;
+    items.push({ type: "explored-group", chunks: [...exploredBuffer] });
+    exploredBuffer = [];
+  };
+
+  for (const chunk of chunks) {
+    if (chunk.kind === "tool-execution" && isExplorationTool(chunk.toolName)) {
+      exploredBuffer.push(chunk);
+      continue;
+    }
+
+    if (chunk.kind === "text" && !chunk.text.trim()) {
+      continue;
+    }
+
+    flushExploredBuffer();
+    items.push({ type: "chunk", chunk });
+  }
+
+  flushExploredBuffer();
+  return items;
+}
+
+function summarizeExploration(chunks: ToolExecutionChunk[]): string {
   let readFiles = 0;
   let searches = 0;
   let lists = 0;
   let steps = 0;
 
   for (const chunk of chunks) {
-    if (chunk.kind !== "tool-execution") continue;
     steps += 1;
     const groupType = getToolGroupType(chunk.toolName);
     if (groupType === "read") readFiles += 1;
@@ -182,14 +224,6 @@ function summarizeExploration(chunks: Chunk[]): string {
   }
 
   return `Explored ${steps} step${steps === 1 ? "" : "s"}`;
-}
-
-function getLatestTextChunkIndex(chunks: Chunk[]): number {
-  for (let i = chunks.length - 1; i >= 0; i--) {
-    const chunk = chunks[i];
-    if (chunk.kind === "text" && chunk.text.trim()) return i;
-  }
-  return -1;
 }
 
 export interface ChangedFileSummaryItem {
@@ -420,61 +454,77 @@ function AgentMessage({
     }
     return groupChunksForRender(runSplit.finalChunks);
   }, [runSplit]);
+  const activityItems = useMemo(() => {
+    if (!runSplit.hasTools || runSplit.hasPendingApproval) {
+      return [];
+    }
+    return buildActivityRenderItems(runSplit.activityChunks);
+  }, [runSplit]);
+  const hasExploredGroups = useMemo(
+    () => activityItems.some((item) => item.type === "explored-group"),
+    [activityItems],
+  );
   const [showExplored, setShowExplored] = useState(Boolean(isStreaming));
 
   useEffect(() => {
+    if (!hasExploredGroups) {
+      setShowExplored(false);
+      return;
+    }
+
     if (isStreaming || runSplit.hasPendingApproval) {
       setShowExplored(true);
       return;
     }
+
     setShowExplored(false);
-  }, [isStreaming, runSplit.hasPendingApproval, message.id]);
-
-  const latestStreamingTextIndex =
-    isStreaming && runSplit.hasTools && !runSplit.hasPendingApproval
-      ? getLatestTextChunkIndex(runSplit.activityChunks)
-      : -1;
-
-  const exploredChunks =
-    latestStreamingTextIndex >= 0
-      ? runSplit.activityChunks.filter(
-          (chunk, index) =>
-            chunk.kind === "tool-execution" ||
-            (chunk.kind === "text" && index === latestStreamingTextIndex),
-        )
-      : runSplit.activityChunks.filter((chunk) => chunk.kind === "tool-execution");
-
-  const exploredSummary = summarizeExploration(runSplit.activityChunks);
-  const canShowExplored = runSplit.hasTools && runSplit.activityChunks.length > 0;
+  }, [hasExploredGroups, isStreaming, runSplit.hasPendingApproval, message.id]);
 
   return (
     <div className="my-2 space-y-2">
-      {canShowExplored && !runSplit.hasPendingApproval && (
-        <div className="px-0.5">
-          <button
-            type="button"
-            onClick={() => setShowExplored((v) => !v)}
-            className="w-full flex items-center justify-between py-1 text-left hover:opacity-90 transition-opacity"
-          >
-            <span className="text-[color:var(--ui-text-muted)] text-[12px]">{exploredSummary}</span>
-            <span className="text-[color:var(--ui-text-dim)] text-xs">{showExplored ? "Hide" : "Show"}</span>
-          </button>
-          {showExplored && (
-            <div className="pt-1 pb-1 space-y-0.5">
-              {exploredChunks.map((chunk, i) => (
-                <div key={`explored-chunk-${i}`} className="flex-1 min-w-0 text-gray-500">
-                  <ChunkRenderer
-                    chunk={chunk}
-                    projectPath={projectPath}
-                    flatTools
-                    {...callbacks}
-                  />
-                </div>
-              ))}
+      {!runSplit.hasPendingApproval &&
+        activityItems.map((item, i) => {
+          if (item.type === "explored-group") {
+            const summary = summarizeExploration(item.chunks);
+            return (
+              <div key={`explored-group-${i}`} className="px-0.5">
+                <button
+                  type="button"
+                  onClick={() => setShowExplored((v) => !v)}
+                  className="w-full flex items-center justify-between py-1 text-left hover:opacity-90 transition-opacity"
+                >
+                  <span className="text-[color:var(--ui-text-muted)] text-[12px]">{summary}</span>
+                  <span className="text-[color:var(--ui-text-dim)] text-xs">{showExplored ? "Hide" : "Show"}</span>
+                </button>
+                {showExplored && (
+                  <div className="pt-1 pb-1 space-y-0.5">
+                    {item.chunks.map((chunk, chunkIndex) => (
+                      <div key={`explored-chunk-${i}-${chunkIndex}`} className="flex-1 min-w-0 text-gray-500">
+                        <ChunkRenderer
+                          chunk={chunk}
+                          projectPath={projectPath}
+                          flatTools
+                          {...callbacks}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          }
+
+          return (
+            <div key={`activity-chunk-${i}`} className="flex-1 min-w-0">
+              <ChunkRenderer
+                chunk={item.chunk}
+                projectPath={projectPath}
+                flatTools
+                {...callbacks}
+              />
             </div>
-          )}
-        </div>
-      )}
+          );
+        })}
 
       {runSplit.hasPendingApproval && (
         <div className="space-y-1">
