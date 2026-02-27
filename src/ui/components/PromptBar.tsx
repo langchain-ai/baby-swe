@@ -345,7 +345,7 @@ export const PromptBar = memo(function PromptBar({ onSubmit, busy, projectPath, 
         </div>
       )}
 
-      <div className="rounded-2xl border border-[#2a3140] bg-[#172131]/95 px-3 py-3 min-h-[106px] flex flex-col shadow-[0_0_0_1px_rgba(255,255,255,0.02)_inset]">
+      <div className="rounded-2xl border border-[#2a3140] bg-[#172131]/95 px-4 py-3.5 min-h-[106px] flex flex-col shadow-[0_0_0_1px_rgba(255,255,255,0.02)_inset]">
         <textarea
           ref={inputRef}
           rows={1}
