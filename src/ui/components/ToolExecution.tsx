@@ -1,4 +1,5 @@
 import { memo, useEffect, useRef, useState } from "react";
+import { CornerDownLeft, ExternalLink } from "lucide-react";
 import type { ToolExecutionChunk } from "../../types";
 import { DiffView } from "./DiffView";
 
@@ -193,6 +194,92 @@ function KeyboardApproval({
   );
 }
 
+function CommandApprovalCard({
+  approvalRequestId,
+  command,
+  onApprove,
+  onReject,
+  onAutoApprove,
+}: {
+  approvalRequestId: string;
+  command: string;
+  onApprove?: (id: string) => void;
+  onReject?: (id: string) => void;
+  onAutoApprove?: (id: string) => void;
+}) {
+  const [mode, setMode] = useState<"ask" | "session">("ask");
+  const commandName = command.trim().split(/\s+/)[0] || "command";
+
+  const handleRun = () => {
+    if (mode === "session") {
+      onAutoApprove?.(approvalRequestId);
+      return;
+    }
+    onApprove?.(approvalRequestId);
+  };
+
+  const handleSkip = () => {
+    onReject?.(approvalRequestId);
+  };
+
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        handleSkip();
+      } else if (e.key === "Enter") {
+        e.preventDefault();
+        handleRun();
+      }
+    }
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [mode, approvalRequestId, onApprove, onReject, onAutoApprove]);
+
+  return (
+    <div className="rounded-xl bg-[var(--ui-accent-bubble)] overflow-hidden">
+      <div className="flex items-center justify-between border-b border-[color:var(--ui-border)] px-3 py-2">
+        <span className="text-[12px] text-[color:var(--ui-text-muted)]">
+          Run command: <span className="text-[color:var(--ui-text)]">{commandName}</span>
+        </span>
+        <ExternalLink className="h-3.5 w-3.5 text-[color:var(--ui-text-dim)]" />
+      </div>
+
+      <div className="border-b border-[color:var(--ui-border)] px-3 py-2.5 font-mono text-[12px] text-[color:var(--ui-text)]">
+        $ {command || "(empty command)"}
+      </div>
+
+      <div className="flex items-center justify-between px-3 py-2.5">
+        <select
+          value={mode}
+          onChange={(e) => setMode(e.target.value as "ask" | "session")}
+          className="rounded-md border border-[color:var(--ui-border)] bg-[color:var(--ui-panel-2)] px-2 py-1 text-[12px] text-[color:var(--ui-text)] outline-none focus:border-[color:var(--ui-accent)]"
+        >
+          <option value="ask">Ask Every Time</option>
+          <option value="session">Allow for This Session</option>
+        </select>
+
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleSkip}
+            className="rounded-md px-2 py-1 text-[12px] text-[color:var(--ui-text-dim)] hover:text-[color:var(--ui-text)]"
+          >
+            Skip
+          </button>
+          <button
+            onClick={handleRun}
+            className="inline-flex items-center gap-1 rounded-md bg-[color:var(--ui-accent)] px-3 py-1 text-[12px] text-white hover:opacity-90"
+          >
+            <span>Run</span>
+            <CornerDownLeft className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export const ToolExecution = memo(function ToolExecution({
   chunk,
   projectPath,
@@ -223,6 +310,7 @@ export const ToolExecution = memo(function ToolExecution({
   }[status];
 
   const isFileOp = toolName === "write_file" || toolName === "edit_file";
+  const isCommandApproval = status === "pending-approval" && approvalRequestId && toolName === "execute";
   const showDiff = isFileOp && diffData;
   const canOpenInEditor = isFileOp && diffData && (status === "success" || status === "error") && onOpenDiff;
   const summary = getToolSummary(toolName, toolArgs || {}, output, status);
@@ -241,24 +329,38 @@ export const ToolExecution = memo(function ToolExecution({
 
   return (
     <div className="my-1 text-[12px] leading-5">
-      <div className="flex items-start gap-2">
-        {statusIcon}
-        <span className="text-[color:var(--ui-text-muted)]">{displayName}</span>
-        {elapsedMs && status !== "running" && (
-          <span className="text-[color:var(--ui-text-dim)]">{formatElapsed(elapsedMs)}</span>
-        )}
-        {canOpenInEditor && (
-          <button
-            onClick={handleOpenDiff}
-            className="text-[color:var(--ui-text-dim)] hover:text-[color:var(--ui-accent)] transition-colors text-xs"
-            title="Open diff in editor"
-          >
-            [diff]
-          </button>
-        )}
-      </div>
+      {!isCommandApproval && (
+        <div className="flex items-start gap-2">
+          {statusIcon}
+          <span className="text-[color:var(--ui-text-muted)]">{displayName}</span>
+          {elapsedMs && status !== "running" && (
+            <span className="text-[color:var(--ui-text-dim)]">{formatElapsed(elapsedMs)}</span>
+          )}
+          {canOpenInEditor && (
+            <button
+              onClick={handleOpenDiff}
+              className="text-[color:var(--ui-text-dim)] hover:text-[color:var(--ui-accent)] transition-colors text-xs"
+              title="Open diff in editor"
+            >
+              [diff]
+            </button>
+          )}
+        </div>
+      )}
 
-      {hasContent && (
+      {hasContent && isCommandApproval && (
+        <div className="mt-1">
+          <CommandApprovalCard
+            approvalRequestId={approvalRequestId}
+            command={(toolArgs?.command as string) || ""}
+            onApprove={onApprove}
+            onReject={onReject}
+            onAutoApprove={onAutoApprove}
+          />
+        </div>
+      )}
+
+      {hasContent && !isCommandApproval && (
         <div className="flex items-start gap-2 pl-4">
           <span className="text-[color:var(--ui-text-dim)] select-none">•</span>
           <div className="flex-1 min-w-0">
