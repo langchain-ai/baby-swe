@@ -1,4 +1,4 @@
-import { useRef, useEffect, memo, useMemo, useState } from "react";
+import { useRef, useEffect, useLayoutEffect, useCallback, memo, useMemo, useState } from "react";
 import { CodeBlock } from "./CodeBlock";
 import { Markdown } from "./Markdown";
 import { ToolExecution } from "./ToolExecution";
@@ -747,6 +747,8 @@ function ThinkingSpinner({ isStreaming }: { isStreaming: boolean }) {
   );
 }
 
+const BOTTOM_LOCK_THRESHOLD_PX = 24;
+
 export const MessageView = memo(function MessageView({
   messages,
   isStreaming,
@@ -759,41 +761,132 @@ export const MessageView = memo(function MessageView({
   onOpenDiff,
 }: MessageViewProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
-  const isNearBottomRef = useRef(true);
+  const contentRef = useRef<HTMLDivElement>(null);
+  const autoScrollEnabledRef = useRef(true);
+  const lastManualScrollTopRef = useRef(0);
+  const previousScrollTopRef = useRef(0);
+  const pendingScrollFrameRef = useRef<number | null>(null);
+
+  const clearScheduledScroll = useCallback(() => {
+    if (pendingScrollFrameRef.current === null) return;
+    window.cancelAnimationFrame(pendingScrollFrameRef.current);
+    pendingScrollFrameRef.current = null;
+  }, []);
+
+  const isNearBottom = useCallback((el: HTMLDivElement) => {
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    return distanceFromBottom <= BOTTOM_LOCK_THRESHOLD_PX;
+  }, []);
+
+  const scrollToBottomNow = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+
+    el.scrollTop = el.scrollHeight;
+    const currentTop = el.scrollTop;
+    lastManualScrollTopRef.current = currentTop;
+    previousScrollTopRef.current = currentTop;
+  }, []);
+
+  const scheduleScrollToBottom = useCallback(() => {
+    if (!autoScrollEnabledRef.current) return;
+
+    clearScheduledScroll();
+    pendingScrollFrameRef.current = window.requestAnimationFrame(() => {
+      pendingScrollFrameRef.current = null;
+      if (!autoScrollEnabledRef.current) return;
+      scrollToBottomNow();
+    });
+  }, [clearScheduledScroll, scrollToBottomNow]);
 
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
 
     const handleScroll = () => {
-      const threshold = 100;
-      const distanceFromBottom =
-        el.scrollHeight - el.scrollTop - el.clientHeight;
-      isNearBottomRef.current = distanceFromBottom < threshold;
+      const currentTop = el.scrollTop;
+      const scrolledUp = currentTop < previousScrollTopRef.current - 1;
+
+      if (scrolledUp) {
+        autoScrollEnabledRef.current = false;
+        clearScheduledScroll();
+      } else if (isNearBottom(el)) {
+        autoScrollEnabledRef.current = true;
+      }
+
+      lastManualScrollTopRef.current = currentTop;
+      previousScrollTopRef.current = currentTop;
     };
 
-    el.addEventListener("scroll", handleScroll);
-    return () => el.removeEventListener("scroll", handleScroll);
-  }, []);
+    scrollToBottomNow();
+    autoScrollEnabledRef.current = true;
+
+    el.addEventListener("scroll", handleScroll, { passive: true });
+    return () => {
+      el.removeEventListener("scroll", handleScroll);
+      clearScheduledScroll();
+    };
+  }, [clearScheduledScroll, isNearBottom, scrollToBottomNow]);
+
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+
+    if (autoScrollEnabledRef.current) {
+      scheduleScrollToBottom();
+      return;
+    }
+
+    const maxTop = Math.max(0, el.scrollHeight - el.clientHeight);
+    const targetTop = Math.min(lastManualScrollTopRef.current, maxTop);
+    const jumpDistance = Math.abs(el.scrollTop - targetTop);
+
+    if (jumpDistance > el.clientHeight * 0.5) {
+      el.scrollTop = targetTop;
+    }
+
+    previousScrollTopRef.current = el.scrollTop;
+  }, [messages, isStreaming, scheduleScrollToBottom]);
 
   useEffect(() => {
-    if (isNearBottomRef.current && scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    }
-  }, [messages, isStreaming]);
+    const scroller = scrollRef.current;
+    const content = contentRef.current;
+    if (!scroller || !content || typeof ResizeObserver === "undefined") return;
+
+    const resizeObserver = new ResizeObserver(() => {
+      if (autoScrollEnabledRef.current) {
+        scheduleScrollToBottom();
+        return;
+      }
+
+      const maxTop = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
+      if (lastManualScrollTopRef.current > maxTop) {
+        scroller.scrollTop = maxTop;
+        lastManualScrollTopRef.current = maxTop;
+        previousScrollTopRef.current = maxTop;
+      }
+    });
+
+    resizeObserver.observe(scroller);
+    resizeObserver.observe(content);
+
+    return () => resizeObserver.disconnect();
+  }, [scheduleScrollToBottom]);
+
+  const visibleMessages = useMemo(() => messages.filter((message) => !message.hidden), [messages]);
 
   return (
     <div
       ref={scrollRef}
       className="flex-1 min-h-0 min-w-0 overflow-y-auto px-3 sm:px-5 py-5 text-[13px] leading-6 font-sans antialiased"
     >
-      <div className={`w-full ${contentWidthClass} mx-auto min-w-0`}>
+      <div ref={contentRef} className={`w-full ${contentWidthClass} mx-auto min-w-0`}>
         {showHeader && <div className="flex justify-start pb-6"><Logo /></div>}
-        {messages.filter(m => !m.hidden).map((message, index, filtered) => (
+        {visibleMessages.map((message, index) => (
           <MessageBubble
             key={message.id}
             message={message}
-            isStreaming={isStreaming && index === filtered.length - 1}
+            isStreaming={isStreaming && index === visibleMessages.length - 1}
             projectPath={project?.path}
             onApprove={onApprove}
             onReject={onReject}
