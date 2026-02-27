@@ -1,4 +1,4 @@
-import { webcrypto } from 'crypto';
+import { webcrypto, createHash } from 'crypto';
 if (!globalThis.crypto) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   globalThis.crypto = webcrypto as any;
@@ -368,6 +368,28 @@ function getGitRepoRoot(projectPath: string): string | null {
   }
 }
 
+function shortHash(input: string): string {
+  return createHash('sha1').update(input).digest('hex').slice(0, 10);
+}
+
+function sanitizePathSegment(value: string, fallback: string, maxLength = 40): string {
+  const sanitized = value
+    .replace(/[^a-zA-Z0-9._-]/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^[_\.]+|[_\.]+$/g, '')
+    .slice(0, maxLength);
+  return sanitized || fallback;
+}
+
+function getGlobalWorktreeDir(repoRoot: string, branch: string): string {
+  const baseDir = path.join(app.getPath('userData'), 'worktrees');
+  const repoName = sanitizePathSegment(path.basename(repoRoot), 'repo');
+  const branchName = sanitizePathSegment(branch, 'branch');
+  const repoKey = `${repoName}-${shortHash(repoRoot)}`;
+  const branchKey = `${branchName}-${shortHash(branch)}`;
+  return path.join(baseDir, repoKey, branchKey);
+}
+
 function listGitWorktrees(projectPath: string): WorktreeInfo[] {
   try {
     const result = execFileSync('git', ['worktree', 'list', '--porcelain'], {
@@ -419,10 +441,8 @@ function listGitWorktrees(projectPath: string): WorktreeInfo[] {
 
 function addGitWorktree(projectPath: string, branch: string, newBranch: boolean): { success: boolean; worktreePath?: string; error?: string } {
   try {
-    // Determine worktree directory: place it in a .worktrees/ folder next to .git
     const repoRoot = getGitRepoRoot(projectPath) || projectPath;
-    const safeBranch = branch.replace(/[^a-zA-Z0-9_\-./]/g, '_');
-    const worktreeDir = path.join(repoRoot, '.worktrees', safeBranch);
+    const worktreeDir = getGlobalWorktreeDir(repoRoot, branch);
 
     // Ensure parent directory exists
     fs.mkdirSync(path.dirname(worktreeDir), { recursive: true });
