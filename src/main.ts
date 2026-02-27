@@ -488,14 +488,18 @@ function removeGitWorktree(projectPath: string, worktreePath: string): { success
 
 function listProjectFiles(projectPath: string): string[] {
   try {
-    const result = execFileSync('git', ['ls-files'], {
+    const result = execFileSync('git', ['ls-files', '--cached', '--others', '--exclude-standard', '-z'], {
       cwd: projectPath,
       encoding: 'utf-8',
       timeout: 5000,
       env: GIT_ENV,
     });
-    const files = result.trim().split('\n').filter(Boolean);
-    return files;
+
+    const files = result
+      .split('\0')
+      .filter(Boolean);
+
+    return Array.from(new Set(files)).sort((a, b) => a.localeCompare(b));
   } catch {
     return listFilesWithGlob(projectPath);
   }
@@ -530,7 +534,7 @@ function listFilesWithGlob(projectPath: string): string[] {
   }
 
   walkDir(projectPath, 0, 4);
-  return files;
+  return files.sort((a, b) => a.localeCompare(b));
 }
 
 let mainWindow: BrowserWindow | null = null;

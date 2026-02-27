@@ -1,8 +1,14 @@
-import { useState, useRef, useEffect, useLayoutEffect, useCallback, memo } from 'react';
+import { useState, useRef, useEffect, useLayoutEffect, useMemo, memo } from 'react';
 import { useStore } from '../../store';
 import { useShallow } from 'zustand/react/shallow';
 import { CommandAutocomplete, getFilteredCommandCount, getCommandAtIndex } from './CommandAutocomplete';
-import { FileAutocomplete, fuzzySearch, getFileAtIndex } from './FileAutocomplete';
+import {
+  FileAutocomplete,
+  buildFileSearchIndex,
+  getFileAutocompleteContext,
+  insertFileTag,
+  searchFileSuggestions,
+} from './FileAutocomplete';
 import { ModelAutocomplete, AVAILABLE_MODELS, getModelCount, getModelAtIndex, type ModelOption } from './ModelAutocomplete';
 import { ContextIndicator } from './ContextIndicator';
 import { WorktreeSelector } from './WorktreeSelector';
@@ -54,6 +60,7 @@ export const PromptBar = memo(function PromptBar({ onSubmit, busy, projectPath, 
   const modelDropdownRef = useRef<HTMLDivElement>(null);
   const [modelDropdownIndex, setModelDropdownIndex] = useState(0);
   const [projectFiles, setProjectFiles] = useState<string[]>([]);
+  const [filesLoading, setFilesLoading] = useState(false);
   const [cursorPosition, setCursorPosition] = useState(0);
 
   const isTypingCommand = query.startsWith('/');
@@ -62,16 +69,18 @@ export const PromptBar = memo(function PromptBar({ onSubmit, busy, projectPath, 
   const showModelAutocomplete = isModelCommand;
   const showCommandAutocomplete = isTypingCommand && !query.includes(' ') && !isModelCommand;
 
-  const getFileAutocompleteContext = useCallback(() => {
-    const beforeCursor = query.slice(0, cursorPosition);
-    const atIndex = beforeCursor.lastIndexOf('@');
-    if (atIndex === -1) return null;
-    const fragment = beforeCursor.slice(atIndex);
-    if (fragment.includes(' ')) return null;
-    return { atIndex, fileQuery: fragment.slice(1) };
-  }, [query, cursorPosition]);
+  const fileIndex = useMemo(() => buildFileSearchIndex(projectFiles), [projectFiles]);
 
-  const fileContext = getFileAutocompleteContext();
+  const fileContext = useMemo(
+    () => getFileAutocompleteContext(query, cursorPosition),
+    [query, cursorPosition],
+  );
+
+  const fileSuggestions = useMemo(
+    () => (fileContext ? searchFileSuggestions(fileIndex, fileContext.fileQuery) : []),
+    [fileContext, fileIndex],
+  );
+
   const showFileAutocomplete = fileContext !== null && !showCommandAutocomplete;
 
   useEffect(() => {
@@ -106,11 +115,36 @@ export const PromptBar = memo(function PromptBar({ onSubmit, busy, projectPath, 
   }, [isModelCommand]);
 
   useEffect(() => {
-    if (projectPath) {
-      window.fs.listFiles(projectPath).then(setProjectFiles);
-    } else {
+    let cancelled = false;
+
+    if (!projectPath) {
       setProjectFiles([]);
+      setFilesLoading(false);
+      return () => {
+        cancelled = true;
+      };
     }
+
+    setFilesLoading(true);
+
+    window.fs.listFiles(projectPath)
+      .then((files) => {
+        if (cancelled) return;
+        setProjectFiles(files);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setProjectFiles([]);
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setFilesLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, [projectPath]);
 
   useEffect(() => {
@@ -146,17 +180,16 @@ export const PromptBar = memo(function PromptBar({ onSubmit, busy, projectPath, 
 
   const handleFileSelect = (filePath: string) => {
     if (!fileContext) return;
-    const prefix = query.slice(0, fileContext.atIndex);
-    const suffix = query.slice(cursorPosition);
-    const insertion = `@${filePath}${suffix.startsWith(' ') ? '' : ' '}`;
-    const newQuery = prefix + insertion + suffix;
-    setQuery(newQuery);
-    const newCursor = prefix.length + insertion.length;
-    setCursorPosition(newCursor);
+
+    const { nextQuery, nextCursor } = insertFileTag(query, filePath, fileContext);
+
+    setQuery(nextQuery);
+    setCursorPosition(nextCursor);
+
     setTimeout(() => {
       if (inputRef.current) {
-        inputRef.current.selectionStart = newCursor;
-        inputRef.current.selectionEnd = newCursor;
+        inputRef.current.selectionStart = nextCursor;
+        inputRef.current.selectionEnd = nextCursor;
         inputRef.current.focus();
       }
     }, 0);
@@ -255,8 +288,7 @@ export const PromptBar = memo(function PromptBar({ onSubmit, busy, projectPath, 
     }
 
     if (showFileAutocomplete && fileContext) {
-      const suggestions = fuzzySearch(fileContext.fileQuery, projectFiles);
-      const count = suggestions.length;
+      const count = fileSuggestions.length;
 
       if (count > 0) {
         if (e.key === 'ArrowDown') {
@@ -273,7 +305,7 @@ export const PromptBar = memo(function PromptBar({ onSubmit, busy, projectPath, 
 
         if (e.key === 'Tab' || e.key === 'Enter') {
           e.preventDefault();
-          const filePath = getFileAtIndex(fileContext.fileQuery, projectFiles, fileSelectedIndex);
+          const filePath = fileSuggestions[fileSelectedIndex] ?? null;
           if (filePath) {
             handleFileSelect(filePath);
           }
@@ -281,11 +313,16 @@ export const PromptBar = memo(function PromptBar({ onSubmit, busy, projectPath, 
         }
       }
 
+      if (filesLoading && (e.key === 'Enter' || e.key === 'Tab')) {
+        e.preventDefault();
+        return;
+      }
+
       if (e.key === 'Escape') {
         e.preventDefault();
         if (fileContext.atIndex >= 0) {
           const prefix = query.slice(0, fileContext.atIndex);
-          const suffix = query.slice(cursorPosition);
+          const suffix = query.slice(fileContext.tokenEnd);
           setQuery(prefix + suffix);
           setCursorPosition(prefix.length);
         }
@@ -319,9 +356,10 @@ export const PromptBar = memo(function PromptBar({ onSubmit, busy, projectPath, 
       )}
       {showFileAutocomplete && fileContext && (
         <FileAutocomplete
-          query={fileContext.fileQuery}
+          suggestions={fileSuggestions}
           selectedIndex={fileSelectedIndex}
           onSelect={handleFileSelect}
+          loading={filesLoading}
         />
       )}
 

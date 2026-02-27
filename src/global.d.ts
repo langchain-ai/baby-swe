@@ -38,7 +38,7 @@ interface Window {
     getRecentProjects: () => Promise<unknown>;
   };
   fs: {
-    listFiles: (projectPath?: string) => Promise<unknown>;
+    listFiles: (projectPath?: string) => Promise<string[]>;
   };
   terminal: {
     create: (id: string, cwd?: string) => void;
