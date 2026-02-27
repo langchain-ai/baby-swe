@@ -1,18 +1,26 @@
-import { useRef, useEffect, useState } from 'react';
-import type { TodoItem } from '../../types';
+import { useRef, useEffect, useState } from "react";
+import {
+  CheckCircle2,
+  ChevronDown,
+  ChevronRight,
+  Circle,
+  ListChecks,
+  Loader2,
+} from "lucide-react";
+import type { TodoItem } from "../../types";
 
 interface TodoListProps {
   todos: TodoItem[];
 }
 
-function StatusIcon({ status }: { status: TodoItem['status'] }) {
+function StatusIcon({ status }: { status: TodoItem["status"] }) {
   switch (status) {
-    case 'pending':
-      return <span className="text-gray-500">□</span>;
-    case 'in_progress':
-      return <span className="text-[#87CEEB] animate-pulse">↻</span>;
-    case 'completed':
-      return <span className="text-green-400">✓</span>;
+    case "pending":
+      return <Circle className="h-3.5 w-3.5 text-[color:var(--ui-text-dim)] shrink-0" />;
+    case "in_progress":
+      return <Loader2 className="h-3.5 w-3.5 text-[color:var(--ui-accent)] animate-spin shrink-0" />;
+    case "completed":
+      return <CheckCircle2 className="h-3.5 w-3.5 text-green-400 shrink-0" />;
   }
 }
 
@@ -25,57 +33,56 @@ export function TodoList({ todos }: TodoListProps) {
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
-    // Find the first in-progress item and scroll it into view
-    const firstActive = todos.findIndex(t => t.status === 'in_progress');
+    const firstActive = todos.findIndex((t) => t.status === "in_progress");
     const targetIndex = firstActive !== -1 ? firstActive : todos.length - 1;
     const targetEl = el.children[targetIndex] as HTMLElement | undefined;
-    targetEl?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    targetEl?.scrollIntoView({ block: "nearest", behavior: "smooth" });
   }, [todos]);
 
   if (todos.length === 0) return null;
 
-  const completed = todos.filter(t => t.status === 'completed').length;
-  const inProgress = todos.filter(t => t.status === 'in_progress').length;
-  const pending = todos.filter(t => t.status === 'pending').length;
-
-  const statusParts: string[] = [];
-  if (completed > 0) statusParts.push(`${completed} done`);
-  if (inProgress > 0) statusParts.push(`${inProgress} active`);
-  if (pending > 0) statusParts.push(`${pending} pending`);
+  const completed = todos.filter((t) => t.status === "completed").length;
 
   return (
-    <div className="mt-1 mb-3 font-sans text-xs">
-      <div
-        className="flex items-center gap-2 text-gray-400 mb-1 cursor-pointer select-none"
-        onClick={() => setCollapsed(c => !c)}
+    <div className="mt-1 mb-2 font-sans text-xs rounded-xl border border-[var(--ui-border)] bg-[var(--ui-accent-bubble)] overflow-hidden">
+      <button
+        type="button"
+        className="w-full px-3 py-2 flex items-center gap-2 text-left hover:bg-white/5 transition-colors"
+        onClick={() => setCollapsed((c) => !c)}
       >
-        <span className="text-gray-600 text-xs">{collapsed ? '▶' : '▼'}</span>
-        <span>Tasks</span>
-        <span className="text-gray-600 text-xs">({statusParts.join(' — ')})</span>
-      </div>
+        <ListChecks className="h-3.5 w-3.5 text-[color:var(--ui-text-muted)] shrink-0" />
+        <span className="text-[color:var(--ui-text-muted)] truncate">
+          {completed} out of {todos.length} task{todos.length === 1 ? "" : "s"} completed
+        </span>
+        {collapsed ? (
+          <ChevronRight className="h-3.5 w-3.5 text-[color:var(--ui-text-dim)] ml-auto shrink-0" />
+        ) : (
+          <ChevronDown className="h-3.5 w-3.5 text-[color:var(--ui-text-dim)] ml-auto shrink-0" />
+        )}
+      </button>
+
       {!collapsed && (
         <div
           ref={scrollRef}
-          className="ml-3 border-l border-gray-700 pl-3 space-y-1 overflow-y-auto"
+          className="border-t border-[var(--ui-border)] px-3 py-2 space-y-1.5 overflow-y-auto"
           style={{ maxHeight: MAX_HEIGHT }}
         >
           {todos.map((todo, index) => (
             <div
               key={index}
-              className={`flex items-start gap-2 ${
-                todo.status === 'completed' ? 'opacity-60' : ''
-              }`}
+              className={`flex items-start gap-2 ${todo.status === "completed" ? "opacity-70" : ""}`}
             >
               <StatusIcon status={todo.status} />
               <span
                 className={
-                  todo.status === 'completed'
-                    ? 'text-gray-500 line-through'
-                    : todo.status === 'in_progress'
-                    ? 'text-gray-200'
-                    : 'text-gray-400'
+                  todo.status === "completed"
+                    ? "text-[color:var(--ui-text-dim)] line-through"
+                    : todo.status === "in_progress"
+                      ? "text-[color:var(--ui-text)]"
+                      : "text-[color:var(--ui-text-muted)]"
                 }
               >
+                <span className="mr-1 text-[color:var(--ui-text-dim)]">{index + 1}.</span>
                 {todo.content}
               </span>
             </div>
