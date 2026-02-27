@@ -438,7 +438,7 @@ export const PromptBar = memo(function PromptBar({ onSubmit, busy, projectPath, 
               />
               {githubPR && (
                 <>
-                  <span className="text-[#435069]">—</span>
+                  <span className="text-[#435069]">·</span>
                   <a
                     href={githubPR.url}
                     onClick={e => { e.preventDefault(); window.open(githubPR.url, '_blank'); }}
