@@ -310,8 +310,9 @@ function formatElapsed(ms: number): string {
 function ChunkRenderer({
   chunk,
   projectPath,
+  flatTools,
   ...callbacks
-}: { chunk: Chunk; projectPath?: string } & ApprovalCallbacks) {
+}: { chunk: Chunk; projectPath?: string; flatTools?: boolean } & ApprovalCallbacks) {
   switch (chunk.kind) {
     case "text":
       return (
@@ -340,6 +341,7 @@ function ChunkRenderer({
           onReject={callbacks.onReject}
           onAutoApprove={callbacks.onAutoApprove}
           onOpenDiff={callbacks.onOpenDiff}
+          flat={flatTools}
         />
       );
     case "image":
@@ -442,7 +444,6 @@ function AgentMessage({
         )
       : runSplit.activityChunks.filter((chunk) => chunk.kind === "tool-execution");
 
-  const exploredGroupedItems = groupChunksForRender(exploredChunks);
   const exploredSummary = summarizeExploration(runSplit.activityChunks);
   const canShowExplored = runSplit.hasTools && runSplit.activityChunks.length > 0;
 
@@ -459,34 +460,17 @@ function AgentMessage({
             <span className="text-[color:var(--ui-text-dim)] text-xs">{showExplored ? "Hide" : "Show"}</span>
           </button>
           {showExplored && (
-            <div className="pt-1 pb-1 space-y-1">
-              {exploredGroupedItems.map((item, i) => {
-                if ("type" in item && item.type === "tool-group") {
-                  return (
-                    <ToolGroup
-                      key={`explored-tool-group-${i}`}
-                      groupType={item.groupType}
-                      tools={item.tools}
-                      projectPath={projectPath}
-                      onApprove={callbacks.onApprove}
-                      onReject={callbacks.onReject}
-                      onAutoApprove={callbacks.onAutoApprove}
-                      onOpenDiff={callbacks.onOpenDiff}
-                    />
-                  );
-                }
-
-                const chunk = item as Chunk;
-                return (
-                  <div key={`explored-chunk-${i}`} className="flex-1 min-w-0 text-gray-500">
-                    <ChunkRenderer
-                      chunk={chunk}
-                      projectPath={projectPath}
-                      {...callbacks}
-                    />
-                  </div>
-                );
-              })}
+            <div className="pt-1 pb-1 space-y-0.5">
+              {exploredChunks.map((chunk, i) => (
+                <div key={`explored-chunk-${i}`} className="flex-1 min-w-0 text-gray-500">
+                  <ChunkRenderer
+                    chunk={chunk}
+                    projectPath={projectPath}
+                    flatTools
+                    {...callbacks}
+                  />
+                </div>
+              ))}
             </div>
           )}
         </div>

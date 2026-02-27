@@ -175,7 +175,7 @@ function filterToHunks(lines: DiffLineData[], contextLines: number = CONTEXT_LIN
   for (let i = 0; i < lines.length; i++) {
     if (includeSet.has(i)) {
       if (lastIncluded >= 0 && i - lastIncluded > 1) {
-        result.push({ type: 'separator', text: '···' });
+        result.push({ type: 'separator', text: '...' });
       }
       result.push(lines[i]);
       lastIncluded = i;
@@ -282,7 +282,7 @@ export function DiffView({ diffData }: DiffViewProps) {
           if (line.type === 'separator') {
             return (
               <div key={idx} className="text-gray-600 py-0.5">
-                ···
+                ...
               </div>
             );
           }

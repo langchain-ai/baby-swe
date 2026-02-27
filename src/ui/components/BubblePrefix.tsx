@@ -13,6 +13,6 @@ export function BubblePrefix({ author }: BubblePrefixProps) {
     case 'tool':
       return <span className="text-yellow-400 font-bold mr-2">⚡</span>;
     case 'system':
-      return <span className="text-purple-400 font-bold mr-2">•</span>;
+      return <span className="text-purple-400 font-bold mr-2">ℹ</span>;
   }
 }

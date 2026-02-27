@@ -10,6 +10,7 @@ interface ToolExecutionProps {
   onReject?: (approvalRequestId: string) => void;
   onAutoApprove?: (approvalRequestId: string) => void;
   onOpenDiff?: (diffData: { filePath: string; originalContent: string; modifiedContent: string }) => void;
+  flat?: boolean;
 }
 
 function formatElapsed(ms?: number): string {
@@ -22,6 +23,63 @@ function stripProjectPath(path: string, projectPath?: string): string {
   if (!projectPath || !path.startsWith(projectPath)) return path;
   const relative = path.slice(projectPath.length);
   return relative.startsWith("/") ? "." + relative : "./" + relative;
+}
+
+function getFileName(path: string): string {
+  const normalized = path.replace(/\\/g, "/");
+  const parts = normalized.split("/").filter(Boolean);
+  return parts[parts.length - 1] || path;
+}
+
+function countLineChanges(originalContent: string | null | undefined, newContent: string): { additions: number; deletions: number } {
+  const oldLines = originalContent?.split("\n") ?? [];
+  const newLines = newContent.split("\n");
+
+  if (originalContent === null || originalContent === undefined) {
+    return { additions: newLines.length, deletions: 0 };
+  }
+
+  let additions = 0;
+  let deletions = 0;
+  let i = 0;
+  let j = 0;
+
+  while (i < oldLines.length || j < newLines.length) {
+    if (i < oldLines.length && j < newLines.length && oldLines[i] === newLines[j]) {
+      i += 1;
+      j += 1;
+      continue;
+    }
+
+    let foundMatch = false;
+    for (let lookAhead = 1; lookAhead <= 5; lookAhead += 1) {
+      if (i + lookAhead < oldLines.length && j < newLines.length && oldLines[i + lookAhead] === newLines[j]) {
+        deletions += lookAhead;
+        i += lookAhead;
+        foundMatch = true;
+        break;
+      }
+      if (j + lookAhead < newLines.length && i < oldLines.length && newLines[j + lookAhead] === oldLines[i]) {
+        additions += lookAhead;
+        j += lookAhead;
+        foundMatch = true;
+        break;
+      }
+    }
+
+    if (!foundMatch) {
+      if (i < oldLines.length) {
+        deletions += 1;
+        i += 1;
+      }
+      if (j < newLines.length) {
+        additions += 1;
+        j += 1;
+      }
+    }
+  }
+
+  return { additions, deletions };
 }
 
 function getToolDisplayName(
@@ -287,6 +345,7 @@ export const ToolExecution = memo(function ToolExecution({
   onReject,
   onAutoApprove,
   onOpenDiff,
+  flat = false,
 }: ToolExecutionProps) {
   const {
     toolName,
@@ -300,20 +359,22 @@ export const ToolExecution = memo(function ToolExecution({
 
   const displayName = getToolDisplayName(toolName, toolArgs || {}, projectPath);
 
-  const statusIcon = {
-    "pending-approval": (
-      <span className="text-yellow-400 animate-pulse">•</span>
-    ),
-    running: <span className="text-yellow-400 animate-pulse">•</span>,
-    success: <span className="text-[color:var(--ui-text-dim)]">•</span>,
-    error: <span className="text-red-400">•</span>,
-  }[status];
+  const statusTextClass =
+    status === "error"
+      ? "text-red-400"
+      : status === "running" || status === "pending-approval"
+        ? "text-yellow-400"
+        : "text-[color:var(--ui-text-muted)]";
 
   const isFileOp = toolName === "write_file" || toolName === "edit_file";
   const isCommandApproval = status === "pending-approval" && approvalRequestId && toolName === "execute";
+  const isCompletedFileOp = isFileOp && diffData && (status === "success" || status === "error");
   const showDiff = isFileOp && diffData;
-  const canOpenInEditor = isFileOp && diffData && (status === "success" || status === "error") && onOpenDiff;
+  const canOpenInEditor = isCompletedFileOp && onOpenDiff;
   const summary = getToolSummary(toolName, toolArgs || {}, output, status);
+  const editedFilePath = diffData ? stripProjectPath(diffData.filePath, projectPath) : "";
+  const editedFileName = editedFilePath ? getFileName(editedFilePath) : "";
+  const diffStats = diffData ? countLineChanges(diffData.originalContent, diffData.newContent) : null;
 
   const hasContent =
     status === "pending-approval" || status === "running" || summary;
@@ -327,12 +388,63 @@ export const ToolExecution = memo(function ToolExecution({
     });
   };
 
+  if (flat && !isCommandApproval) {
+    if (isCompletedFileOp && diffStats && diffData) {
+      const row = (
+        <>
+          <span className={status === "error" ? "text-red-400 truncate" : "text-[color:var(--ui-accent)] truncate"}>
+            Edited {editedFileName || editedFilePath || diffData.filePath}
+          </span>
+          <span className="text-green-400 shrink-0">+{diffStats.additions}</span>
+          <span className="text-red-400 shrink-0">-{diffStats.deletions}</span>
+          {elapsedMs && status !== "running" && (
+            <span className="text-[color:var(--ui-text-dim)] shrink-0">{formatElapsed(elapsedMs)}</span>
+          )}
+        </>
+      );
+
+      if (canOpenInEditor) {
+        return (
+          <div className="my-0.5 text-[12px] leading-5">
+            <button
+              type="button"
+              onClick={handleOpenDiff}
+              className="w-full flex items-center gap-2 text-left hover:opacity-90 transition-opacity"
+              title={`Open diff for ${editedFilePath || diffData.filePath}`}
+            >
+              {row}
+            </button>
+          </div>
+        );
+      }
+
+      return (
+        <div className="my-0.5 text-[12px] leading-5">
+          <div className="w-full flex items-center gap-2 text-left">{row}</div>
+        </div>
+      );
+    }
+
+    return (
+      <div className="my-0.5 text-[12px] leading-5">
+        <div className="flex items-center gap-2 min-w-0">
+          <span className={`${statusTextClass} truncate`}>{displayName}</span>
+          {status === "error" && summary && (
+            <span className="text-red-400/80 truncate">{summary}</span>
+          )}
+          {elapsedMs && status !== "running" && (
+            <span className="text-[color:var(--ui-text-dim)] shrink-0">{formatElapsed(elapsedMs)}</span>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="my-1 text-[12px] leading-5">
       {!isCommandApproval && (
         <div className="flex items-start gap-2">
-          {statusIcon}
-          <span className="text-[color:var(--ui-text-muted)]">{displayName}</span>
+          <span className={statusTextClass}>{displayName}</span>
           {elapsedMs && status !== "running" && (
             <span className="text-[color:var(--ui-text-dim)]">{formatElapsed(elapsedMs)}</span>
           )}
@@ -361,8 +473,7 @@ export const ToolExecution = memo(function ToolExecution({
       )}
 
       {hasContent && !isCommandApproval && (
-        <div className="flex items-start gap-2 pl-4">
-          <span className="text-[color:var(--ui-text-dim)] select-none">•</span>
+        <div className="pl-4">
           <div className="flex-1 min-w-0">
             {status === "pending-approval" && approvalRequestId ? (
               <>

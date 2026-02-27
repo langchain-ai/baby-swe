@@ -85,7 +85,7 @@ export function ContextIndicator() {
       {showTooltip && (
         <div className="absolute bottom-full mb-2 right-0 bg-[#1a1f2e] border border-[#2a3142] rounded-lg shadow-xl px-3 py-2 z-50 whitespace-nowrap text-xs font-sans">
           <div className="text-gray-300 font-medium">
-            {percentage}% · {formatTokens(usedTokens)} / {formatTokens(contextLimit)} context used
+            {percentage}% — {formatTokens(usedTokens)} / {formatTokens(contextLimit)} context used
           </div>
           {isNearLimit && (
             <div className="text-amber-400 text-[10px] mt-1">

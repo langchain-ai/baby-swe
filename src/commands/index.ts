@@ -36,15 +36,15 @@ registerCommand({
       ...lines,
       '',
       '**Keyboard Shortcuts**',
-      '• `Cmd/Ctrl+K` - Clear conversation',
-      '• `Cmd/Ctrl+T` - New thread',
-      '• `Cmd/Ctrl+W` - Close current tab',
-      '• `Cmd/Ctrl+1-9` - Switch to tab 1-9',
-      '• `Cmd/Ctrl+Alt+←/→` - Switch to prev/next tab',
-      '• `Escape` - Cancel current operation',
-      '• `Shift+Tab` - Cycle Agent/Plan/Yolo mode',
-      '• `Shift+Enter` - New line in prompt',
-      '• `Cmd/Ctrl+O` - Open folder',
+      '- `Cmd/Ctrl+K` - Clear conversation',
+      '- `Cmd/Ctrl+T` - New thread',
+      '- `Cmd/Ctrl+W` - Close current tab',
+      '- `Cmd/Ctrl+1-9` - Switch to tab 1-9',
+      '- `Cmd/Ctrl+Alt+←/→` - Switch to prev/next tab',
+      '- `Escape` - Cancel current operation',
+      '- `Shift+Tab` - Cycle Agent/Plan/Yolo mode',
+      '- `Shift+Enter` - New line in prompt',
+      '- `Cmd/Ctrl+O` - Open folder',
     ].join('\n');
 
     const sessionId = ctx.sessionId || ctx.createSession();
@@ -62,9 +62,9 @@ registerCommand({
     const tokenText = [
       '**Token Usage**',
       '',
-      `• Input tokens: ${input.toLocaleString()}`,
-      `• Output tokens: ${output.toLocaleString()}`,
-      `• Total tokens: ${total.toLocaleString()}`,
+      `- Input tokens: ${input.toLocaleString()}`,
+      `- Output tokens: ${output.toLocaleString()}`,
+      `- Total tokens: ${total.toLocaleString()}`,
     ].join('\n');
 
     const sessionId = ctx.sessionId || ctx.createSession();

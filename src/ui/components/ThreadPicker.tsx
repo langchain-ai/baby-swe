@@ -161,7 +161,7 @@ export function ThreadPicker({ projectId, onSelect, onClose }: ThreadPickerProps
                       <div className="flex-1 min-w-0">
                         <div className="text-sm text-gray-200 truncate">{thread.title}</div>
                         <div className="text-xs text-gray-500 mt-0.5">
-                          {messageCount(thread)} &middot; {formatDate(thread.updatedAt)}
+                          {messageCount(thread)} — {formatDate(thread.updatedAt)}
                         </div>
                       </div>
                       {isSelected && (

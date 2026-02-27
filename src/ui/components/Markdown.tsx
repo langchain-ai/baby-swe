@@ -31,7 +31,7 @@ export function Markdown({ content }: MarkdownProps) {
           ),
           ul: ({ children }) => <div className="ml-4 my-1.5">{children}</div>,
           ol: ({ children }) => <div className="ml-4 my-1.5">{children}</div>,
-          li: ({ children }) => <div className="text-[color:var(--ui-text)] [&>p]:inline [&>p]:my-0">• {children}</div>,
+          li: ({ children }) => <div className="text-[color:var(--ui-text)] [&>p]:inline [&>p]:my-0">- {children}</div>,
           blockquote: ({ children }) => (
             <div className="border-l-2 border-[var(--ui-border)] pl-3 my-2 text-[color:var(--ui-text-muted)]">{children}</div>
           ),

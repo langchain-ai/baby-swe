@@ -8,11 +8,11 @@ interface TodoListProps {
 function StatusIcon({ status }: { status: TodoItem['status'] }) {
   switch (status) {
     case 'pending':
-      return <span className="text-gray-500">○</span>;
+      return <span className="text-gray-500">□</span>;
     case 'in_progress':
-      return <span className="text-[#87CEEB] animate-pulse">◐</span>;
+      return <span className="text-[#87CEEB] animate-pulse">↻</span>;
     case 'completed':
-      return <span className="text-green-400">●</span>;
+      return <span className="text-green-400">✓</span>;
   }
 }
 
@@ -51,7 +51,7 @@ export function TodoList({ todos }: TodoListProps) {
       >
         <span className="text-gray-600 text-xs">{collapsed ? '▶' : '▼'}</span>
         <span>Tasks</span>
-        <span className="text-gray-600 text-xs">({statusParts.join(' · ')})</span>
+        <span className="text-gray-600 text-xs">({statusParts.join(' — ')})</span>
       </div>
       {!collapsed && (
         <div
