@@ -12,6 +12,7 @@ import type { TodoItem } from "../../types";
 interface TodoListProps {
   todos: TodoItem[];
   className?: string;
+  runActive?: boolean;
 }
 
 function StatusIcon({ status }: { status: TodoItem["status"] }) {
@@ -27,9 +28,17 @@ function StatusIcon({ status }: { status: TodoItem["status"] }) {
 
 const MAX_HEIGHT = 160;
 
-export function TodoList({ todos, className = "" }: TodoListProps) {
+export function TodoList({ todos, className = "", runActive = false }: TodoListProps) {
   const [collapsed, setCollapsed] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const prevRunActiveRef = useRef(runActive);
+
+  useEffect(() => {
+    if (prevRunActiveRef.current && !runActive) {
+      setCollapsed(true);
+    }
+    prevRunActiveRef.current = runActive;
+  }, [runActive]);
 
   useEffect(() => {
     const el = scrollRef.current;

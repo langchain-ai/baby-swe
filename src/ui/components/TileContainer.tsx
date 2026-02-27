@@ -403,6 +403,7 @@ export function TileContainer({
   const hasTodos = todos.length > 0;
   const hasStreamingChangedFiles = session.isStreaming && streamingChangedFiles.length > 0;
   const hasConnectedStack = hasTodos || hasStreamingChangedFiles;
+  const runActive = session.isStreaming || session.busy;
 
   if (!hasMessages) {
     return (
@@ -499,6 +500,7 @@ export function TileContainer({
                 {hasTodos && (
                   <TodoList
                     todos={todos}
+                    runActive={runActive}
                     className="rounded-t-xl rounded-b-none"
                   />
                 )}
