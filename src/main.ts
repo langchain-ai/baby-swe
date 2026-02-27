@@ -609,30 +609,42 @@ function createMenu(): void {
 
 function getUserShellEnv(): Record<string, string> {
   const shell = process.env.SHELL || '/bin/zsh';
-  try {
-    const mark = require('crypto').randomBytes(8).toString('hex');
-    const command = `echo '${mark}'; env; echo '${mark}'`;
-    const result = execSync(`${shell} -l -c ${JSON.stringify(command)}`, {
-      encoding: 'utf-8',
-      timeout: 10000,
-      stdio: ['pipe', 'pipe', 'pipe'],
-    });
-    // Extract only the content between the two markers to strip shell noise
-    const start = result.indexOf(mark);
-    const end = result.lastIndexOf(mark);
-    if (start === -1 || start === end) throw new Error('markers not found');
-    const envBlock = result.slice(start + mark.length, end);
-    const env: Record<string, string> = { ...process.env as Record<string, string> };
-    for (const line of envBlock.split('\n')) {
-      const idx = line.indexOf('=');
-      if (idx > 0) {
-        env[line.slice(0, idx)] = line.slice(idx + 1);
+  const commandArgs: string[][] = [
+    ['-il', '-c'],
+    ['-l', '-c'],
+    ['-i', '-c'],
+  ];
+
+  for (const args of commandArgs) {
+    try {
+      const mark = require('crypto').randomBytes(8).toString('hex');
+      const command = `echo '${mark}'; env; echo '${mark}'`;
+      const result = execFileSync(shell, [...args, command], {
+        encoding: 'utf-8',
+        timeout: 10000,
+        stdio: ['pipe', 'pipe', 'pipe'],
+      });
+
+      // Extract only the content between the two markers to strip shell noise
+      const start = result.indexOf(mark);
+      const end = result.lastIndexOf(mark);
+      if (start === -1 || start === end) continue;
+
+      const envBlock = result.slice(start + mark.length, end);
+      const env: Record<string, string> = { ...process.env as Record<string, string> };
+      for (const line of envBlock.split('\n')) {
+        const idx = line.indexOf('=');
+        if (idx > 0) {
+          env[line.slice(0, idx)] = line.slice(idx + 1);
+        }
       }
+      return env;
+    } catch {
+      // Try next shell mode
     }
-    return env;
-  } catch {
-    return process.env as Record<string, string>;
   }
+
+  return process.env as Record<string, string>;
 }
 
 const userShellEnv = getUserShellEnv();
