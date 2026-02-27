@@ -354,7 +354,7 @@ export const PromptBar = memo(function PromptBar({ onSubmit, busy, projectPath, 
           onChange={handleInputChange}
           onSelect={handleInputSelect}
           onKeyDown={handleKeyDown}
-          placeholder={busy ? "Send a message to interrupt..." : "Ask baby-swe anything, @ to add files, / for commands"}
+          placeholder={busy ? "Send a message to queue next..." : "Ask baby-swe anything, @ to add files, / for commands"}
           className="w-full flex-1 min-h-[52px] bg-transparent text-[color:var(--ui-text)] outline-none placeholder-[color:var(--ui-text-dim)] resize-none overflow-hidden leading-[1.45] min-w-0"
           style={{ maxHeight: 200 }}
         />

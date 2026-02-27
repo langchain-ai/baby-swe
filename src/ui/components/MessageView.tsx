@@ -38,6 +38,7 @@ interface RunSplit {
 type ActivityRenderItem =
   | {
       type: "explored-group";
+      id: string;
       chunks: ToolExecutionChunk[];
     }
   | {
@@ -162,9 +163,20 @@ function splitRunChunks(chunks: Chunk[]): RunSplit {
   };
 }
 
-function isExplorationTool(toolName: string): boolean {
-  const groupType = getToolGroupType(toolName);
+function isExplorationChunk(chunk: ToolExecutionChunk): boolean {
+  const groupType = getToolGroupType(chunk.toolName);
+
+  // Edited files and command executions should always stay inline.
+  if (groupType === "write" || groupType === "execute") return false;
+  if (chunk.diffData) return false;
+
   return groupType === "read" || groupType === "search";
+}
+
+function getExploredGroupId(chunks: ToolExecutionChunk[]): string {
+  const firstId = chunks[0]?.toolCallId || "start";
+  const lastId = chunks[chunks.length - 1]?.toolCallId || "end";
+  return `${firstId}:${lastId}`;
 }
 
 function buildActivityRenderItems(chunks: Chunk[]): ActivityRenderItem[] {
@@ -173,12 +185,16 @@ function buildActivityRenderItems(chunks: Chunk[]): ActivityRenderItem[] {
 
   const flushExploredBuffer = () => {
     if (exploredBuffer.length === 0) return;
-    items.push({ type: "explored-group", chunks: [...exploredBuffer] });
+    items.push({
+      type: "explored-group",
+      id: getExploredGroupId(exploredBuffer),
+      chunks: [...exploredBuffer],
+    });
     exploredBuffer = [];
   };
 
   for (const chunk of chunks) {
-    if (chunk.kind === "tool-execution" && isExplorationTool(chunk.toolName)) {
+    if (chunk.kind === "tool-execution" && isExplorationChunk(chunk)) {
       exploredBuffer.push(chunk);
       continue;
     }
@@ -464,21 +480,56 @@ function AgentMessage({
     () => activityItems.some((item) => item.type === "explored-group"),
     [activityItems],
   );
-  const [showExplored, setShowExplored] = useState(Boolean(isStreaming));
+  const exploredGroupIds = useMemo(
+    () =>
+      activityItems
+        .filter((item): item is Extract<ActivityRenderItem, { type: "explored-group" }> => item.type === "explored-group")
+        .map((item) => item.id),
+    [activityItems],
+  );
+  const [expandedExploredGroups, setExpandedExploredGroups] = useState<Record<string, boolean>>({});
+  const wasExplorationLiveRef = useRef(false);
 
   useEffect(() => {
+    const isExplorationLive = isStreaming || runSplit.hasPendingApproval;
+
     if (!hasExploredGroups) {
-      setShowExplored(false);
+      setExpandedExploredGroups({});
+      wasExplorationLiveRef.current = isExplorationLive;
       return;
     }
 
-    if (isStreaming || runSplit.hasPendingApproval) {
-      setShowExplored(true);
+    if (isExplorationLive) {
+      const next: Record<string, boolean> = {};
+      for (const id of exploredGroupIds) {
+        next[id] = true;
+      }
+      setExpandedExploredGroups(next);
+      wasExplorationLiveRef.current = true;
       return;
     }
 
-    setShowExplored(false);
-  }, [hasExploredGroups, isStreaming, runSplit.hasPendingApproval, message.id]);
+    const shouldAutoCollapse = wasExplorationLiveRef.current;
+    setExpandedExploredGroups((prev) => {
+      const next: Record<string, boolean> = {};
+      for (const id of exploredGroupIds) {
+        next[id] = shouldAutoCollapse ? false : (prev[id] ?? false);
+      }
+
+      const prevKeys = Object.keys(prev);
+      const nextKeys = Object.keys(next);
+      if (prevKeys.length !== nextKeys.length) {
+        return next;
+      }
+      for (const key of nextKeys) {
+        if (prev[key] !== next[key]) {
+          return next;
+        }
+      }
+      return prev;
+    });
+    wasExplorationLiveRef.current = false;
+  }, [hasExploredGroups, isStreaming, runSplit.hasPendingApproval, exploredGroupIds, message.id]);
 
   return (
     <div className="my-2 space-y-2">
@@ -486,17 +537,23 @@ function AgentMessage({
         activityItems.map((item, i) => {
           if (item.type === "explored-group") {
             const summary = summarizeExploration(item.chunks);
+            const isExpanded = expandedExploredGroups[item.id] ?? false;
             return (
-              <div key={`explored-group-${i}`} className="px-0.5">
+              <div key={`explored-group-${item.id}-${i}`}>
                 <button
                   type="button"
-                  onClick={() => setShowExplored((v) => !v)}
+                  onClick={() =>
+                    setExpandedExploredGroups((prev) => ({
+                      ...prev,
+                      [item.id]: !(prev[item.id] ?? false),
+                    }))
+                  }
                   className="w-full flex items-center justify-between py-1 text-left hover:opacity-90 transition-opacity"
                 >
                   <span className="text-[color:var(--ui-text-muted)] text-[12px]">{summary}</span>
-                  <span className="text-[color:var(--ui-text-dim)] text-xs">{showExplored ? "Hide" : "Show"}</span>
+                  <span className="text-[color:var(--ui-text-dim)] text-xs">{isExpanded ? "Hide" : "Show"}</span>
                 </button>
-                {showExplored && (
+                {isExpanded && (
                   <div className="pt-1 pb-1 space-y-0.5">
                     {item.chunks.map((chunk, chunkIndex) => (
                       <div key={`explored-chunk-${i}-${chunkIndex}`} className="flex-1 min-w-0 text-gray-500">

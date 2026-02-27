@@ -1,4 +1,4 @@
-import { useCallback, useRef, useEffect, useState } from "react";
+import { useCallback, useRef, useEffect, useState, type MouseEvent as ReactMouseEvent } from "react";
 import { useStore } from "../../store";
 import { useShallow } from 'zustand/react/shallow';
 import { MessageView, summarizeChangedFiles } from "./MessageView";
@@ -77,6 +77,7 @@ export function TileContainer({
 }: TileContainerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [pendingImages, setPendingImages] = useState<ImageChunk[]>([]);
+  const [queuedSubmissions, setQueuedSubmissions] = useState<Array<{ query: string; images: ImageChunk[] }>>([]);
   const [isDragOver, setIsDragOver] = useState(false);
   const [showThreadPicker, setShowThreadPicker] = useState(false);
 
@@ -95,8 +96,6 @@ export function TileContainer({
     clearSession: state.clearSession,
     addMessageToSession: state.addMessageToSession,
     startStreaming: state.startStreaming,
-    finalizeStream: state.finalizeStream,
-    abortStream: state.abortStream,
     setAutoApproveSession: state.setAutoApproveSession,
     setModelConfig: state.setModelConfig,
     setShowApiKeysScreen: state.setShowApiKeysScreen,
@@ -110,8 +109,6 @@ export function TileContainer({
     clearSession,
     addMessageToSession,
     startStreaming,
-    finalizeStream,
-    abortStream,
     setAutoApproveSession,
     setModelConfig,
     setShowApiKeysScreen,
@@ -128,6 +125,10 @@ export function TileContainer({
       window.agent.setMode(session.id, session.mode);
     }
   }, [session?.id, session?.mode]);
+
+  useEffect(() => {
+    setQueuedSubmissions([]);
+  }, [session?.id]);
 
   const handleOpenFolder = useCallback(async () => {
     const project = await window.tile.openProject(tileId);
@@ -237,8 +238,14 @@ export function TileContainer({
     [openFileViewer],
   );
 
-  const handleContainerClick = useCallback(() => {
+  const handleContainerClick = useCallback((event: ReactMouseEvent<HTMLDivElement>) => {
     onFocus();
+
+    const target = event.target as HTMLElement | null;
+    if (target?.closest("button, a, input, textarea, select, [role='button'], [contenteditable='true']")) {
+      return;
+    }
+
     const textarea = containerRef.current?.querySelector("textarea");
     if (textarea) textarea.focus();
   }, [onFocus]);
@@ -248,6 +255,51 @@ export function TileContainer({
     onDragLeave: handleDragLeave,
     onDrop: handleDrop,
   };
+
+  const startAgentRun = useCallback((sessionId: string, query: string, images: ImageChunk[]) => {
+    const freshSession = useStore.getState().sessions[sessionId];
+    if (!freshSession) return;
+
+    const chunks = [
+      ...images,
+      { kind: "text" as const, text: query },
+    ];
+
+    const chatHistory = messagesToChatMessages(freshSession.messages);
+
+    if (images.length > 0) {
+      const blocks: ChatMessageContentBlock[] = [
+        ...images.map((img) => ({
+          type: "image_url" as const,
+          image_url: { url: `data:${img.mimeType};base64,${img.base64}` },
+        })),
+        { type: "text" as const, text: query },
+      ];
+      chatHistory.push({ role: "user", content: blocks });
+    } else {
+      chatHistory.push({ role: "user", content: query });
+    }
+
+    addMessageToSession(sessionId, "user", chunks);
+    startStreaming(sessionId);
+    window.agent.stream(
+      sessionId,
+      tileId,
+      chatHistory,
+      modelConfig,
+      freshSession.mode,
+    );
+  }, [addMessageToSession, startStreaming, tileId, modelConfig]);
+
+  useEffect(() => {
+    if (!session) return;
+    if (session.isCompacting || session.isStreaming || session.busy) return;
+    if (queuedSubmissions.length === 0) return;
+
+    const next = queuedSubmissions[0];
+    setQueuedSubmissions((prev) => prev.slice(1));
+    startAgentRun(session.id, next.query, next.images);
+  }, [session, queuedSubmissions, startAgentRun]);
 
   const handleSubmit = useCallback(
     async (query: string) => {
@@ -280,62 +332,30 @@ export function TileContainer({
 
       if (session.isCompacting) return;
 
-      if (session.isStreaming || session.busy) {
-        window.agent.cancel(session.id);
-        abortStream(session.id);
-      }
-
-      const freshSession = useStore.getState().sessions[session.id];
-      if (!freshSession) return;
-
       const images = pendingImages;
       setPendingImages([]);
 
-      const chunks = [
-        ...images,
-        { kind: "text" as const, text: query },
-      ];
-
-      const existingMessages = freshSession.messages;
-      const chatHistory = messagesToChatMessages(existingMessages);
-
-      if (images.length > 0) {
-        const blocks: ChatMessageContentBlock[] = [
-          ...images.map((img) => ({
-            type: "image_url" as const,
-            image_url: { url: `data:${img.mimeType};base64,${img.base64}` },
-          })),
-          { type: "text" as const, text: query },
-        ];
-        chatHistory.push({ role: "user", content: blocks });
-      } else {
-        chatHistory.push({ role: "user", content: query });
+      if (session.isStreaming || session.busy) {
+        setQueuedSubmissions((prev) => [...prev, { query, images }]);
+        window.agent.cancel(session.id);
+        return;
       }
 
-      addMessageToSession(session.id, "user", chunks);
-      startStreaming(session.id);
-      window.agent.stream(
-        session.id,
-        tileId,
-        chatHistory,
-        modelConfig,
-        freshSession.mode,
-      );
+      startAgentRun(session.id, query, images);
     },
     [
       tile,
       session,
       tileId,
       pendingImages,
-      addMessageToSession,
-      startStreaming,
-      abortStream,
       createSession,
       clearSession,
       tokenUsage,
       modelConfig,
       setModelConfig,
       setShowApiKeysScreen,
+      startAgentRun,
+      resumeThread,
     ],
   );
 

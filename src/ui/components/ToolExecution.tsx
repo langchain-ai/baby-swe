@@ -13,12 +13,6 @@ interface ToolExecutionProps {
   flat?: boolean;
 }
 
-function formatElapsed(ms?: number): string {
-  if (!ms) return "";
-  if (ms < 1000) return `${ms}ms`;
-  return `${(ms / 1000).toFixed(1)}s`;
-}
-
 function stripProjectPath(path: string, projectPath?: string): string {
   if (!projectPath || !path.startsWith(projectPath)) return path;
   const relative = path.slice(projectPath.length);
@@ -352,7 +346,6 @@ export const ToolExecution = memo(function ToolExecution({
     toolArgs,
     status,
     output,
-    elapsedMs,
     approvalRequestId,
     diffData,
   } = chunk;
@@ -397,9 +390,6 @@ export const ToolExecution = memo(function ToolExecution({
           </span>
           <span className="text-green-400 shrink-0">+{diffStats.additions}</span>
           <span className="text-red-400 shrink-0">-{diffStats.deletions}</span>
-          {elapsedMs && status !== "running" && (
-            <span className="text-[color:var(--ui-text-dim)] shrink-0">{formatElapsed(elapsedMs)}</span>
-          )}
         </>
       );
 
@@ -432,9 +422,6 @@ export const ToolExecution = memo(function ToolExecution({
           {status === "error" && summary && (
             <span className="text-red-400/80 truncate">{summary}</span>
           )}
-          {elapsedMs && status !== "running" && (
-            <span className="text-[color:var(--ui-text-dim)] shrink-0">{formatElapsed(elapsedMs)}</span>
-          )}
         </div>
       </div>
     );
@@ -445,9 +432,6 @@ export const ToolExecution = memo(function ToolExecution({
       {!isCommandApproval && (
         <div className="flex items-start gap-2">
           <span className={statusTextClass}>{displayName}</span>
-          {elapsedMs && status !== "running" && (
-            <span className="text-[color:var(--ui-text-dim)]">{formatElapsed(elapsedMs)}</span>
-          )}
           {canOpenInEditor && (
             <button
               onClick={handleOpenDiff}

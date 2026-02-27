@@ -506,6 +506,12 @@ function isPromptTooLongError(error: unknown): boolean {
     msg.includes('maximum context length');
 }
 
+function isAbortError(error: unknown): boolean {
+  if (error instanceof Error && error.name === 'AbortError') return true;
+  const msg = error instanceof Error ? error.message : String(error);
+  return msg.toLowerCase().includes('aborted') || msg.includes('AbortError');
+}
+
 function safeSend(webContents: Electron.WebContents, channel: string, ...args: unknown[]): void {
   try {
     if (!webContents.isDestroyed()) {
@@ -943,12 +949,14 @@ export function setupAgentIPC(mainWindow: BrowserWindow, getTileProject: (tileId
         }
       }
     } catch (error) {
-      console.error(`[agent:stream] Error for session ${sessionId}:`, error);
-      sendFinal({ type: 'error', sessionId, error: error instanceof Error ? error.message : 'Unknown error' });
-    } finally {
-      if (!controller.signal.aborted) {
+      if (controller.signal.aborted || isAbortError(error)) {
         sendFinal({ type: 'done', sessionId });
+      } else {
+        console.error(`[agent:stream] Error for session ${sessionId}:`, error);
+        sendFinal({ type: 'error', sessionId, error: error instanceof Error ? error.message : 'Unknown error' });
       }
+    } finally {
+      sendFinal({ type: 'done', sessionId });
       if (sessionControllers.get(sessionId) === controller) {
         sessionControllers.delete(sessionId);
       }
