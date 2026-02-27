@@ -192,7 +192,7 @@ function getLatestTextChunkIndex(chunks: Chunk[]): number {
   return -1;
 }
 
-interface ChangedFileSummaryItem {
+export interface ChangedFileSummaryItem {
   filePath: string;
   additions: number;
   deletions: number;
@@ -251,7 +251,7 @@ function countLineChanges(originalContent: string | null, newContent: string): {
   return { additions, deletions };
 }
 
-function summarizeChangedFiles(chunks: Chunk[]): ChangedFileSummaryItem[] {
+export function summarizeChangedFiles(chunks: Chunk[]): ChangedFileSummaryItem[] {
   const byFile = new Map<string, ChangedFileSummaryItem>();
 
   for (const chunk of chunks) {
@@ -537,7 +537,7 @@ function AgentMessage({
         );
       })}
 
-      {changedFiles.length > 0 && (
+      {changedFiles.length > 0 && !isStreaming && (
         <div className="mt-3 rounded-xl bg-[var(--ui-accent-bubble)] overflow-hidden">
           <div className="px-3 py-2 text-xs text-[color:var(--ui-text-muted)] border-b border-[var(--ui-border)] flex items-center gap-2">
             <span>{changedFiles.length} file{changedFiles.length === 1 ? "" : "s"} changed</span>

@@ -1,7 +1,7 @@
-import { useCallback, useRef, useEffect, useState, memo } from "react";
+import { useCallback, useRef, useEffect, useState } from "react";
 import { useStore } from "../../store";
 import { useShallow } from 'zustand/react/shallow';
-import { MessageView } from "./MessageView";
+import { MessageView, summarizeChangedFiles } from "./MessageView";
 import { PromptBar } from "./PromptBar";
 import { TodoList } from "./TodoList";
 import { Logo } from "./Logo";
@@ -386,6 +386,18 @@ export function TileContainer({
   if (!tile.project) return null;
 
   const hasMessages = session && session.messages.length > 0;
+  const streamingMessageId = session?.streamingMessageId ?? null;
+  const streamingMessage = streamingMessageId
+    ? session?.messages.find((message) => message.id === streamingMessageId) ?? null
+    : null;
+  const streamingChangedFiles = streamingMessage ? summarizeChangedFiles(streamingMessage.chunks) : [];
+  let streamingAdditions = 0;
+  let streamingDeletions = 0;
+  for (const file of streamingChangedFiles) {
+    streamingAdditions += file.additions;
+    streamingDeletions += file.deletions;
+  }
+  const streamingChangedTotals = { additions: streamingAdditions, deletions: streamingDeletions };
 
   if (!hasMessages) {
     return (
@@ -480,6 +492,34 @@ export function TileContainer({
             <div className="px-4 shrink-0">
               <div className={`w-full ${PROMPT_CONTENT_WIDTH} mx-auto min-w-0`}>
                 <TodoList todos={session.todos} />
+              </div>
+            </div>
+          )}
+          {session.isStreaming && streamingChangedFiles.length > 0 && (
+            <div className="px-4 pb-2 shrink-0">
+              <div className={`w-full ${PROMPT_CONTENT_WIDTH} mx-auto min-w-0`}>
+                <div className="rounded-xl border border-[var(--ui-border)] bg-[var(--ui-accent-bubble)] px-3 py-2 flex items-center justify-between gap-3 text-xs">
+                  <span className="text-[color:var(--ui-text-muted)] truncate">
+                    {streamingChangedFiles.length} file{streamingChangedFiles.length === 1 ? "" : "s"} changed
+                    <span className="ml-2 text-green-400">+{streamingChangedTotals.additions}</span>
+                    <span className="ml-1 text-red-400">-{streamingChangedTotals.deletions}</span>
+                  </span>
+                  <button
+                    type="button"
+                    className="shrink-0 text-[color:var(--ui-accent)] hover:opacity-80 transition-opacity"
+                    onClick={() => {
+                      const file = streamingChangedFiles[streamingChangedFiles.length - 1];
+                      if (!file) return;
+                      handleOpenDiff({
+                        filePath: file.filePath,
+                        originalContent: file.originalContent,
+                        modifiedContent: file.modifiedContent,
+                      });
+                    }}
+                  >
+                    Review changes ↗
+                  </button>
+                </div>
               </div>
             </div>
           )}
