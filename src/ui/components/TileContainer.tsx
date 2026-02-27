@@ -14,6 +14,7 @@ import { executeCommand } from "../../commands";
 import type { Message, ChatMessage, ChatMessageContentBlock, Project, ImageChunk, Thread } from "../../types";
 
 const PROMPT_CONTENT_WIDTH = "max-w-[44rem]";
+const STACKED_STATUS_WIDTH = "max-w-[43rem]";
 const MESSAGE_CONTENT_WIDTH = "max-w-[42rem]";
 
 function messagesToChatMessages(messages: Message[]): ChatMessage[] {
@@ -398,6 +399,10 @@ export function TileContainer({
     streamingDeletions += file.deletions;
   }
   const streamingChangedTotals = { additions: streamingAdditions, deletions: streamingDeletions };
+  const todos = session.todos ?? [];
+  const hasTodos = todos.length > 0;
+  const hasStreamingChangedFiles = session.isStreaming && streamingChangedFiles.length > 0;
+  const hasConnectedStack = hasTodos || hasStreamingChangedFiles;
 
   if (!hasMessages) {
     return (
@@ -488,38 +493,41 @@ export function TileContainer({
         </div>
       ) : (
         <>
-          {session.todos && session.todos.length > 0 && (
+          {hasConnectedStack && (
             <div className="px-4 shrink-0">
-              <div className={`w-full ${PROMPT_CONTENT_WIDTH} mx-auto min-w-0`}>
-                <TodoList todos={session.todos} />
-              </div>
-            </div>
-          )}
-          {session.isStreaming && streamingChangedFiles.length > 0 && (
-            <div className="px-4 pb-2 shrink-0">
-              <div className={`w-full ${PROMPT_CONTENT_WIDTH} mx-auto min-w-0`}>
-                <div className="rounded-xl border border-[var(--ui-border)] bg-[var(--ui-accent-bubble)] px-3 py-2 flex items-center justify-between gap-3 text-xs">
-                  <span className="text-[color:var(--ui-text-muted)] truncate">
-                    {streamingChangedFiles.length} file{streamingChangedFiles.length === 1 ? "" : "s"} changed
-                    <span className="ml-2 text-green-400">+{streamingChangedTotals.additions}</span>
-                    <span className="ml-1 text-red-400">-{streamingChangedTotals.deletions}</span>
-                  </span>
-                  <button
-                    type="button"
-                    className="shrink-0 text-[color:var(--ui-accent)] hover:opacity-80 transition-opacity"
-                    onClick={() => {
-                      const file = streamingChangedFiles[streamingChangedFiles.length - 1];
-                      if (!file) return;
-                      handleOpenDiff({
-                        filePath: file.filePath,
-                        originalContent: file.originalContent,
-                        modifiedContent: file.modifiedContent,
-                      });
-                    }}
+              <div className={`w-full ${STACKED_STATUS_WIDTH} mx-auto min-w-0`}>
+                {hasTodos && (
+                  <TodoList
+                    todos={todos}
+                    className="rounded-t-xl rounded-b-none"
+                  />
+                )}
+                {hasStreamingChangedFiles && (
+                  <div
+                    className={`border border-[var(--ui-border)] bg-[var(--ui-accent-bubble)] px-3 py-2 flex items-center justify-between gap-3 text-xs rounded-b-none ${hasTodos ? "rounded-t-none border-t-0" : "rounded-t-xl"}`}
                   >
-                    Review changes ↗
-                  </button>
-                </div>
+                    <span className="text-[color:var(--ui-text-muted)] truncate">
+                      {streamingChangedFiles.length} file{streamingChangedFiles.length === 1 ? "" : "s"} changed
+                      <span className="ml-2 text-green-400">+{streamingChangedTotals.additions}</span>
+                      <span className="ml-1 text-red-400">-{streamingChangedTotals.deletions}</span>
+                    </span>
+                    <button
+                      type="button"
+                      className="shrink-0 text-[color:var(--ui-accent)] hover:opacity-80 transition-opacity"
+                      onClick={() => {
+                        const file = streamingChangedFiles[streamingChangedFiles.length - 1];
+                        if (!file) return;
+                        handleOpenDiff({
+                          filePath: file.filePath,
+                          originalContent: file.originalContent,
+                          modifiedContent: file.modifiedContent,
+                        });
+                      }}
+                    >
+                      Review changes ↗
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -540,6 +548,7 @@ export function TileContainer({
                 onChangeDirectory={handleOpenFolder}
                 worktreeType={tile.project.worktreeType}
                 worktreePath={tile.project.worktreePath}
+                connectedTop={hasConnectedStack}
               />
             </div>
           </div>

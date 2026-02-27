@@ -11,6 +11,7 @@ import type { TodoItem } from "../../types";
 
 interface TodoListProps {
   todos: TodoItem[];
+  className?: string;
 }
 
 function StatusIcon({ status }: { status: TodoItem["status"] }) {
@@ -26,7 +27,7 @@ function StatusIcon({ status }: { status: TodoItem["status"] }) {
 
 const MAX_HEIGHT = 160;
 
-export function TodoList({ todos }: TodoListProps) {
+export function TodoList({ todos, className = "" }: TodoListProps) {
   const [collapsed, setCollapsed] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -44,7 +45,7 @@ export function TodoList({ todos }: TodoListProps) {
   const completed = todos.filter((t) => t.status === "completed").length;
 
   return (
-    <div className="mt-1 mb-2 font-sans text-xs rounded-xl border border-[var(--ui-border)] bg-[var(--ui-accent-bubble)] overflow-hidden">
+    <div className={`font-sans text-xs rounded-xl border border-[var(--ui-border)] bg-[var(--ui-accent-bubble)] overflow-hidden ${className}`}>
       <button
         type="button"
         className="w-full px-3 py-2 flex items-center gap-2 text-left hover:bg-white/5 transition-colors"

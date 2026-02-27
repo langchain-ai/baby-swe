@@ -33,9 +33,10 @@ interface PromptBarProps {
   dropUp?: boolean;
   worktreeType?: WorktreeType;
   worktreePath?: string;
+  connectedTop?: boolean;
 }
 
-export const PromptBar = memo(function PromptBar({ onSubmit, busy, projectPath, mainProjectPath, gitBranch, githubPR, sessionId, tileId, isFocused, pendingImages, onRemoveImage, onChangeDirectory, dropUp = true, worktreeType, worktreePath }: PromptBarProps) {
+export const PromptBar = memo(function PromptBar({ onSubmit, busy, projectPath, mainProjectPath, gitBranch, githubPR, sessionId, tileId, isFocused, pendingImages, onRemoveImage, onChangeDirectory, dropUp = true, worktreeType, worktreePath, connectedTop = false }: PromptBarProps) {
   const [query, setQuery] = useState('');
   const mode = useStore(state => state.sessions[sessionId]?.mode ?? 'agent');
   const { setSessionMode, modelConfig, setModelConfig } = useStore(useShallow(state => ({
@@ -345,7 +346,7 @@ export const PromptBar = memo(function PromptBar({ onSubmit, busy, projectPath, 
         </div>
       )}
 
-      <div className="rounded-2xl border border-[#2a3140] bg-[#172131]/95 px-4 py-3.5 min-h-[106px] flex flex-col shadow-[0_0_0_1px_rgba(255,255,255,0.02)_inset]">
+      <div className={`border border-[#2a3140] bg-[#172131]/95 px-4 py-3.5 min-h-[106px] flex flex-col shadow-[0_0_0_1px_rgba(255,255,255,0.02)_inset rounded-2xl ${connectedTop ? "-mt-px" : ""}`}>
         <textarea
           ref={inputRef}
           rows={1}
