@@ -382,7 +382,7 @@ export const PromptBar = memo(function PromptBar({ onSubmit, busy, projectPath, 
               </div>
             )}
           </div>
-          <span className="text-[#435069]">—</span>
+          <span className="text-[#435069]">·</span>
           <div ref={modelDropdownRef} className="relative shrink min-w-0">
             <button
               type="button"
@@ -413,7 +413,7 @@ export const PromptBar = memo(function PromptBar({ onSubmit, busy, projectPath, 
           </div>
           {projectPath && (
             <>
-              <span className="text-[#435069]">—</span>
+              <span className="text-[#435069]">·</span>
               <button
                 type="button"
                 onClick={onChangeDirectory}
