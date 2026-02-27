@@ -285,6 +285,7 @@ interface MessageViewProps extends ApprovalCallbacks {
   isStreaming: boolean;
   showHeader?: boolean;
   project?: Project | null;
+  contentWidthClass?: string;
 }
 
 const BUSY_TEXTS: { present: string; past: string }[] = [
@@ -660,6 +661,7 @@ export const MessageView = memo(function MessageView({
   isStreaming,
   showHeader,
   project,
+  contentWidthClass = "max-w-[42rem]",
   onApprove,
   onReject,
   onAutoApprove,
@@ -694,7 +696,7 @@ export const MessageView = memo(function MessageView({
       ref={scrollRef}
       className="flex-1 min-h-0 min-w-0 overflow-y-auto px-3 sm:px-5 py-5 text-[13px] leading-6 font-sans antialiased"
     >
-      <div className="w-full max-w-3xl mx-auto min-w-0">
+      <div className={`w-full ${contentWidthClass} mx-auto min-w-0`}>
         {showHeader && <div className="flex justify-start pb-6"><Logo /></div>}
         {messages.filter(m => !m.hidden).map((message, index, filtered) => (
           <MessageBubble

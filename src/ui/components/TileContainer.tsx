@@ -13,7 +13,8 @@ import { CompactingIndicator } from "./CompactingIndicator";
 import { executeCommand } from "../../commands";
 import type { Message, ChatMessage, ChatMessageContentBlock, Project, ImageChunk, Thread } from "../../types";
 
-const AGENT_CONTENT_WIDTH = "max-w-3xl";
+const PROMPT_CONTENT_WIDTH = "max-w-[44rem]";
+const MESSAGE_CONTENT_WIDTH = "max-w-[42rem]";
 
 function messagesToChatMessages(messages: Message[]): ChatMessage[] {
   const chatMessages: ChatMessage[] = [];
@@ -406,9 +407,9 @@ export function TileContainer({
           </div>
         )}
         <div className="flex-1 flex flex-col items-center justify-center px-4">
-          <div className={`w-full ${AGENT_CONTENT_WIDTH} flex flex-col items-center gap-6 min-w-0`}>
+          <div className={`w-full ${PROMPT_CONTENT_WIDTH} flex flex-col items-center gap-6 min-w-0`}>
             <Logo />
-            <div className={`w-full ${AGENT_CONTENT_WIDTH} min-w-0`}>
+            <div className={`w-full ${PROMPT_CONTENT_WIDTH} min-w-0`}>
             <PromptBar
               onSubmit={handleSubmit}
               busy={session?.busy ?? false}
@@ -461,6 +462,7 @@ export function TileContainer({
       <MessageView
         messages={session.messages}
         isStreaming={session.isStreaming}
+        contentWidthClass={MESSAGE_CONTENT_WIDTH}
         onApprove={handleApprove}
         onReject={handleReject}
         onAutoApprove={handleAutoApprove}
@@ -480,7 +482,7 @@ export function TileContainer({
             </div>
           )}
           <div className="px-4 pb-4 shrink-0">
-            <div className={`w-full ${AGENT_CONTENT_WIDTH} mx-auto min-w-0`}>
+            <div className={`w-full ${PROMPT_CONTENT_WIDTH} mx-auto min-w-0`}>
               <PromptBar
                 onSubmit={handleSubmit}
                 busy={session.busy}
