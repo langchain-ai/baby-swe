@@ -57,7 +57,7 @@ export function Footer() {
 
   if (!busy) {
     return (
-      <div className="px-4 py-2 font-mono text-xs text-gray-600">
+      <div className="px-4 py-2 font-sans text-xs text-gray-600">
         (ready)
       </div>
     );
@@ -74,7 +74,7 @@ export function Footer() {
   }
 
   return (
-    <div className="px-4 py-2 font-mono text-xs text-gray-500">
+    <div className="px-4 py-2 font-sans text-xs text-gray-500">
       <span className="text-yellow-400">*</span>
       <span className="ml-1">{busyAction}...</span>
       <span className="text-gray-600 ml-1">({parts.join(' · ')})</span>

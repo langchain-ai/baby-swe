@@ -300,7 +300,7 @@ export const PromptBar = memo(function PromptBar({ onSubmit, busy, projectPath, 
   };
 
   return (
-    <div className="relative font-mono text-sm">
+    <div className="relative font-sans text-[13px]">
       {showModelAutocomplete && (
         <ModelAutocomplete
           selectedIndex={modelSelectedIndex}

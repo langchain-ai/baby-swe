@@ -1,4 +1,4 @@
-import { useRef, useEffect, memo, useMemo } from "react";
+import { useRef, useEffect, memo, useMemo, useState } from "react";
 import { CodeBlock } from "./CodeBlock";
 import { Markdown } from "./Markdown";
 import { ToolExecution } from "./ToolExecution";
@@ -26,6 +26,13 @@ type GroupedItem =
       groupType: ToolGroupType;
       tools: ToolExecutionChunk[];
     };
+
+interface RunSplit {
+  hasTools: boolean;
+  hasPendingApproval: boolean;
+  activityChunks: Chunk[];
+  finalChunks: Chunk[];
+}
 
 function getToolGroupType(toolName: string): ToolGroupType {
   switch (toolName) {
@@ -88,6 +95,99 @@ function groupChunksForRender(chunks: Chunk[]): GroupedItem[] {
 
   flushToolGroup();
   return result;
+}
+
+function splitRunChunks(chunks: Chunk[]): RunSplit {
+  let lastToolIndex = -1;
+  let hasPendingApproval = false;
+
+  for (let i = 0; i < chunks.length; i++) {
+    const chunk = chunks[i];
+    if (chunk.kind === "tool-execution") {
+      lastToolIndex = i;
+      if (chunk.status === "pending-approval") {
+        hasPendingApproval = true;
+      }
+    }
+  }
+
+  if (lastToolIndex === -1) {
+    return {
+      hasTools: false,
+      hasPendingApproval: false,
+      activityChunks: [],
+      finalChunks: chunks,
+    };
+  }
+
+  let firstFinalIndex = -1;
+  for (let i = lastToolIndex + 1; i < chunks.length; i++) {
+    const chunk = chunks[i];
+    if (chunk.kind === "tool-execution") continue;
+
+    if (chunk.kind === "text" && !chunk.text.trim()) {
+      continue;
+    }
+
+    firstFinalIndex = i;
+    break;
+  }
+
+  if (firstFinalIndex === -1) {
+    return {
+      hasTools: true,
+      hasPendingApproval,
+      activityChunks: chunks,
+      finalChunks: [],
+    };
+  }
+
+  return {
+    hasTools: true,
+    hasPendingApproval,
+    activityChunks: chunks.slice(0, firstFinalIndex),
+    finalChunks: chunks.slice(firstFinalIndex),
+  };
+}
+
+function summarizeExploration(chunks: Chunk[]): string {
+  let readFiles = 0;
+  let searches = 0;
+  let lists = 0;
+  let steps = 0;
+
+  for (const chunk of chunks) {
+    if (chunk.kind !== "tool-execution") continue;
+    steps += 1;
+    const groupType = getToolGroupType(chunk.toolName);
+    if (groupType === "read") readFiles += 1;
+    if (groupType === "search") searches += 1;
+    if (chunk.toolName === "list_dir" || chunk.toolName === "ls") lists += 1;
+  }
+
+  if (readFiles > 0 || searches > 0 || lists > 0) {
+    const parts: string[] = [];
+    if (readFiles > 0) {
+      parts.push(`${readFiles} file${readFiles === 1 ? "" : "s"}`);
+    }
+    if (searches > 0) {
+      parts.push(`${searches} search${searches === 1 ? "" : "es"}`);
+    }
+    if (lists > 0) {
+      parts.push(`${lists} list${lists === 1 ? "" : "s"}`);
+    }
+    return `Explored ${parts.join(", ")}`;
+  }
+
+  return `Explored ${steps} step${steps === 1 ? "" : "s"}`;
+}
+
+function getLatestTextChunkIndex(chunks: Chunk[]): number {
+  for (let i = chunks.length - 1; i >= 0; i--) {
+    const chunk = chunks[i];
+    if (chunk.kind === "text" && chunk.text.trim()) return i;
+  }
+  return -1;
 }
 
 interface ApprovalCallbacks {
@@ -159,11 +259,10 @@ function UserMessage({ message }: { message: Message }) {
   const images = message.chunks.filter((c) => c.kind === "image");
 
   return (
-    <div className="flex items-start gap-2 my-4">
-      <span className="text-gray-400 select-none">❯</span>
-      <div>
+    <div className="flex justify-end my-5">
+      <div className="max-w-[78%]">
         {images.length > 0 && (
-          <div className="flex gap-2 mb-1.5 flex-wrap">
+          <div className="flex gap-2 mb-2 flex-wrap justify-end">
             {images.map((img, i) => (
               img.kind === "image" && (
                 <img
@@ -177,7 +276,7 @@ function UserMessage({ message }: { message: Message }) {
           </div>
         )}
         {text && (
-          <span className="text-gray-100 bg-gray-800/50 px-2 py-0.5 rounded">
+          <span className="inline-block text-gray-100 text-[13px] bg-[#24262b] px-3 py-1.5 rounded-2xl">
             {text}
           </span>
         )}
@@ -196,9 +295,27 @@ function AgentMessage({
   isStreaming?: boolean;
   projectPath?: string;
 } & ApprovalCallbacks) {
-  const groupedItems = groupChunksForRender(message.chunks);
+  const runSplit = useMemo(() => splitRunChunks(message.chunks), [message.chunks]);
+  const groupedItems = useMemo(() => {
+    if (!runSplit.hasTools) {
+      return groupChunksForRender(runSplit.finalChunks);
+    }
+    if (runSplit.hasPendingApproval) {
+      return [];
+    }
+    return groupChunksForRender(runSplit.finalChunks);
+  }, [runSplit]);
+  const [showExplored, setShowExplored] = useState(Boolean(isStreaming));
 
-  if (groupedItems.length === 0 && isStreaming) {
+  useEffect(() => {
+    if (isStreaming || runSplit.hasPendingApproval) {
+      setShowExplored(true);
+      return;
+    }
+    setShowExplored(false);
+  }, [isStreaming, runSplit.hasPendingApproval, message.id]);
+
+  if (groupedItems.length === 0 && isStreaming && !runSplit.hasTools) {
     return (
       <div className="mt-4 my-1">
         <span className="text-gray-400">...</span>
@@ -206,8 +323,108 @@ function AgentMessage({
     );
   }
 
+  const latestStreamingTextIndex =
+    isStreaming && runSplit.hasTools && !runSplit.hasPendingApproval
+      ? getLatestTextChunkIndex(runSplit.activityChunks)
+      : -1;
+
+  const exploredChunks =
+    latestStreamingTextIndex >= 0
+      ? runSplit.activityChunks.filter(
+          (chunk, index) =>
+            chunk.kind === "tool-execution" ||
+            (chunk.kind === "text" && index === latestStreamingTextIndex),
+        )
+      : runSplit.activityChunks.filter((chunk) => chunk.kind === "tool-execution");
+
+  const exploredGroupedItems = groupChunksForRender(exploredChunks);
+  const exploredSummary = summarizeExploration(runSplit.activityChunks);
+  const canShowExplored = runSplit.hasTools && runSplit.activityChunks.length > 0;
+
   return (
-    <div className="my-2 space-y-1">
+    <div className="my-2 space-y-3">
+      {canShowExplored && !runSplit.hasPendingApproval && (
+        <div className="px-0.5">
+          <button
+            type="button"
+            onClick={() => setShowExplored((v) => !v)}
+            className="w-full flex items-center justify-between py-1 text-left hover:opacity-90 transition-opacity"
+          >
+            <span className="text-gray-500 text-[12px]">{exploredSummary}</span>
+            <span className="text-gray-600 text-xs">{showExplored ? "Hide" : "Show"}</span>
+          </button>
+          {showExplored && (
+            <div className="pt-1 pb-1 space-y-1">
+              {exploredGroupedItems.map((item, i) => {
+                if ("type" in item && item.type === "tool-group") {
+                  return (
+                    <ToolGroup
+                      key={`explored-tool-group-${i}`}
+                      groupType={item.groupType}
+                      tools={item.tools}
+                      projectPath={projectPath}
+                      onApprove={callbacks.onApprove}
+                      onReject={callbacks.onReject}
+                      onAutoApprove={callbacks.onAutoApprove}
+                      onOpenDiff={callbacks.onOpenDiff}
+                    />
+                  );
+                }
+
+                const chunk = item as Chunk;
+                return (
+                  <div key={`explored-chunk-${i}`} className="flex-1 min-w-0 text-gray-500">
+                    <ChunkRenderer
+                      chunk={chunk}
+                      projectPath={projectPath}
+                      {...callbacks}
+                    />
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {runSplit.hasPendingApproval && (
+        <div className="space-y-1">
+          {groupChunksForRender(message.chunks).map((item, i) => {
+            if ("type" in item && item.type === "tool-group") {
+              return (
+                <ToolGroup
+                  key={`pending-tool-group-${i}`}
+                  groupType={item.groupType}
+                  tools={item.tools}
+                  projectPath={projectPath}
+                  onApprove={callbacks.onApprove}
+                  onReject={callbacks.onReject}
+                  onAutoApprove={callbacks.onAutoApprove}
+                  onOpenDiff={callbacks.onOpenDiff}
+                />
+              );
+            }
+
+            const chunk = item as Chunk;
+            return (
+              <div key={`pending-chunk-${i}`} className="flex-1 min-w-0">
+                <ChunkRenderer
+                  chunk={chunk}
+                  projectPath={projectPath}
+                  {...callbacks}
+                />
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {groupedItems.length === 0 && isStreaming && runSplit.hasTools && (
+        <div className="my-1">
+          <span className="text-gray-400">...</span>
+        </div>
+      )}
+
       {groupedItems.map((item, i) => {
         if ("type" in item && item.type === "tool-group") {
           return (
@@ -300,21 +517,23 @@ export const MessageView = memo(function MessageView({
   return (
     <div
       ref={scrollRef}
-      className="flex-1 min-h-0 min-w-0 overflow-y-auto px-4 py-4 text-sm leading-relaxed"
+      className="flex-1 min-h-0 min-w-0 overflow-y-auto px-6 py-5 text-[13px] leading-6 font-sans antialiased"
     >
-      {showHeader && <div className="flex justify-start pb-4"><Logo /></div>}
-      {messages.filter(m => !m.hidden).map((message, index, filtered) => (
-        <MessageBubble
-          key={message.id}
-          message={message}
-          isStreaming={isStreaming && index === filtered.length - 1}
-          projectPath={project?.path}
-          onApprove={onApprove}
-          onReject={onReject}
-          onAutoApprove={onAutoApprove}
-          onOpenDiff={onOpenDiff}
-        />
-      ))}
+      <div className="w-full max-w-4xl mx-auto">
+        {showHeader && <div className="flex justify-start pb-6"><Logo /></div>}
+        {messages.filter(m => !m.hidden).map((message, index, filtered) => (
+          <MessageBubble
+            key={message.id}
+            message={message}
+            isStreaming={isStreaming && index === filtered.length - 1}
+            projectPath={project?.path}
+            onApprove={onApprove}
+            onReject={onReject}
+            onAutoApprove={onAutoApprove}
+            onOpenDiff={onOpenDiff}
+          />
+        ))}
+      </div>
     </div>
   );
 });

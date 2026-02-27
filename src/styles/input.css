@@ -5,8 +5,10 @@
 @tailwind utilities;
 
 body {
-  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
-  font-weight: 300;
+  font-family: "SF Pro Text", "Segoe UI", "Inter", "Helvetica Neue", Arial, sans-serif;
+  font-size: 13px;
+  line-height: 1.45;
+  font-weight: 400;
 }
 
 * {

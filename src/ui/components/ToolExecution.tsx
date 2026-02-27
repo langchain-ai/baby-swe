@@ -215,11 +215,11 @@ export const ToolExecution = memo(function ToolExecution({
 
   const statusIcon = {
     "pending-approval": (
-      <span className="text-yellow-400 animate-pulse">●</span>
+      <span className="text-yellow-400 animate-pulse">•</span>
     ),
-    running: <span className="text-yellow-400 animate-pulse">●</span>,
-    success: <span className="text-[#87CEEB]">●</span>,
-    error: <span className="text-red-400">●</span>,
+    running: <span className="text-yellow-400 animate-pulse">•</span>,
+    success: <span className="text-gray-500">•</span>,
+    error: <span className="text-red-400">•</span>,
   }[status];
 
   const isFileOp = toolName === "write_file" || toolName === "edit_file";
@@ -240,17 +240,17 @@ export const ToolExecution = memo(function ToolExecution({
   };
 
   return (
-    <div className="my-1 font-mono text-sm">
+    <div className="my-1 text-[12px] leading-5">
       <div className="flex items-start gap-2">
         {statusIcon}
-        <span className="text-gray-300">{displayName}</span>
+        <span className="text-gray-500">{displayName}</span>
         {elapsedMs && status !== "running" && (
-          <span className="text-gray-600">{formatElapsed(elapsedMs)}</span>
+          <span className="text-gray-700">{formatElapsed(elapsedMs)}</span>
         )}
         {canOpenInEditor && (
           <button
             onClick={handleOpenDiff}
-            className="text-gray-600 hover:text-[#87CEEB] transition-colors text-xs"
+            className="text-gray-600 hover:text-gray-300 transition-colors text-xs"
             title="Open diff in editor"
           >
             [diff]
@@ -259,8 +259,8 @@ export const ToolExecution = memo(function ToolExecution({
       </div>
 
       {hasContent && (
-        <div className="flex items-start gap-2">
-          <span className="text-gray-600 select-none">└</span>
+        <div className="flex items-start gap-2 pl-4">
+          <span className="text-gray-700 select-none">•</span>
           <div className="flex-1 min-w-0">
             {status === "pending-approval" && approvalRequestId ? (
               <>
@@ -274,11 +274,11 @@ export const ToolExecution = memo(function ToolExecution({
                 />
               </>
             ) : status === "running" ? (
-              <span className="text-gray-500">Running...</span>
+              <span className="text-gray-600">Running...</span>
             ) : showDiff ? (
               <DiffView diffData={diffData!} />
             ) : (
-              <span className="text-gray-500">{summary}</span>
+              <span className="text-gray-600">{summary}</span>
             )}
           </div>
         </div>

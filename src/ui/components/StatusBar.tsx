@@ -8,7 +8,7 @@ export function StatusBar() {
   }, []);
 
   return (
-    <div className="h-6 flex items-center bg-[#151b26] border-t border-gray-800 text-[11px] font-mono select-none shrink-0 text-gray-600 px-3 relative">
+    <div className="h-6 flex items-center bg-[#151b26] border-t border-gray-800 text-[11px] font-sans select-none shrink-0 text-gray-600 px-3 relative">
       <span className="absolute left-1/2 -translate-x-1/2">baby-swe</span>
       <span className="ml-auto">{version}</span>
     </div>

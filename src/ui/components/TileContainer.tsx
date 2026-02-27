@@ -579,7 +579,7 @@ function BinarySpinner({ isStreaming }: { isStreaming: boolean }) {
   if (done) {
     return (
       <div className="flex items-center gap-2 pb-2">
-        <span className="font-mono text-xs text-gray-600 select-none">*</span>
+        <span className="font-sans text-xs text-gray-600 select-none">*</span>
         <span className="text-xs text-gray-600">{done.past} for {done.elapsed}</span>
       </div>
     );
@@ -587,9 +587,8 @@ function BinarySpinner({ isStreaming }: { isStreaming: boolean }) {
 
   return (
     <div className="flex items-center gap-2 pb-2">
-      <span className="font-mono text-xs text-[#87CEEB] select-none">{BINARY_FRAMES[frame]}</span>
+      <span className="font-sans text-xs text-[#87CEEB] select-none">{BINARY_FRAMES[frame]}</span>
       <span className="shimmer-text text-xs">{BUSY_TEXTS[textIdx].present}</span>
     </div>
   );
 }
-

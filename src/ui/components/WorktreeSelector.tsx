@@ -288,7 +288,7 @@ function LocalTab({ projectPath, currentBranch, isLocalMode, tileId, onClose, on
                   }`}
                 >
                   <BranchIcon />
-                  <span className="font-mono truncate">{branch}</span>
+                  <span className="font-sans truncate">{branch}</span>
                   {isLocalMode && branch === currentBranch && <span className="ml-auto pl-3 text-gray-500">current</span>}
                 </button>
               ))
@@ -448,7 +448,7 @@ function WorktreeTab({ projectPath, currentWorktreePath, currentBranch, tileId, 
                 className="block w-full text-left px-3 py-1.5 hover:bg-gray-700 transition-colors whitespace-nowrap text-xs text-gray-400 flex items-center gap-2"
               >
                 <BranchIcon />
-                <span className="font-mono truncate">{branch}</span>
+                <span className="font-sans truncate">{branch}</span>
               </button>
             ))
           )}
@@ -497,7 +497,7 @@ function WorktreeTab({ projectPath, currentWorktreePath, currentBranch, tileId, 
                 onClick={() => handleSwitchToWorktree(wt)}
               >
                 <WorktreeIcon />
-                <span className="font-mono ml-2 truncate">{wt.branch}</span>
+                <span className="font-sans ml-2 truncate">{wt.branch}</span>
                 {wt.path === currentWorktreePath && (
                   <span className="ml-2 text-gray-500 text-[11px]">current</span>
                 )}

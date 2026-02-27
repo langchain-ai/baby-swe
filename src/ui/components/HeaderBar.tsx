@@ -5,7 +5,7 @@ interface HeaderBarProps {
 export function HeaderBar({ compact }: HeaderBarProps) {
   if (compact) {
     return (
-      <div className="flex items-center gap-3 px-3 py-2 font-mono text-xs border-b border-gray-700/50 shrink-0">
+      <div className="flex items-center gap-3 px-3 py-2 font-sans text-xs border-b border-gray-700/50 shrink-0">
         <pre className="text-[#e07a5f] leading-none text-[10px] m-0">{`╭─╮
 │◠│
 ╰─╯`}</pre>
@@ -15,7 +15,7 @@ export function HeaderBar({ compact }: HeaderBarProps) {
   }
 
   return (
-    <div className="flex items-start gap-4 px-4 py-3 font-mono text-sm">
+    <div className="flex items-start gap-4 px-4 py-3 font-sans text-sm">
       <pre className="text-[#e07a5f] leading-none text-xs">
 {` ╭───╮
  │ ◠ │
