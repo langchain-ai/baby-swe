@@ -14,7 +14,7 @@ import { executeCommand } from "../../commands";
 import type { Message, ChatMessage, ChatMessageContentBlock, Project, ImageChunk, Thread } from "../../types";
 
 const PROMPT_CONTENT_WIDTH = "max-w-[44rem]";
-const STACKED_STATUS_WIDTH = "max-w-[43rem]";
+const STACKED_STATUS_WIDTH = "w-[calc(100%-0.75rem)] max-w-[43rem]";
 const MESSAGE_CONTENT_WIDTH = "max-w-[42rem]";
 
 function messagesToChatMessages(messages: Message[]): ChatMessage[] {
