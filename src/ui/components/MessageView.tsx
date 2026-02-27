@@ -204,6 +204,25 @@ interface MessageViewProps extends ApprovalCallbacks {
   project?: Project | null;
 }
 
+const BUSY_TEXTS: { present: string; past: string }[] = [
+  { present: "vibing...",               past: "Vibed" },
+  { present: "noodling...",             past: "Noodled" },
+  { present: "pondering...",            past: "Pondered" },
+  { present: "thinking really hard...", past: "Thought really hard" },
+  { present: "spinning up...",          past: "Spun up" },
+  { present: "connecting the dots...",  past: "Connected the dots" },
+  { present: "brewing ideas...",        past: "Brewed ideas" },
+  { present: "cooking...",              past: "Cooked" },
+  { present: "crunching...",            past: "Crunched" },
+  { present: "scheming...",             past: "Schemed" },
+  { present: "processing...",           past: "Processed" },
+];
+
+function formatElapsed(ms: number): string {
+  const secs = Math.round(ms / 1000);
+  return secs < 60 ? `${secs}s` : `${Math.floor(secs / 60)}m ${secs % 60}s`;
+}
+
 function ChunkRenderer({
   chunk,
   projectPath,
@@ -480,6 +499,52 @@ const MessageBubble = memo(function MessageBubble({
   );
 });
 
+function ThinkingSpinner({ isStreaming }: { isStreaming: boolean }) {
+  const [textIdx, setTextIdx] = useState(0);
+  const [done, setDone] = useState<{ past: string; elapsed: string } | null>(null);
+  const startTimeRef = useRef(0);
+  const textIdxRef = useRef(textIdx);
+  const wasStreamingRef = useRef(false);
+  textIdxRef.current = textIdx;
+
+  useEffect(() => {
+    if (isStreaming) {
+      wasStreamingRef.current = true;
+      startTimeRef.current = Date.now();
+      setTextIdx(Math.floor(Math.random() * BUSY_TEXTS.length));
+      setDone(null);
+    } else if (wasStreamingRef.current) {
+      setDone({
+        past: BUSY_TEXTS[textIdxRef.current].past,
+        elapsed: formatElapsed(Date.now() - startTimeRef.current),
+      });
+    }
+  }, [isStreaming]);
+
+  useEffect(() => {
+    if (!isStreaming) return;
+    const id = setInterval(() => setTextIdx((i) => (i + 1) % BUSY_TEXTS.length), 12000);
+    return () => clearInterval(id);
+  }, [isStreaming]);
+
+  if (!isStreaming && !done) return null;
+
+  if (done) {
+    return (
+      <div className="my-2 flex items-center gap-2">
+        <span className="font-sans text-xs text-[color:var(--ui-text-dim)] select-none">*</span>
+        <span className="text-xs text-[color:var(--ui-text-dim)]">{done.past} for {done.elapsed}</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="my-2 flex items-center gap-2">
+      <span className="shimmer-text text-xs">{BUSY_TEXTS[textIdx].present}</span>
+    </div>
+  );
+}
+
 export const MessageView = memo(function MessageView({
   messages,
   isStreaming,
@@ -517,9 +582,9 @@ export const MessageView = memo(function MessageView({
   return (
     <div
       ref={scrollRef}
-      className="flex-1 min-h-0 min-w-0 overflow-y-auto px-6 py-5 text-[13px] leading-6 font-sans antialiased"
+      className="flex-1 min-h-0 min-w-0 overflow-y-auto px-3 sm:px-5 py-5 text-[13px] leading-6 font-sans antialiased"
     >
-      <div className="w-full max-w-4xl mx-auto">
+      <div className="w-full max-w-3xl mx-auto min-w-0">
         {showHeader && <div className="flex justify-start pb-6"><Logo /></div>}
         {messages.filter(m => !m.hidden).map((message, index, filtered) => (
           <MessageBubble
@@ -533,6 +598,7 @@ export const MessageView = memo(function MessageView({
             onOpenDiff={onOpenDiff}
           />
         ))}
+        <ThinkingSpinner isStreaming={isStreaming} />
       </div>
     </div>
   );

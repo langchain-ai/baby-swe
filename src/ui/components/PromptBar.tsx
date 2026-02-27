@@ -345,8 +345,7 @@ export const PromptBar = memo(function PromptBar({ onSubmit, busy, projectPath, 
         </div>
       )}
 
-      <div className="flex items-start gap-2">
-        <span className="text-gray-400 select-none leading-[1.5]">❯</span>
+      <div className="rounded-2xl border border-[#2a3140] bg-[#172131]/95 px-3 py-3 min-h-[106px] flex flex-col shadow-[0_0_0_1px_rgba(255,255,255,0.02)_inset]">
         <textarea
           ref={inputRef}
           rows={1}
@@ -354,78 +353,77 @@ export const PromptBar = memo(function PromptBar({ onSubmit, busy, projectPath, 
           onChange={handleInputChange}
           onSelect={handleInputSelect}
           onKeyDown={handleKeyDown}
-          placeholder={busy ? 'Send a message to interrupt...' : ''}
-          className="flex-1 bg-transparent text-gray-200 outline-none placeholder-gray-600 resize-none overflow-hidden leading-[1.5]"
+          placeholder={busy ? "Send a message to interrupt..." : "Ask for follow-up changes"}
+          className="w-full flex-1 min-h-[52px] bg-transparent text-[color:var(--ui-text)] outline-none placeholder-[color:var(--ui-text-dim)] resize-none overflow-hidden leading-[1.45] min-w-0"
           style={{ maxHeight: 200 }}
         />
-      </div>
 
-      <div className="mt-2 text-xs text-gray-600 flex items-center gap-1.5 min-w-0">
-        <div ref={modeDropdownRef} className="relative">
-          <button
-            type="button"
-            onClick={() => setModeDropdownOpen(o => !o)}
-            className={`cursor-pointer hover:opacity-80 transition-opacity ${mode === 'agent' ? 'text-[#87CEEB]' : mode === 'plan' ? 'text-purple-400' : 'text-red-500'}`}
-          >
-            {mode}
-          </button>
-          {modeDropdownOpen && (
-            <div className={`absolute ${dropUp ? 'bottom-full mb-1' : 'top-full mt-1'} left-0 bg-gray-800 border border-gray-700 rounded shadow-lg overflow-hidden z-50`}>
-              {(['agent', 'plan', 'yolo'] as const).map(m => (
-                <button
-                  key={m}
-                  type="button"
-                  onClick={() => { setSessionMode(sessionId, m); setModeDropdownOpen(false); }}
-                  className={`block w-full text-left px-3 py-1.5 hover:bg-gray-700 transition-colors ${m === mode ? (m === 'agent' ? 'text-[#87CEEB]' : m === 'plan' ? 'text-purple-400' : 'text-red-500') : 'text-gray-400'}`}
-                >
-                  {m}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-        <span>·</span>
-        <div ref={modelDropdownRef} className="relative">
-          <button
-            type="button"
-            onClick={() => { setModelDropdownOpen(o => !o); setModelDropdownIndex(0); }}
-            className="cursor-pointer text-gray-500 hover:opacity-80 transition-opacity"
-          >
-            {MODELS[modelConfig.name] || modelConfig.name}
-          </button>
-          {modelDropdownOpen && (
-            <div className={`absolute ${dropUp ? 'bottom-full mb-1' : 'top-full mt-1'} left-0 bg-gray-800 border border-gray-700 rounded shadow-lg overflow-hidden z-50`}>
-              {AVAILABLE_MODELS.map((model, idx) => {
-                const isCurrent = model.id === modelConfig.name && (model.effort || 'default') === (modelConfig.effort || 'default');
-                return (
-                  <button
-                    key={`${model.id}-${model.effort ?? ''}`}
-                    type="button"
-                    onClick={() => { handleModelSelect(model); setModelDropdownOpen(false); }}
-                    onMouseEnter={() => setModelDropdownIndex(idx)}
-                    className={`block w-full text-left px-3 py-1.5 whitespace-nowrap transition-colors flex items-center gap-2 ${idx === modelDropdownIndex ? 'bg-gray-700' : 'hover:bg-gray-700'} ${isCurrent ? 'text-gray-200' : 'text-gray-400'}`}
-                  >
-                    {model.name}
-                    {isCurrent && <span className="ml-auto pl-3 text-gray-400">✓</span>}
-                  </button>
-                );
-              })}
-            </div>
-          )}
-        </div>
-        {projectPath && (
-          <>
-            <span>·</span>
+        <div className="mt-auto pt-2 text-xs text-[color:var(--ui-text-dim)] flex flex-wrap items-center gap-x-2 gap-y-1 min-w-0">
+          <div ref={modeDropdownRef} className="relative shrink-0">
             <button
               type="button"
-              onClick={onChangeDirectory}
-              className="text-gray-500 truncate hover:text-gray-300 transition-colors cursor-pointer"
+              onClick={() => setModeDropdownOpen(o => !o)}
+              className={`cursor-pointer hover:opacity-80 transition-opacity ${mode === 'agent' ? 'text-[#87CEEB]' : mode === 'plan' ? 'text-purple-400' : 'text-red-500'}`}
             >
-              {projectPath.split('/').filter(Boolean).pop()}
+              {mode}
             </button>
-          </>
-        )}
-        <div className="ml-auto flex items-center gap-1.5 min-w-0">
+            {modeDropdownOpen && (
+              <div className={`absolute ${dropUp ? 'bottom-full mb-1' : 'top-full mt-1'} left-0 bg-gray-800 border border-gray-700 rounded shadow-lg overflow-hidden z-50`}>
+                {(['agent', 'plan', 'yolo'] as const).map(m => (
+                  <button
+                    key={m}
+                    type="button"
+                    onClick={() => { setSessionMode(sessionId, m); setModeDropdownOpen(false); }}
+                    className={`block w-full text-left px-3 py-1.5 hover:bg-gray-700 transition-colors ${m === mode ? (m === 'agent' ? 'text-[#87CEEB]' : m === 'plan' ? 'text-purple-400' : 'text-red-500') : 'text-gray-400'}`}
+                  >
+                    {m}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          <span className="text-[#435069]">·</span>
+          <div ref={modelDropdownRef} className="relative shrink min-w-0">
+            <button
+              type="button"
+              onClick={() => { setModelDropdownOpen(o => !o); setModelDropdownIndex(0); }}
+              className="cursor-pointer text-[color:var(--ui-text-muted)] hover:opacity-80 transition-opacity truncate max-w-[180px]"
+            >
+              {MODELS[modelConfig.name] || modelConfig.name}
+            </button>
+            {modelDropdownOpen && (
+              <div className={`absolute ${dropUp ? 'bottom-full mb-1' : 'top-full mt-1'} left-0 bg-gray-800 border border-gray-700 rounded shadow-lg overflow-hidden z-50`}>
+                {AVAILABLE_MODELS.map((model, idx) => {
+                  const isCurrent = model.id === modelConfig.name && (model.effort || 'default') === (modelConfig.effort || 'default');
+                  return (
+                    <button
+                      key={`${model.id}-${model.effort ?? ''}`}
+                      type="button"
+                      onClick={() => { handleModelSelect(model); setModelDropdownOpen(false); }}
+                      onMouseEnter={() => setModelDropdownIndex(idx)}
+                      className={`block w-full text-left px-3 py-1.5 whitespace-nowrap transition-colors flex items-center gap-2 ${idx === modelDropdownIndex ? 'bg-gray-700' : 'hover:bg-gray-700'} ${isCurrent ? 'text-gray-200' : 'text-gray-400'}`}
+                    >
+                      {model.name}
+                      {isCurrent && <span className="ml-auto pl-3 text-gray-400">✓</span>}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+          {projectPath && (
+            <>
+              <span className="text-[#435069]">·</span>
+              <button
+                type="button"
+                onClick={onChangeDirectory}
+                className="text-[color:var(--ui-text-muted)] truncate hover:text-[color:var(--ui-text)] transition-colors cursor-pointer min-w-0 max-w-[180px]"
+              >
+                {projectPath.split('/').filter(Boolean).pop()}
+              </button>
+            </>
+          )}
+          <span className="ml-auto" />
           <ContextIndicator />
           {gitBranch && projectPath && (
             <>
@@ -439,11 +437,11 @@ export const PromptBar = memo(function PromptBar({ onSubmit, busy, projectPath, 
               />
               {githubPR && (
                 <>
-                  <span>·</span>
+                  <span className="text-[#435069]">·</span>
                   <a
                     href={githubPR.url}
                     onClick={e => { e.preventDefault(); window.open(githubPR.url, '_blank'); }}
-                    className="text-gray-500 hover:text-[#87CEEB] transition-colors shrink-0"
+                    className="text-[color:var(--ui-text-muted)] hover:text-[#87CEEB] transition-colors shrink-0"
                   >
                     #{githubPR.number}
                   </a>

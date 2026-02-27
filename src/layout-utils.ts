@@ -177,7 +177,7 @@ export function updateSplitRatio(
   }
 
   if (path.length === 1) {
-    return { ...layout, ratio: Math.max(0.1, Math.min(0.9, newRatio)) } as SplitNode;
+    return { ...layout, ratio: Math.max(0.03, Math.min(0.97, newRatio)) } as SplitNode;
   }
 
   const [head, ...rest] = path;
