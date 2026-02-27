@@ -478,7 +478,9 @@ export function TileContainer({
         <>
           {session.todos && session.todos.length > 0 && (
             <div className="px-4 shrink-0">
-              <TodoList todos={session.todos} />
+              <div className={`w-full ${PROMPT_CONTENT_WIDTH} mx-auto min-w-0`}>
+                <TodoList todos={session.todos} />
+              </div>
             </div>
           )}
           <div className="px-4 pb-4 shrink-0">
