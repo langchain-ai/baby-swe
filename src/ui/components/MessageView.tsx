@@ -276,7 +276,7 @@ function UserMessage({ message }: { message: Message }) {
           </div>
         )}
         {text && (
-          <span className="inline-block text-[color:var(--ui-bg)] text-[13px] bg-[var(--ui-accent)] px-3 py-1.5 rounded-2xl">
+          <span className="inline-block text-[color:var(--ui-text)] text-[13px] bg-[var(--ui-accent-bubble)] px-3 py-1.5 rounded-2xl">
             {text}
           </span>
         )}
