@@ -1,15 +1,9 @@
-import { memo, useState } from "react";
+import { memo, useState, useRef, useCallback } from "react";
 import type { ToolExecutionChunk } from "../../types";
 
 interface ShellCommandProps {
   chunk: ToolExecutionChunk;
   projectPath?: string;
-}
-
-function stripProjectPath(path: string, projectPath?: string): string {
-  if (!projectPath || !path.startsWith(projectPath)) return path;
-  const relative = path.slice(projectPath.length);
-  return relative.startsWith("/") ? "." + relative : "./" + relative;
 }
 
 function getHeaderText(chunk: ToolExecutionChunk): string {
@@ -22,10 +16,17 @@ function getHeaderText(chunk: ToolExecutionChunk): string {
 
 export const ShellCommand = memo(function ShellCommand({
   chunk,
-  projectPath,
 }: ShellCommandProps) {
   const isSettled = chunk.status === "success" || chunk.status === "error";
   const [expanded, setExpanded] = useState(!isSettled);
+  const [scrolledFromTop, setScrolledFromTop] = useState(false);
+  const outputRef = useRef<HTMLDivElement>(null);
+
+  const handleOutputScroll = useCallback(() => {
+    const el = outputRef.current;
+    if (!el) return;
+    setScrolledFromTop(el.scrollTop > 0);
+  }, []);
 
   const command = (chunk.toolArgs?.command as string) || "";
   const output = chunk.output || "";
@@ -51,18 +52,31 @@ export const ShellCommand = memo(function ShellCommand({
 
       {expanded && (
         <div className="rounded-xl bg-[var(--ui-accent-bubble)] mt-1 overflow-hidden max-h-[250px] flex flex-col">
-          <div className="px-3 py-2 font-mono text-xs overflow-y-auto min-h-0">
+          <div className="px-3 pt-2 pb-1 font-mono text-xs shrink-0">
             <div className="text-[color:var(--ui-text-dim)] mb-2">bash</div>
-            <div className="text-[color:var(--ui-text)]">
+            <div className="text-[color:var(--ui-text)] font-semibold whitespace-pre overflow-x-auto">
               <span className="text-[color:var(--ui-text-dim)]">$ </span>
               {command}
             </div>
-            {output && (
-              <pre className="mt-2 text-[color:var(--ui-text-muted)] whitespace-pre-wrap break-words text-xs">
+          </div>
+          {output && (
+            <div
+              ref={outputRef}
+              onScroll={handleOutputScroll}
+              className="relative min-h-0 flex-1 overflow-auto px-3 pb-1"
+            >
+              <div
+                className="sticky top-0 inset-x-0 h-6 -mb-6 pointer-events-none z-10 transition-opacity duration-200"
+                style={{
+                  opacity: scrolledFromTop ? 1 : 0,
+                  background: "linear-gradient(to bottom, var(--ui-accent-bubble), transparent)",
+                }}
+              />
+              <pre className="mt-1 text-[color:var(--ui-text-muted)] whitespace-pre font-mono text-xs">
                 {output}
               </pre>
-            )}
-          </div>
+            </div>
+          )}
           <div className="px-3 py-1.5 flex justify-end shrink-0">
             {chunk.status === "running" && (
               <span className="text-yellow-400 text-xs">Running...</span>
