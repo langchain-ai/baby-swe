@@ -20,12 +20,14 @@ export const ShellCommand = memo(function ShellCommand({
   const isSettled = chunk.status === "success" || chunk.status === "error";
   const [expanded, setExpanded] = useState(!isSettled);
   const [scrolledFromTop, setScrolledFromTop] = useState(false);
+  const [scrolledFromBottom, setScrolledFromBottom] = useState(true);
   const outputRef = useRef<HTMLDivElement>(null);
 
   const handleOutputScroll = useCallback(() => {
     const el = outputRef.current;
     if (!el) return;
     setScrolledFromTop(el.scrollTop > 0);
+    setScrolledFromBottom(el.scrollTop < el.scrollHeight - el.clientHeight - 1);
   }, []);
 
   const command = (chunk.toolArgs?.command as string) || "";
@@ -75,6 +77,13 @@ export const ShellCommand = memo(function ShellCommand({
               <pre className="mt-1 text-[color:var(--ui-text-muted)] whitespace-pre font-mono text-xs">
                 {output}
               </pre>
+              <div
+                className="sticky bottom-0 inset-x-0 h-6 -mt-6 pointer-events-none z-10 transition-opacity duration-200"
+                style={{
+                  opacity: scrolledFromBottom ? 1 : 0,
+                  background: "linear-gradient(to top, var(--ui-accent-bubble), transparent)",
+                }}
+              />
             </div>
           )}
           <div className="px-3 py-1.5 flex justify-end shrink-0">
