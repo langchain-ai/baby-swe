@@ -242,8 +242,27 @@ export function TileContainer({
   );
 
   const handleOpenDiff = useCallback(
-    (diffData: { filePath: string; originalContent: string; modifiedContent: string }) => {
+    async (diffData: { filePath: string; originalContent: string; modifiedContent: string }) => {
       const language = diffData.filePath.split(".").pop() ?? "plaintext";
+      const projectPath = tile?.project?.worktreePath || tile?.project?.path;
+
+      if (projectPath) {
+        try {
+          const workingTreeDiff = await window.git.diffFile(projectPath, diffData.filePath, false);
+          if (workingTreeDiff) {
+            openFileViewer({
+              filePath: diffData.filePath,
+              originalContent: workingTreeDiff.original,
+              modifiedContent: workingTreeDiff.modified,
+              language,
+            });
+            return;
+          }
+        } catch {
+          // Fall through to tool-provided diff data
+        }
+      }
+
       openFileViewer({
         filePath: diffData.filePath,
         originalContent: diffData.originalContent,
@@ -251,7 +270,7 @@ export function TileContainer({
         language,
       });
     },
-    [openFileViewer],
+    [openFileViewer, tile?.project?.path, tile?.project?.worktreePath],
   );
 
   const handleContainerClick = useCallback((event: ReactMouseEvent<HTMLDivElement>) => {

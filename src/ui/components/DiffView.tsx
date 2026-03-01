@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
+import { diffLines } from 'diff';
 import { getSingletonHighlighter, type ThemedToken } from 'shiki';
 import type { DiffData } from '../../types';
 
@@ -65,85 +66,62 @@ type DiffLineData = {
   newLineNum?: number;
 };
 
+function toLineArray(text: string): string[] {
+  if (text.length === 0) return [];
+  const lines = text.split('\n');
+  if (text.endsWith('\n')) lines.pop();
+  return lines;
+}
+
 function computeDiffLines(
   originalContent: string | null,
   newContent: string
 ): DiffLineData[] {
-  const oldLines = originalContent?.split('\n') ?? [];
-  const newLines = newContent.split('\n');
-
-  if (originalContent === null) {
-    return newLines.map((line, idx) => ({
-      type: 'add' as const,
-      text: line,
-      newLineNum: idx + 1,
-    }));
-  }
-
   const result: DiffLineData[] = [];
+  const parts = diffLines(originalContent ?? '', newContent, {
+    ignoreWhitespace: false,
+    newlineIsToken: false,
+  });
 
-  let i = 0;
-  let j = 0;
+  let oldLineNum = 1;
+  let newLineNum = 1;
 
-  while (i < oldLines.length || j < newLines.length) {
-    if (i < oldLines.length && j < newLines.length && oldLines[i] === newLines[j]) {
+  for (const part of parts) {
+    const lines = toLineArray(part.value);
+
+    if (part.added) {
+      for (const line of lines) {
+        result.push({
+          type: 'add',
+          text: line,
+          newLineNum,
+        });
+        newLineNum += 1;
+      }
+      continue;
+    }
+
+    if (part.removed) {
+      for (const line of lines) {
+        result.push({
+          type: 'remove',
+          text: line,
+          oldLineNum,
+        });
+        oldLineNum += 1;
+      }
+      continue;
+    }
+
+    for (const line of lines) {
       result.push({
         type: 'context',
-        text: oldLines[i],
-        oldLineNum: i + 1,
-        newLineNum: j + 1,
+        text: line,
+        oldLineNum,
+        newLineNum,
       });
-      i++;
-      j++;
-    } else {
-      let foundMatch = false;
-      for (let lookAhead = 1; lookAhead <= 5; lookAhead++) {
-        if (i + lookAhead < oldLines.length && j < newLines.length &&
-            oldLines[i + lookAhead] === newLines[j]) {
-          for (let k = 0; k < lookAhead; k++) {
-            result.push({
-              type: 'remove',
-              text: oldLines[i + k],
-              oldLineNum: i + k + 1,
-            });
-          }
-          i += lookAhead;
-          foundMatch = true;
-          break;
-        }
-        if (j + lookAhead < newLines.length && i < oldLines.length &&
-            newLines[j + lookAhead] === oldLines[i]) {
-          for (let k = 0; k < lookAhead; k++) {
-            result.push({
-              type: 'add',
-              text: newLines[j + k],
-              newLineNum: j + k + 1,
-            });
-          }
-          j += lookAhead;
-          foundMatch = true;
-          break;
-        }
-      }
-
-      if (!foundMatch) {
-        if (i < oldLines.length) {
-          result.push({
-            type: 'remove',
-            text: oldLines[i],
-            oldLineNum: i + 1,
-          });
-          i++;
-        }
-        if (j < newLines.length) {
-          result.push({
-            type: 'add',
-            text: newLines[j],
-            newLineNum: j + 1,
-          });
-          j++;
-        }
-      }
+      oldLineNum += 1;
+      newLineNum += 1;
     }
   }
 

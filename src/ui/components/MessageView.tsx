@@ -1,4 +1,5 @@
 import { useRef, useEffect, useLayoutEffect, useCallback, memo, useMemo, useState } from "react";
+import { diffLines } from "diff";
 import { CodeBlock } from "./CodeBlock";
 import { Markdown } from "./Markdown";
 import { ToolExecution } from "./ToolExecution";
@@ -121,59 +122,33 @@ export interface ChangedFileSummaryItem {
   modifiedContent: string;
 }
 
-function countLineChanges(originalContent: string | null, newContent: string): { additions: number; deletions: number } {
-  const oldLines = originalContent?.split("\n") ?? [];
-  const newLines = newContent.split("\n");
+function countLines(text: string): number {
+  if (text.length === 0) return 0;
+  const segments = text.split("\n");
+  return text.endsWith("\n") ? segments.length - 1 : segments.length;
+}
 
-  if (originalContent === null) {
-    return { additions: newLines.length, deletions: 0 };
-  }
+function countLineChanges(originalContent: string | null, newContent: string): { additions: number; deletions: number } {
+  const before = originalContent ?? "";
+  const parts = diffLines(before, newContent, {
+    ignoreWhitespace: false,
+    newlineIsToken: false,
+  });
 
   let additions = 0;
   let deletions = 0;
-  let i = 0;
-  let j = 0;
 
-  while (i < oldLines.length || j < newLines.length) {
-    if (i < oldLines.length && j < newLines.length && oldLines[i] === newLines[j]) {
-      i += 1;
-      j += 1;
-      continue;
-    }
-
-    let foundMatch = false;
-    for (let lookAhead = 1; lookAhead <= 5; lookAhead += 1) {
-      if (i + lookAhead < oldLines.length && j < newLines.length && oldLines[i + lookAhead] === newLines[j]) {
-        deletions += lookAhead;
-        i += lookAhead;
-        foundMatch = true;
-        break;
-      }
-      if (j + lookAhead < newLines.length && i < oldLines.length && newLines[j + lookAhead] === oldLines[i]) {
-        additions += lookAhead;
-        j += lookAhead;
-        foundMatch = true;
-        break;
-      }
-    }
-
-    if (!foundMatch) {
-      if (i < oldLines.length) {
-        deletions += 1;
-        i += 1;
-      }
-      if (j < newLines.length) {
-        additions += 1;
-        j += 1;
-      }
-    }
+  for (const part of parts) {
+    const lineCount = countLines(part.value);
+    if (part.added) additions += lineCount;
+    else if (part.removed) deletions += lineCount;
   }
 
   return { additions, deletions };
 }
 
 export function summarizeChangedFiles(chunks: Chunk[]): ChangedFileSummaryItem[] {
-  const byFile = new Map<string, ChangedFileSummaryItem>();
+  const byFile = new Map<string, { filePath: string; originalContent: string | null; modifiedContent: string }>();
 
   for (const chunk of chunks) {
     if (chunk.kind !== "tool-execution") continue;
@@ -181,17 +156,36 @@ export function summarizeChangedFiles(chunks: Chunk[]): ChangedFileSummaryItem[]
     if (chunk.status !== "success" && chunk.status !== "error") continue;
 
     const diffData = chunk.diffData as DiffData;
-    const { additions, deletions } = countLineChanges(diffData.originalContent, diffData.newContent);
+    const existing = byFile.get(diffData.filePath);
+
+    if (!existing) {
+      byFile.set(diffData.filePath, {
+        filePath: diffData.filePath,
+        originalContent: diffData.originalContent,
+        modifiedContent: diffData.newContent,
+      });
+      continue;
+    }
+
     byFile.set(diffData.filePath, {
-      filePath: diffData.filePath,
-      additions,
-      deletions,
-      originalContent: diffData.originalContent ?? "",
+      filePath: existing.filePath,
+      originalContent: existing.originalContent,
       modifiedContent: diffData.newContent,
     });
   }
 
-  return [...byFile.values()].sort((a, b) => a.filePath.localeCompare(b.filePath));
+  return [...byFile.values()]
+    .map((file) => {
+      const { additions, deletions } = countLineChanges(file.originalContent, file.modifiedContent);
+      return {
+        filePath: file.filePath,
+        additions,
+        deletions,
+        originalContent: file.originalContent ?? "",
+        modifiedContent: file.modifiedContent,
+      };
+    })
+    .sort((a, b) => a.filePath.localeCompare(b.filePath));
 }
 
 interface ApprovalCallbacks {
@@ -330,6 +324,13 @@ function AgentMessage({
     }
     return { additions, deletions };
   }, [changedFiles]);
+  const changedFilesByPath = useMemo(() => {
+    const byPath = new Map<string, ChangedFileSummaryItem>();
+    for (const file of changedFiles) {
+      byPath.set(file.filePath, file);
+    }
+    return byPath;
+  }, [changedFiles]);
 
   const exploredGroupIds = useMemo(
     () =>
@@ -418,7 +419,11 @@ function AgentMessage({
             );
           }
 
-          case "edit-item":
+          case "edit-item": {
+            const fullFileDiff = item.chunk.diffData
+              ? changedFilesByPath.get(item.chunk.diffData.filePath)
+              : undefined;
+
             return (
               <div key={item.key}>
                 <ToolExecution
@@ -428,9 +433,14 @@ function AgentMessage({
                   onReject={callbacks.onReject}
                   onAutoApprove={callbacks.onAutoApprove}
                   onOpenDiff={callbacks.onOpenDiff}
+                  resolvedDiffData={fullFileDiff ? {
+                    originalContent: fullFileDiff.originalContent,
+                    modifiedContent: fullFileDiff.modifiedContent,
+                  } : undefined}
                 />
               </div>
             );
+          }
 
           case "shell-item":
             return (

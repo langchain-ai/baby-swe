@@ -1,4 +1,5 @@
 import { memo } from "react";
+import { diffLines } from "diff";
 import type { ToolExecutionChunk } from "../../types";
 import { DiffView } from "./DiffView";
 
@@ -9,6 +10,7 @@ interface ToolExecutionProps {
   onReject?: (approvalRequestId: string) => void;
   onAutoApprove?: (approvalRequestId: string) => void;
   onOpenDiff?: (diffData: { filePath: string; originalContent: string; modifiedContent: string }) => void;
+  resolvedDiffData?: { originalContent: string; modifiedContent: string };
 }
 
 function stripProjectPath(path: string, projectPath?: string): string {
@@ -23,52 +25,26 @@ function getFileName(path: string): string {
   return parts[parts.length - 1] || path;
 }
 
-function countLineChanges(originalContent: string | null | undefined, newContent: string): { additions: number; deletions: number } {
-  const oldLines = originalContent?.split("\n") ?? [];
-  const newLines = newContent.split("\n");
+function countLines(text: string): number {
+  if (text.length === 0) return 0;
+  const segments = text.split("\n");
+  return text.endsWith("\n") ? segments.length - 1 : segments.length;
+}
 
-  if (originalContent === null || originalContent === undefined) {
-    return { additions: newLines.length, deletions: 0 };
-  }
+function countLineChanges(originalContent: string | null | undefined, newContent: string): { additions: number; deletions: number } {
+  const before = originalContent ?? "";
+  const parts = diffLines(before, newContent, {
+    ignoreWhitespace: false,
+    newlineIsToken: false,
+  });
 
   let additions = 0;
   let deletions = 0;
-  let i = 0;
-  let j = 0;
 
-  while (i < oldLines.length || j < newLines.length) {
-    if (i < oldLines.length && j < newLines.length && oldLines[i] === newLines[j]) {
-      i += 1;
-      j += 1;
-      continue;
-    }
-
-    let foundMatch = false;
-    for (let lookAhead = 1; lookAhead <= 5; lookAhead += 1) {
-      if (i + lookAhead < oldLines.length && j < newLines.length && oldLines[i + lookAhead] === newLines[j]) {
-        deletions += lookAhead;
-        i += lookAhead;
-        foundMatch = true;
-        break;
-      }
-      if (j + lookAhead < newLines.length && i < oldLines.length && newLines[j + lookAhead] === oldLines[i]) {
-        additions += lookAhead;
-        j += lookAhead;
-        foundMatch = true;
-        break;
-      }
-    }
-
-    if (!foundMatch) {
-      if (i < oldLines.length) {
-        deletions += 1;
-        i += 1;
-      }
-      if (j < newLines.length) {
-        additions += 1;
-        j += 1;
-      }
-    }
+  for (const part of parts) {
+    const lineCount = countLines(part.value);
+    if (part.added) additions += lineCount;
+    else if (part.removed) deletions += lineCount;
   }
 
   return { additions, deletions };
@@ -123,6 +99,7 @@ export const ToolExecution = memo(function ToolExecution({
   chunk,
   projectPath,
   onOpenDiff,
+  resolvedDiffData,
 }: ToolExecutionProps) {
   const { toolName, toolArgs, status, output, diffData } = chunk;
 
@@ -137,8 +114,8 @@ export const ToolExecution = memo(function ToolExecution({
     if (!diffData || !onOpenDiff) return;
     onOpenDiff({
       filePath: diffData.filePath,
-      originalContent: diffData.originalContent ?? "",
-      modifiedContent: diffData.newContent,
+      originalContent: resolvedDiffData?.originalContent ?? diffData.originalContent ?? "",
+      modifiedContent: resolvedDiffData?.modifiedContent ?? diffData.newContent,
     });
   };
 

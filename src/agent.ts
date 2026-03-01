@@ -323,9 +323,12 @@ function computeDiffData(
   } else {
     const oldString = (toolArgs.oldString as string) || (toolArgs.old_string as string) || '';
     const newString = (toolArgs.newString as string) || (toolArgs.new_string as string) || '';
+    const replaceAll = Boolean(toolArgs.replaceAll ?? toolArgs.replace_all);
 
     if (isNewFile) {
       newContent = newString;
+    } else if (replaceAll && oldString.length > 0) {
+      newContent = originalContent!.split(oldString).join(newString);
     } else {
       newContent = originalContent!.replace(oldString, newString);
     }
