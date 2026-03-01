@@ -2,7 +2,7 @@ import { useRef, useEffect, useLayoutEffect, useCallback, memo, useMemo, useStat
 import { CodeBlock } from "./CodeBlock";
 import { Markdown } from "./Markdown";
 import { ToolExecution } from "./ToolExecution";
-import { ToolGroup } from "./ToolGroup";
+import { ShellCommand } from "./ShellCommand";
 import { Logo } from "./Logo";
 import type {
   Chunk,
@@ -12,68 +12,12 @@ import type {
   DiffData,
 } from "../../types";
 
-type ToolGroupType =
-  | "read"
-  | "search"
-  | "write"
-  | "execute"
-  | "tasks"
-  | "other";
-
-type GroupedItem =
-  | {
-      type: "chunk";
-      chunk: Chunk;
-      key: string;
-    }
-  | {
-      type: "tool-group";
-      groupType: ToolGroupType;
-      tools: ToolExecutionChunk[];
-      key: string;
-    };
-
-interface RunSplit {
-  hasTools: boolean;
-  hasPendingApproval: boolean;
-  activityChunks: Chunk[];
-  finalChunks: Chunk[];
-}
-
-type ActivityRenderItem =
-  | {
-      type: "explored-group";
-      id: string;
-      key: string;
-      chunks: ToolExecutionChunk[];
-    }
-  | {
-      type: "chunk";
-      key: string;
-      chunk: Chunk;
-    };
-
-function getToolGroupType(toolName: string): ToolGroupType {
-  switch (toolName) {
-    case "read_file":
-      return "read";
-    case "glob":
-    case "search":
-    case "grep":
-    case "list_dir":
-    case "ls":
-      return "search";
-    case "write_file":
-    case "edit_file":
-      return "write";
-    case "execute":
-      return "execute";
-    case "write_todos":
-      return "tasks";
-    default:
-      return "other";
-  }
-}
+type RenderItem =
+  | { type: "text-chunk"; key: string; chunk: Chunk }
+  | { type: "explored-group"; key: string; id: string; chunks: ToolExecutionChunk[] }
+  | { type: "edit-item"; key: string; chunk: ToolExecutionChunk }
+  | { type: "shell-item"; key: string; chunk: ToolExecutionChunk }
+  | { type: "tool-item"; key: string; chunk: ToolExecutionChunk };
 
 function getChunkRenderKey(chunk: Chunk, sourceIndex: number): string {
   switch (chunk.kind) {
@@ -94,145 +38,36 @@ function getChunkRenderKey(chunk: Chunk, sourceIndex: number): string {
   }
 }
 
-function groupChunksForRender(chunks: Chunk[]): GroupedItem[] {
-  const result: GroupedItem[] = [];
-  let currentToolGroup: ToolExecutionChunk[] = [];
-  let currentGroupType: ToolGroupType | null = null;
-  let currentGroupStartIndex = -1;
-
-  const flushToolGroup = () => {
-    if (currentToolGroup.length === 0 || !currentGroupType) return;
-
-    const firstToolCallId = currentToolGroup[0]?.toolCallId;
-    result.push({
-      type: "tool-group",
-      groupType: currentGroupType,
-      tools: [...currentToolGroup],
-      key: `tool-group-${currentGroupType}-${firstToolCallId || currentGroupStartIndex}`,
-    });
-
-    currentToolGroup = [];
-    currentGroupType = null;
-    currentGroupStartIndex = -1;
-  };
-
-  for (let i = 0; i < chunks.length; i += 1) {
-    const chunk = chunks[i];
-
-    if (chunk.kind === "tool-execution") {
-      const groupType = getToolGroupType(chunk.toolName);
-
-      if (currentGroupType === null) {
-        currentGroupType = groupType;
-        currentToolGroup.push(chunk);
-        currentGroupStartIndex = i;
-      } else if (currentGroupType === groupType) {
-        currentToolGroup.push(chunk);
-      } else {
-        flushToolGroup();
-        currentGroupType = groupType;
-        currentToolGroup.push(chunk);
-        currentGroupStartIndex = i;
-      }
-      continue;
-    }
-
-    flushToolGroup();
-    result.push({
-      type: "chunk",
-      chunk,
-      key: getChunkRenderKey(chunk, i),
-    });
-  }
-
-  flushToolGroup();
-  return result;
-}
-
-function splitRunChunks(chunks: Chunk[]): RunSplit {
-  let lastToolIndex = -1;
-  let hasPendingApproval = false;
-
-  for (let i = 0; i < chunks.length; i++) {
-    const chunk = chunks[i];
-    if (chunk.kind === "tool-execution") {
-      lastToolIndex = i;
-      if (chunk.status === "pending-approval") {
-        hasPendingApproval = true;
-      }
-    }
-  }
-
-  if (lastToolIndex === -1) {
-    return {
-      hasTools: false,
-      hasPendingApproval: false,
-      activityChunks: [],
-      finalChunks: chunks,
-    };
-  }
-
-  let firstFinalIndex = -1;
-  for (let i = lastToolIndex + 1; i < chunks.length; i++) {
-    const chunk = chunks[i];
-    if (chunk.kind === "tool-execution") continue;
-
-    if (chunk.kind === "text" && !chunk.text.trim()) {
-      continue;
-    }
-
-    firstFinalIndex = i;
-    break;
-  }
-
-  if (firstFinalIndex === -1) {
-    return {
-      hasTools: true,
-      hasPendingApproval,
-      activityChunks: chunks,
-      finalChunks: [],
-    };
-  }
-
-  return {
-    hasTools: true,
-    hasPendingApproval,
-    activityChunks: chunks.slice(0, firstFinalIndex),
-    finalChunks: chunks.slice(firstFinalIndex),
-  };
-}
-
-function isExplorationChunk(chunk: ToolExecutionChunk): boolean {
-  const groupType = getToolGroupType(chunk.toolName);
-
-  // Edited files and command executions should always stay inline.
-  if (groupType === "write" || groupType === "execute") return false;
+function isExplorationTool(chunk: ToolExecutionChunk): boolean {
   if (chunk.diffData) return false;
-
-  return groupType === "read" || groupType === "search";
+  switch (chunk.toolName) {
+    case "read_file":
+    case "glob":
+    case "search":
+    case "grep":
+    case "list_dir":
+    case "ls":
+      return true;
+    default:
+      return false;
+  }
 }
 
-function getExploredGroupId(chunks: ToolExecutionChunk[], startIndex: number): string {
-  const firstId = chunks[0]?.toolCallId;
-  return `explored-${firstId || startIndex}`;
-}
-
-function buildActivityRenderItems(chunks: Chunk[]): ActivityRenderItem[] {
-  const items: ActivityRenderItem[] = [];
+function buildRenderItems(chunks: Chunk[]): RenderItem[] {
+  const items: RenderItem[] = [];
   let exploredBuffer: ToolExecutionChunk[] = [];
   let exploredStartIndex = -1;
 
-  const flushExploredBuffer = () => {
+  const flushExplored = () => {
     if (exploredBuffer.length === 0) return;
-
-    const id = getExploredGroupId(exploredBuffer, exploredStartIndex);
+    const firstId = exploredBuffer[0]?.toolCallId;
+    const id = `explored-${firstId || exploredStartIndex}`;
     items.push({
       type: "explored-group",
-      id,
       key: id,
+      id,
       chunks: [...exploredBuffer],
     });
-
     exploredBuffer = [];
     exploredStartIndex = -1;
   };
@@ -240,59 +75,42 @@ function buildActivityRenderItems(chunks: Chunk[]): ActivityRenderItem[] {
   for (let i = 0; i < chunks.length; i += 1) {
     const chunk = chunks[i];
 
-    if (chunk.kind === "tool-execution" && isExplorationChunk(chunk)) {
-      if (exploredBuffer.length === 0) {
-        exploredStartIndex = i;
+    if (chunk.kind === "tool-execution") {
+      if (isExplorationTool(chunk)) {
+        if (exploredBuffer.length === 0) exploredStartIndex = i;
+        exploredBuffer.push(chunk);
+        continue;
       }
-      exploredBuffer.push(chunk);
+
+      flushExplored();
+
+      if (chunk.toolName === "write_file" || chunk.toolName === "edit_file") {
+        items.push({ type: "edit-item", key: `tool-${chunk.toolCallId}`, chunk });
+      } else if (chunk.toolName === "execute") {
+        items.push({ type: "shell-item", key: `tool-${chunk.toolCallId}`, chunk });
+      } else {
+        items.push({ type: "tool-item", key: `tool-${chunk.toolCallId}`, chunk });
+      }
       continue;
     }
 
-    if (chunk.kind === "text" && !chunk.text.trim()) {
-      continue;
-    }
+    if (chunk.kind === "text" && !chunk.text.trim()) continue;
 
-    flushExploredBuffer();
+    flushExplored();
     items.push({
-      type: "chunk",
+      type: "text-chunk",
       key: getChunkRenderKey(chunk, i),
       chunk,
     });
   }
 
-  flushExploredBuffer();
+  flushExplored();
   return items;
 }
 
 function summarizeExploration(chunks: ToolExecutionChunk[]): string {
-  let readFiles = 0;
-  let searches = 0;
-  let lists = 0;
-  let steps = 0;
-
-  for (const chunk of chunks) {
-    steps += 1;
-    const groupType = getToolGroupType(chunk.toolName);
-    if (groupType === "read") readFiles += 1;
-    if (groupType === "search") searches += 1;
-    if (chunk.toolName === "list_dir" || chunk.toolName === "ls") lists += 1;
-  }
-
-  if (readFiles > 0 || searches > 0 || lists > 0) {
-    const parts: string[] = [];
-    if (readFiles > 0) {
-      parts.push(`${readFiles} file${readFiles === 1 ? "" : "s"}`);
-    }
-    if (searches > 0) {
-      parts.push(`${searches} search${searches === 1 ? "" : "es"}`);
-    }
-    if (lists > 0) {
-      parts.push(`${lists} list${lists === 1 ? "" : "s"}`);
-    }
-    return `Explored ${parts.join(", ")}`;
-  }
-
-  return `Explored ${steps} step${steps === 1 ? "" : "s"}`;
+  const count = chunks.length;
+  return `Explored ${count} file${count === 1 ? "" : "s"}`;
 }
 
 export interface ChangedFileSummaryItem {
@@ -413,9 +231,8 @@ function formatElapsed(ms: number): string {
 function ChunkRenderer({
   chunk,
   projectPath,
-  flatTools,
   ...callbacks
-}: { chunk: Chunk; projectPath?: string; flatTools?: boolean } & ApprovalCallbacks) {
+}: { chunk: Chunk; projectPath?: string } & ApprovalCallbacks) {
   switch (chunk.kind) {
     case "text":
       return (
@@ -444,7 +261,6 @@ function ChunkRenderer({
           onReject={callbacks.onReject}
           onAutoApprove={callbacks.onAutoApprove}
           onOpenDiff={callbacks.onOpenDiff}
-          flat={flatTools}
         />
       );
     case "image":
@@ -503,7 +319,7 @@ function AgentMessage({
   isStreaming?: boolean;
   projectPath?: string;
 } & ApprovalCallbacks) {
-  const runSplit = useMemo(() => splitRunChunks(message.chunks), [message.chunks]);
+  const renderItems = useMemo(() => buildRenderItems(message.chunks), [message.chunks]);
   const changedFiles = useMemo(() => summarizeChangedFiles(message.chunks), [message.chunks]);
   const changedFilesTotals = useMemo(() => {
     let additions = 0;
@@ -514,45 +330,28 @@ function AgentMessage({
     }
     return { additions, deletions };
   }, [changedFiles]);
-  const groupedItems = useMemo(() => {
-    if (!runSplit.hasTools) {
-      return groupChunksForRender(runSplit.finalChunks);
-    }
-    if (runSplit.hasPendingApproval) {
-      return [];
-    }
-    return groupChunksForRender(runSplit.finalChunks);
-  }, [runSplit]);
-  const activityItems = useMemo(() => {
-    if (!runSplit.hasTools || runSplit.hasPendingApproval) {
-      return [];
-    }
-    return buildActivityRenderItems(runSplit.activityChunks);
-  }, [runSplit]);
-  const hasExploredGroups = useMemo(
-    () => activityItems.some((item) => item.type === "explored-group"),
-    [activityItems],
-  );
+
   const exploredGroupIds = useMemo(
     () =>
-      activityItems
-        .filter((item): item is Extract<ActivityRenderItem, { type: "explored-group" }> => item.type === "explored-group")
+      renderItems
+        .filter((item): item is Extract<RenderItem, { type: "explored-group" }> => item.type === "explored-group")
         .map((item) => item.id),
-    [activityItems],
+    [renderItems],
   );
+  const hasExploredGroups = exploredGroupIds.length > 0;
   const [expandedExploredGroups, setExpandedExploredGroups] = useState<Record<string, boolean>>({});
   const wasExplorationLiveRef = useRef(false);
 
   useEffect(() => {
-    const isExplorationLive = isStreaming || runSplit.hasPendingApproval;
+    const isLive = !!isStreaming;
 
     if (!hasExploredGroups) {
       setExpandedExploredGroups({});
-      wasExplorationLiveRef.current = isExplorationLive;
+      wasExplorationLiveRef.current = isLive;
       return;
     }
 
-    if (isExplorationLive) {
+    if (isLive) {
       const next: Record<string, boolean> = {};
       for (const id of exploredGroupIds) {
         next[id] = true;
@@ -571,24 +370,20 @@ function AgentMessage({
 
       const prevKeys = Object.keys(prev);
       const nextKeys = Object.keys(next);
-      if (prevKeys.length !== nextKeys.length) {
-        return next;
-      }
+      if (prevKeys.length !== nextKeys.length) return next;
       for (const key of nextKeys) {
-        if (prev[key] !== next[key]) {
-          return next;
-        }
+        if (prev[key] !== next[key]) return next;
       }
       return prev;
     });
     wasExplorationLiveRef.current = false;
-  }, [hasExploredGroups, isStreaming, runSplit.hasPendingApproval, exploredGroupIds, message.id]);
+  }, [hasExploredGroups, isStreaming, exploredGroupIds, message.id]);
 
   return (
     <div className="my-2 space-y-2">
-      {!runSplit.hasPendingApproval &&
-        activityItems.map((item) => {
-          if (item.type === "explored-group") {
+      {renderItems.map((item) => {
+        switch (item.type) {
+          case "explored-group": {
             const summary = summarizeExploration(item.chunks);
             const isExpanded = expandedExploredGroups[item.id] ?? false;
             return (
@@ -610,11 +405,10 @@ function AgentMessage({
                   <div className="pt-1 pb-1 space-y-0.5">
                     {item.chunks.map((chunk, chunkIndex) => (
                       <div key={chunk.toolCallId || `explored-chunk-${item.id}-${chunkIndex}`} className="flex-1 min-w-0 text-gray-500">
-                        <ChunkRenderer
+                        <ToolExecution
                           chunk={chunk}
                           projectPath={projectPath}
-                          flatTools
-                          {...callbacks}
+                          onOpenDiff={callbacks.onOpenDiff}
                         />
                       </div>
                     ))}
@@ -624,38 +418,47 @@ function AgentMessage({
             );
           }
 
-          return (
-            <div key={item.key} className="flex-1 min-w-0">
-              <ChunkRenderer
-                chunk={item.chunk}
-                projectPath={projectPath}
-                flatTools
-                {...callbacks}
-              />
-            </div>
-          );
-        })}
-
-      {runSplit.hasPendingApproval && (
-        <div className="space-y-1">
-          {groupChunksForRender(message.chunks).map((item) => {
-            if (item.type === "tool-group") {
-              return (
-                <ToolGroup
-                  key={`pending-${item.key}`}
-                  groupType={item.groupType}
-                  tools={item.tools}
+          case "edit-item":
+            return (
+              <div key={item.key}>
+                <ToolExecution
+                  chunk={item.chunk}
                   projectPath={projectPath}
                   onApprove={callbacks.onApprove}
                   onReject={callbacks.onReject}
                   onAutoApprove={callbacks.onAutoApprove}
                   onOpenDiff={callbacks.onOpenDiff}
                 />
-              );
-            }
+              </div>
+            );
 
+          case "shell-item":
             return (
-              <div key={`pending-${item.key}`} className="flex-1 min-w-0">
+              <div key={item.key}>
+                <ShellCommand
+                  chunk={item.chunk}
+                  projectPath={projectPath}
+                />
+              </div>
+            );
+
+          case "tool-item":
+            return (
+              <div key={item.key}>
+                <ToolExecution
+                  chunk={item.chunk}
+                  projectPath={projectPath}
+                  onApprove={callbacks.onApprove}
+                  onReject={callbacks.onReject}
+                  onAutoApprove={callbacks.onAutoApprove}
+                  onOpenDiff={callbacks.onOpenDiff}
+                />
+              </div>
+            );
+
+          case "text-chunk":
+            return (
+              <div key={item.key} className="flex-1 min-w-0">
                 <ChunkRenderer
                   chunk={item.chunk}
                   projectPath={projectPath}
@@ -663,35 +466,7 @@ function AgentMessage({
                 />
               </div>
             );
-          })}
-        </div>
-      )}
-
-      {groupedItems.map((item) => {
-        if (item.type === "tool-group") {
-          return (
-            <ToolGroup
-              key={item.key}
-              groupType={item.groupType}
-              tools={item.tools}
-              projectPath={projectPath}
-              onApprove={callbacks.onApprove}
-              onReject={callbacks.onReject}
-              onAutoApprove={callbacks.onAutoApprove}
-              onOpenDiff={callbacks.onOpenDiff}
-            />
-          );
         }
-
-        return (
-          <div key={item.key} className="flex-1 min-w-0">
-            <ChunkRenderer
-              chunk={item.chunk}
-              projectPath={projectPath}
-              {...callbacks}
-            />
-          </div>
-        );
       })}
 
       {changedFiles.length > 0 && !isStreaming && (

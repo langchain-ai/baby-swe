@@ -9,7 +9,6 @@ interface ToolExecutionProps {
   onReject?: (approvalRequestId: string) => void;
   onAutoApprove?: (approvalRequestId: string) => void;
   onOpenDiff?: (diffData: { filePath: string; originalContent: string; modifiedContent: string }) => void;
-  flat?: boolean;
 }
 
 function stripProjectPath(path: string, projectPath?: string): string {
@@ -81,31 +80,12 @@ function getToolDisplayName(
   projectPath?: string,
 ): string {
   switch (toolName) {
-    case "execute": {
-      const cmd = (toolArgs?.command as string) || "";
-      const truncated = cmd.length > 60 ? cmd.slice(0, 60) + "..." : cmd;
-      return `Bash(${truncated})`;
-    }
     case "list_dir": {
       const path = stripProjectPath(
         (toolArgs?.path as string) || (toolArgs?.directory as string) || ".",
         projectPath,
       );
       return `List(${path})`;
-    }
-    case "write_file": {
-      const path = stripProjectPath(
-        (toolArgs?.filePath as string) || (toolArgs?.path as string) || "file",
-        projectPath,
-      );
-      return `Write(${path})`;
-    }
-    case "edit_file": {
-      const path = stripProjectPath(
-        (toolArgs?.filePath as string) || (toolArgs?.path as string) || "file",
-        projectPath,
-      );
-      return `Update(${path})`;
     }
     case "read_file": {
       const path = stripProjectPath(
@@ -121,8 +101,7 @@ function getToolDisplayName(
     }
     case "grep": {
       const pattern = (toolArgs?.pattern as string) || "";
-      const truncated =
-        pattern.length > 40 ? pattern.slice(0, 40) + "..." : pattern;
+      const truncated = pattern.length > 40 ? pattern.slice(0, 40) + "..." : pattern;
       return `Search(pattern: "${truncated}")`;
     }
     case "web_search": {
@@ -140,85 +119,19 @@ function getToolDisplayName(
   }
 }
 
-function getToolSummary(
-  toolName: string,
-  toolArgs: Record<string, unknown>,
-  output?: string,
-  status?: string,
-): string {
-  if (status === "running") return "Running...";
-  if (status === "error") return output?.slice(0, 80) || "Error";
-
-  switch (toolName) {
-    case "execute": {
-      const lines = output?.split("\n").filter((l) => l.trim()).length || 0;
-      return lines > 0 ? `${lines} lines` : "No output";
-    }
-    case "read_file": {
-      const lines = output?.split("\n").length || 0;
-      return `Read ${lines} lines`;
-    }
-    case "write_file":
-    case "edit_file": {
-      return "File updated";
-    }
-    case "list_dir": {
-      const items = output?.split("\n").filter((l) => l.trim()).length || 0;
-      return `${items} items`;
-    }
-    case "glob":
-    case "search": {
-      const files = output?.split("\n").filter((l) => l.trim()).length || 0;
-      return `Found ${files} files`;
-    }
-    case "grep": {
-      const matches = output?.split("\n").filter((l) => l.trim()).length || 0;
-      return `Found ${matches} matches`;
-    }
-    case "write_todos": {
-      const todos = (toolArgs?.todos as Array<{ status: string }>) || [];
-      const completed = todos.filter((t) => t.status === "completed").length;
-      return `${completed}/${todos.length} completed`;
-    }
-    default:
-      return output?.slice(0, 60) || "Done";
-  }
-}
-
 export const ToolExecution = memo(function ToolExecution({
   chunk,
   projectPath,
   onOpenDiff,
-  flat = false,
 }: ToolExecutionProps) {
-  const {
-    toolName,
-    toolArgs,
-    status,
-    output,
-    diffData,
-  } = chunk;
-
-  const displayName = getToolDisplayName(toolName, toolArgs || {}, projectPath);
-
-  const statusTextClass =
-    status === "error"
-      ? "text-red-400"
-      : status === "running" || status === "pending-approval"
-        ? "text-yellow-400"
-        : "text-[color:var(--ui-text-muted)]";
+  const { toolName, toolArgs, status, output, diffData } = chunk;
 
   const isFileOp = toolName === "write_file" || toolName === "edit_file";
   const isCompletedFileOp = isFileOp && diffData && (status === "success" || status === "error");
-  const showDiff = isFileOp && diffData;
   const canOpenInEditor = isCompletedFileOp && onOpenDiff;
-  const summary = getToolSummary(toolName, toolArgs || {}, output, status);
   const editedFilePath = diffData ? stripProjectPath(diffData.filePath, projectPath) : "";
   const editedFileName = editedFilePath ? getFileName(editedFilePath) : "";
   const diffStats = diffData ? countLineChanges(diffData.originalContent, diffData.newContent) : null;
-
-  const hasContent =
-    status === "pending-approval" || status === "running" || summary;
 
   const handleOpenDiff = () => {
     if (!diffData || !onOpenDiff) return;
@@ -229,85 +142,77 @@ export const ToolExecution = memo(function ToolExecution({
     });
   };
 
-  if (flat) {
-    if (isCompletedFileOp && diffStats && diffData) {
-      const row = (
-        <>
-          <span className={status === "error" ? "text-red-400 truncate" : "text-[color:var(--ui-accent)] truncate"}>
-            Edited {editedFileName || editedFilePath || diffData.filePath}
-          </span>
-          <span className="text-green-400 shrink-0">+{diffStats.additions}</span>
-          <span className="text-red-400 shrink-0">-{diffStats.deletions}</span>
-        </>
-      );
+  if (isCompletedFileOp && diffStats && diffData) {
+    const row = (
+      <>
+        <span className={status === "error" ? "text-red-400 truncate" : "text-[color:var(--ui-accent)] truncate"}>
+          Edited {editedFileName || editedFilePath || diffData.filePath}
+        </span>
+        <span className="text-green-400 shrink-0">+{diffStats.additions}</span>
+        <span className="text-red-400 shrink-0">-{diffStats.deletions}</span>
+      </>
+    );
 
-      if (canOpenInEditor) {
-        return (
-          <div className="my-0.5 text-[12px] leading-5">
-            <button
-              type="button"
-              onClick={handleOpenDiff}
-              className="w-full flex items-center gap-2 text-left hover:opacity-90 transition-opacity"
-              title={`Open diff for ${editedFilePath || diffData.filePath}`}
-            >
-              {row}
-            </button>
-          </div>
-        );
-      }
-
+    if (canOpenInEditor) {
       return (
         <div className="my-0.5 text-[12px] leading-5">
-          <div className="w-full flex items-center gap-2 text-left">{row}</div>
+          <button
+            type="button"
+            onClick={handleOpenDiff}
+            className="w-full flex items-center gap-2 text-left hover:opacity-90 transition-opacity"
+            title={`Open diff for ${editedFilePath || diffData.filePath}`}
+          >
+            {row}
+          </button>
         </div>
       );
     }
 
     return (
       <div className="my-0.5 text-[12px] leading-5">
-        <div className="flex items-center gap-2 min-w-0">
-          <span className={`${statusTextClass} truncate`}>{displayName}</span>
-          {status === "error" && summary && (
-            <span className="text-red-400/80 truncate">{summary}</span>
-          )}
-        </div>
+        <div className="w-full flex items-center gap-2 text-left">{row}</div>
       </div>
     );
   }
 
+  if (isFileOp && status === "pending-approval" && diffData) {
+    return (
+      <div className="my-1 text-[12px] leading-5">
+        <DiffView diffData={diffData} />
+        <span className="text-[color:var(--ui-text-dim)]">Waiting for approval...</span>
+      </div>
+    );
+  }
+
+  if (isFileOp && status === "running") {
+    const path = stripProjectPath(
+      ((toolArgs as Record<string, unknown>)?.filePath as string) ||
+      ((toolArgs as Record<string, unknown>)?.path as string) || "file",
+      projectPath,
+    );
+    return (
+      <div className="my-0.5 text-[12px] leading-5">
+        <span className="text-yellow-400">Editing {getFileName(path)}...</span>
+      </div>
+    );
+  }
+
+  const displayName = getToolDisplayName(toolName, toolArgs || {}, projectPath);
+  const statusTextClass =
+    status === "error"
+      ? "text-red-400"
+      : status === "running" || status === "pending-approval"
+        ? "text-yellow-400"
+        : "text-[color:var(--ui-text-muted)]";
+
   return (
-    <div className="my-1 text-[12px] leading-5">
-      <div className="flex items-start gap-2">
-        <span className={statusTextClass}>{displayName}</span>
-        {canOpenInEditor && (
-          <button
-            onClick={handleOpenDiff}
-            className="text-[color:var(--ui-text-dim)] hover:text-[color:var(--ui-accent)] transition-colors text-xs"
-            title="Open diff in editor"
-          >
-            [diff]
-          </button>
+    <div className="my-0.5 text-[12px] leading-5">
+      <div className="flex items-center gap-2 min-w-0">
+        <span className={`${statusTextClass} truncate`}>{displayName}</span>
+        {status === "error" && output && (
+          <span className="text-red-400/80 truncate">{output.slice(0, 80)}</span>
         )}
       </div>
-
-      {hasContent && (
-        <div className="pl-4">
-          <div className="flex-1 min-w-0">
-            {status === "pending-approval" ? (
-              <>
-                {showDiff && <DiffView diffData={diffData!} />}
-                <span className="text-[color:var(--ui-text-dim)]">Waiting for approval...</span>
-              </>
-            ) : status === "running" ? (
-              <span className="text-[color:var(--ui-text-dim)]">Running...</span>
-            ) : showDiff ? (
-              <DiffView diffData={diffData!} />
-            ) : (
-              <span className="text-[color:var(--ui-text-dim)]">{summary}</span>
-            )}
-          </div>
-        </div>
-      )}
     </div>
   );
 });
