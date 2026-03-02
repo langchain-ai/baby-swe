@@ -30,6 +30,8 @@ const QUICK_START_SHORTCUTS = [
   { combo: 'Cmd/Ctrl+H', description: 'Open full shortcuts + commands' },
 ] as const;
 
+const QUICK_START_SEEN_KEY = 'baby-swe.quick-start-seen';
+
 export function App() {
   const workspaces = useStore(state => state.workspaces);
   const activeWorkspaceIndex = useStore(state => state.activeWorkspaceIndex);
@@ -37,7 +39,7 @@ export function App() {
   const showApiKeysScreen = useStore(state => state.showApiKeysScreen);
   const apiKeys = useStore(state => state.apiKeys);
   const [showShortcutDialog, setShowShortcutDialog] = useState(false);
-  const [showQuickStartDialog, setShowQuickStartDialog] = useState(true);
+  const [showQuickStartDialog, setShowQuickStartDialog] = useState(false);
   const commandList = useMemo(
     () => getAllCommands().slice().sort((a, b) => a.name.localeCompare(b.name)),
     [],
@@ -87,6 +89,24 @@ export function App() {
     loadModelConfig();
     loadPermissionMode();
   }, [loadRecentProjects, loadApiKeys, loadModelConfig, loadPermissionMode]);
+
+  useEffect(() => {
+    try {
+      const hasSeenQuickStart = localStorage.getItem(QUICK_START_SEEN_KEY) === 'true';
+      setShowQuickStartDialog(!hasSeenQuickStart);
+    } catch {
+      setShowQuickStartDialog(true);
+    }
+  }, []);
+
+  const dismissQuickStartDialog = useCallback(() => {
+    try {
+      localStorage.setItem(QUICK_START_SEEN_KEY, 'true');
+    } catch {
+      // Ignore storage write failures and still close the dialog
+    }
+    setShowQuickStartDialog(false);
+  }, []);
 
   useEffect(() => {
     const unsubscribe = window.tile.onProjectChanged((tileId, project) => {
@@ -173,14 +193,14 @@ export function App() {
     if (isMod && !e.shiftKey && !e.altKey && key === 'h') {
       e.preventDefault();
       setShowShortcutDialog((prev) => !prev);
-      setShowQuickStartDialog(false);
+      dismissQuickStartDialog();
       return;
     }
 
     if (showQuickStartDialog) {
       if (e.key === 'Escape') {
         e.preventDefault();
-        setShowQuickStartDialog(false);
+        dismissQuickStartDialog();
       }
       return;
     }
@@ -316,6 +336,7 @@ export function App() {
     switchWorkspaceRelative,
     toggleSplitDirection,
     abortStream,
+    dismissQuickStartDialog,
     showQuickStartDialog,
     showShortcutDialog,
   ]);
@@ -344,7 +365,7 @@ export function App() {
   const quickStartDialog = showQuickStartDialog ? (
     <div
       className="fixed inset-0 z-50 bg-black/55 flex items-center justify-center p-4"
-      onClick={() => setShowQuickStartDialog(false)}
+      onClick={dismissQuickStartDialog}
     >
       <div
         className="w-full max-w-xl rounded-xl border border-[var(--ui-border)] bg-[var(--ui-accent-bubble)] overflow-hidden shadow-2xl"
@@ -372,7 +393,7 @@ export function App() {
           <button
             type="button"
             className="text-xs font-medium text-[color:var(--ui-text)] bg-[var(--ui-panel-2)] border border-[var(--ui-border)] hover:bg-[var(--ui-surface)] transition-colors rounded px-3 py-1.5"
-            onClick={() => setShowQuickStartDialog(false)}
+            onClick={dismissQuickStartDialog}
           >
             Got it
           </button>
