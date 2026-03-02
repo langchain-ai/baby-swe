@@ -22,6 +22,14 @@ const KEYBOARD_SHORTCUTS = [
   { combo: 'Escape', description: 'Close dialog or cancel active stream' },
 ] as const;
 
+const QUICK_START_SHORTCUTS = [
+  { combo: 'Cmd/Ctrl+T', description: 'New agent tile' },
+  { combo: 'Cmd/Ctrl+Shift+T', description: 'New terminal tile' },
+  { combo: 'Cmd/Ctrl+1-5', description: 'Switch workspace' },
+  { combo: 'Cmd/Ctrl+←/→/↑/↓', description: 'Focus adjacent tile' },
+  { combo: 'Cmd/Ctrl+H', description: 'Open full shortcuts + commands' },
+] as const;
+
 export function App() {
   const workspaces = useStore(state => state.workspaces);
   const activeWorkspaceIndex = useStore(state => state.activeWorkspaceIndex);
@@ -29,6 +37,7 @@ export function App() {
   const showApiKeysScreen = useStore(state => state.showApiKeysScreen);
   const apiKeys = useStore(state => state.apiKeys);
   const [showShortcutDialog, setShowShortcutDialog] = useState(false);
+  const [showQuickStartDialog, setShowQuickStartDialog] = useState(true);
   const commandList = useMemo(
     () => getAllCommands().slice().sort((a, b) => a.name.localeCompare(b.name)),
     [],
@@ -164,6 +173,15 @@ export function App() {
     if (isMod && !e.shiftKey && !e.altKey && key === 'h') {
       e.preventDefault();
       setShowShortcutDialog((prev) => !prev);
+      setShowQuickStartDialog(false);
+      return;
+    }
+
+    if (showQuickStartDialog) {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setShowQuickStartDialog(false);
+      }
       return;
     }
 
@@ -298,6 +316,7 @@ export function App() {
     switchWorkspaceRelative,
     toggleSplitDirection,
     abortStream,
+    showQuickStartDialog,
     showShortcutDialog,
   ]);
 
@@ -321,6 +340,46 @@ export function App() {
   const handleCancelApiKeys = useCallback(() => {
     setShowApiKeysScreen(false);
   }, [setShowApiKeysScreen]);
+
+  const quickStartDialog = showQuickStartDialog ? (
+    <div
+      className="fixed inset-0 z-50 bg-black/55 flex items-center justify-center p-4"
+      onClick={() => setShowQuickStartDialog(false)}
+    >
+      <div
+        className="w-full max-w-xl rounded-xl border border-[var(--ui-border)] bg-[var(--ui-accent-bubble)] overflow-hidden shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="px-4 py-3 border-b border-[var(--ui-border)]">
+          <h2 className="text-sm font-semibold text-[color:var(--ui-text)]">Welcome to Baby SWE</h2>
+          <p className="mt-1 text-xs text-[color:var(--ui-text-muted)]">A few shortcuts to get moving quickly.</p>
+        </div>
+        <div>
+          {QUICK_START_SHORTCUTS.map((shortcut) => (
+            <div
+              key={shortcut.combo}
+              className="px-4 py-2.5 flex items-center justify-between gap-3 border-b last:border-b-0 border-[var(--ui-border)]"
+            >
+              <span className="text-[13px] text-[color:var(--ui-text)]">{shortcut.description}</span>
+              <kbd className="text-[11px] text-[color:var(--ui-text-muted)] bg-[var(--ui-panel-2)] border border-[var(--ui-border)] rounded px-2 py-0.5 whitespace-nowrap">
+                {shortcut.combo}
+              </kbd>
+            </div>
+          ))}
+        </div>
+        <div className="px-4 py-3 border-t border-[var(--ui-border)] flex items-center justify-between">
+          <span className="text-[11px] text-[color:var(--ui-text-dim)]">Press Esc to dismiss</span>
+          <button
+            type="button"
+            className="text-xs font-medium text-[color:var(--ui-text)] bg-[var(--ui-panel-2)] border border-[var(--ui-border)] hover:bg-[var(--ui-surface)] transition-colors rounded px-3 py-1.5"
+            onClick={() => setShowQuickStartDialog(false)}
+          >
+            Got it
+          </button>
+        </div>
+      </div>
+    </div>
+  ) : null;
 
   const shortcutDialog = showShortcutDialog ? (
     <div
@@ -384,6 +443,7 @@ export function App() {
           />
         </div>
         <StatusBar />
+        {quickStartDialog}
         {shortcutDialog}
       </div>
     );
@@ -411,6 +471,7 @@ export function App() {
         })}
       </div>
       <StatusBar />
+      {quickStartDialog}
       {shortcutDialog}
     </div>
   );
