@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "bun run build && electron .",
     "watch": "bun run build && concurrently -k \"bun run watch:main\" \"bun run watch:renderer\" \"bun run watch:css\" \"bun run watch:electron\"",
-    "build": "tsc -p tsconfig.main.json && bun run build:renderer && cp ./src/index.html ./dist/index.html && tailwindcss -i ./src/styles/input.css -o ./dist/styles/output.css && cp -r ./assets ./dist/assets",
+    "build": "tsc -p tsconfig.main.json && bun run build:renderer && cp ./src/index.html ./dist/index.html && tailwindcss -i ./src/styles/input.css -o ./dist/styles/output.css && rm -rf ./dist/assets && mkdir -p ./dist/assets && cp -R ./assets/. ./dist/assets",
     "build:renderer": "esbuild src/renderer.tsx src/ui/monaco/editor.worker.ts src/ui/monaco/json.worker.ts src/ui/monaco/css.worker.ts src/ui/monaco/html.worker.ts src/ui/monaco/ts.worker.ts --bundle --outdir=dist --platform=browser --target=chrome120 --loader:.ttf=file",
     "watch:main": "tsc -p tsconfig.main.json --watch --preserveWatchOutput",
     "watch:renderer": "bun run build:renderer --watch",
