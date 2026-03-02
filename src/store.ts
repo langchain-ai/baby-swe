@@ -2,7 +2,17 @@ import { create } from 'zustand';
 import { v4 as uuidv4 } from 'uuid';
 import type { Message, Chunk, Mode, ModelConfig, ToolStatus, Thread, Session, Project, ApprovalRequest, DiffData, TodoItem, Tile, LayoutNode, SplitDirection, TileType, Workspace, ApiKeys, FileViewerData, AgentStatus } from './types';
 import { loadSettings, saveSettings, loadRecentProjects } from './persistence';
-import { createInitialLayout, splitTile, removeTile, getTileIds, getSmartDirection, findAdjacentTile, getTileDimensions } from './layout-utils';
+import {
+  createInitialLayout,
+  splitTile,
+  removeTile,
+  getTileIds,
+  getSmartDirection,
+  findAdjacentTile,
+  getTileDimensions,
+  swapTileIds,
+  toggleSplitDirectionForTile,
+} from './layout-utils';
 
 function generateTitle(messages: Message[]): string {
   const firstUserMessage = messages.find((m) => m.author === 'user');
@@ -41,6 +51,8 @@ interface AppState {
   focusTile: (tileId: string) => void;
   setTileProject: (tileId: string, project: Project | null) => void;
   navigateTile: (direction: 'left' | 'right' | 'up' | 'down') => void;
+  moveTile: (direction: 'left' | 'right' | 'up' | 'down') => void;
+  toggleSplitDirection: () => void;
   updateSplitRatio: (tileId: string, delta: number) => void;
   getTile: (tileId: string) => Tile | null;
   getFocusedTile: () => Tile | null;
@@ -325,6 +337,41 @@ export const useStore = create<AppState>((set, get) => ({
       updatedWorkspaces[activeWorkspaceIndex] = updatedWorkspace;
       set({ workspaces: updatedWorkspaces });
     }
+  },
+
+  moveTile: (direction) => {
+    const { workspaces, activeWorkspaceIndex } = get();
+    const workspace = workspaces[activeWorkspaceIndex];
+    const { layout, focusedTileId } = workspace;
+
+    if (!focusedTileId || !layout) return;
+
+    const adjacentTileId = findAdjacentTile(layout, focusedTileId, direction);
+    if (!adjacentTileId) return;
+
+    const newLayout = swapTileIds(layout, focusedTileId, adjacentTileId);
+    if (newLayout === layout) return;
+
+    const updatedWorkspace = { ...workspace, layout: newLayout };
+    const updatedWorkspaces = [...workspaces];
+    updatedWorkspaces[activeWorkspaceIndex] = updatedWorkspace;
+    set({ workspaces: updatedWorkspaces });
+  },
+
+  toggleSplitDirection: () => {
+    const { workspaces, activeWorkspaceIndex } = get();
+    const workspace = workspaces[activeWorkspaceIndex];
+    const { layout, focusedTileId } = workspace;
+
+    if (!focusedTileId || !layout) return;
+
+    const newLayout = toggleSplitDirectionForTile(layout, focusedTileId);
+    if (newLayout === layout) return;
+
+    const updatedWorkspace = { ...workspace, layout: newLayout };
+    const updatedWorkspaces = [...workspaces];
+    updatedWorkspaces[activeWorkspaceIndex] = updatedWorkspace;
+    set({ workspaces: updatedWorkspaces });
   },
 
   updateSplitRatio: (_tileId, _delta) => {

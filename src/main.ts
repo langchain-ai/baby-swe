@@ -594,7 +594,7 @@ function createMenu(): void {
         { type: 'separator' },
         { role: 'services' },
         { type: 'separator' },
-        { role: 'hide' },
+        { label: `Hide ${app.name}`, accelerator: 'Cmd+Alt+H', click: () => app.hide() },
         { role: 'hideOthers' },
         { role: 'unhide' },
         { type: 'separator' },

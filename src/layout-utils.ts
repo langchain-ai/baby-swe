@@ -167,6 +167,59 @@ export function findAdjacentTile(
   return best?.tileId || null;
 }
 
+export function swapTileIds(layout: LayoutNode, tileIdA: string, tileIdB: string): LayoutNode {
+  if (tileIdA === tileIdB) return layout;
+
+  if (layout.type === 'tile') {
+    if (layout.tileId === tileIdA) return { type: 'tile', tileId: tileIdB };
+    if (layout.tileId === tileIdB) return { type: 'tile', tileId: tileIdA };
+    return layout;
+  }
+
+  const first = swapTileIds(layout.first, tileIdA, tileIdB);
+  const second = swapTileIds(layout.second, tileIdA, tileIdB);
+
+  if (first === layout.first && second === layout.second) {
+    return layout;
+  }
+
+  return { ...layout, first, second };
+}
+
+function toggleSplitDirectionAtPath(layout: LayoutNode, splitPath: number[]): LayoutNode {
+  if (layout.type === 'tile') return layout;
+
+  if (splitPath.length === 0) {
+    return {
+      ...layout,
+      direction: layout.direction === 'horizontal' ? 'vertical' : 'horizontal',
+    };
+  }
+
+  const [head, ...rest] = splitPath;
+  if (head === 0) {
+    const first = toggleSplitDirectionAtPath(layout.first, rest);
+    if (first === layout.first) return layout;
+    return { ...layout, first };
+  }
+
+  if (head === 1) {
+    const second = toggleSplitDirectionAtPath(layout.second, rest);
+    if (second === layout.second) return layout;
+    return { ...layout, second };
+  }
+
+  return layout;
+}
+
+export function toggleSplitDirectionForTile(layout: LayoutNode, tileId: string): LayoutNode {
+  const path = findSplitPath(layout, tileId);
+  if (!path || path.length === 0) return layout;
+
+  const parentSplitPath = path.slice(0, -1);
+  return toggleSplitDirectionAtPath(layout, parentSplitPath);
+}
+
 export function updateSplitRatio(
   layout: LayoutNode,
   path: number[],

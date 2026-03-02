@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useStore } from '../store';
 import { useShallow } from 'zustand/react/shallow';
 import { TilingLayout } from './components/TilingLayout';
@@ -6,6 +6,21 @@ import { WorkspaceBar } from './components/WorkspaceBar';
 import { StatusBar } from './components/StatusBar';
 import { FolderSelectScreen } from './components';
 import { ApiKeysScreen } from './components/ApiKeysScreen';
+import { getAllCommands } from '../commands';
+
+const KEYBOARD_SHORTCUTS = [
+  { combo: 'Cmd/Ctrl+H', description: 'Toggle shortcuts & commands dialog' },
+  { combo: 'Cmd/Ctrl+1-5', description: 'Switch workspace' },
+  { combo: 'Opt+Cmd/Ctrl+←/→', description: 'Switch workspace left/right' },
+  { combo: 'Cmd/Ctrl+A', description: 'Create new agent tile' },
+  { combo: 'Cmd/Ctrl+T', description: 'Create new terminal tile' },
+  { combo: 'Cmd/Ctrl+Shift+G', description: 'Create new source control tile' },
+  { combo: 'Cmd/Ctrl+←/→/↑/↓', description: 'Focus adjacent tile' },
+  { combo: 'Cmd/Ctrl+Shift+←/→/↑/↓', description: 'Move focused tile (swap with adjacent)' },
+  { combo: 'Cmd/Ctrl+Shift+O', description: 'Toggle split orientation for focused tile' },
+  { combo: 'Cmd/Ctrl+W', description: 'Close focused tile' },
+  { combo: 'Escape', description: 'Close dialog or cancel active stream' },
+] as const;
 
 export function App() {
   const workspaces = useStore(state => state.workspaces);
@@ -13,12 +28,19 @@ export function App() {
   const recentProjects = useStore(state => state.recentProjects);
   const showApiKeysScreen = useStore(state => state.showApiKeysScreen);
   const apiKeys = useStore(state => state.apiKeys);
+  const [showShortcutDialog, setShowShortcutDialog] = useState(false);
+  const commandList = useMemo(
+    () => getAllCommands().slice().sort((a, b) => a.name.localeCompare(b.name)),
+    [],
+  );
 
   // Actions are stable references in Zustand - grouping them avoids individual subscriptions
   const actions = useStore(useShallow(state => ({
     createTile: state.createTile,
     closeTile: state.closeTile,
     navigateTile: state.navigateTile,
+    moveTile: state.moveTile,
+    toggleSplitDirection: state.toggleSplitDirection,
     setTileProject: state.setTileProject,
     switchWorkspace: state.switchWorkspace,
     switchWorkspaceRelative: state.switchWorkspaceRelative,
@@ -39,7 +61,7 @@ export function App() {
     loadModelConfig: state.loadModelConfig,
   })));
   const {
-    createTile, closeTile, navigateTile, setTileProject,
+    createTile, closeTile, navigateTile, moveTile, toggleSplitDirection, setTileProject,
     switchWorkspace, switchWorkspaceRelative, loadRecentProjects,
     appendStreamToken, addToolStart, updateToolEnd, updateToolStatus,
     updateTokenUsage, compactSession, setCompacting, updateTodos, finalizeStream, abortStream,
@@ -134,6 +156,22 @@ export function App() {
 
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
     const isMod = e.metaKey || e.ctrlKey;
+    const key = e.key.toLowerCase();
+
+    // Shortcuts/commands dialog: Cmd+H
+    if (isMod && !e.shiftKey && !e.altKey && key === 'h') {
+      e.preventDefault();
+      setShowShortcutDialog((prev) => !prev);
+      return;
+    }
+
+    if (showShortcutDialog) {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setShowShortcutDialog(false);
+      }
+      return;
+    }
 
     // Workspace switching: Cmd+1-5
     if (isMod && !e.shiftKey && !e.altKey && e.key >= '1' && e.key <= '5') {
@@ -150,7 +188,7 @@ export function App() {
     }
 
     // New source control tile: Cmd+Shift+G
-    if (isMod && e.shiftKey && (e.key === 'g' || e.key === 'G')) {
+    if (isMod && e.shiftKey && key === 'g') {
       e.preventDefault();
       const state = useStore.getState();
       const ws = state.workspaces[state.activeWorkspaceIndex];
@@ -166,15 +204,15 @@ export function App() {
       return;
     }
 
-    // New terminal tile: Cmd+Shift+T
-    if (isMod && e.shiftKey && e.key === 't') {
+    // New terminal tile: Cmd+T
+    if (isMod && !e.shiftKey && !e.altKey && key === 't') {
       e.preventDefault();
       createTile('auto', 'terminal');
       return;
     }
 
-    // New agent tile: Cmd+T
-    if (isMod && e.key === 't') {
+    // New agent tile: Cmd+A
+    if (isMod && !e.shiftKey && !e.altKey && key === 'a') {
       e.preventDefault();
       const state = useStore.getState();
       const ws = state.workspaces[state.activeWorkspaceIndex];
@@ -192,7 +230,7 @@ export function App() {
     }
 
     // Close tile: Cmd+W
-    if (isMod && e.key === 'w') {
+    if (isMod && !e.shiftKey && !e.altKey && key === 'w') {
       e.preventDefault();
       const state = useStore.getState();
       const ws = state.workspaces[state.activeWorkspaceIndex];
@@ -208,8 +246,23 @@ export function App() {
       return;
     }
 
+    // Move tiles: Cmd+Shift+Arrow
+    if (isMod && e.shiftKey && !e.altKey && ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) {
+      e.preventDefault();
+      const dir = e.key.replace('Arrow', '').toLowerCase() as 'left' | 'right' | 'up' | 'down';
+      moveTile(dir);
+      return;
+    }
+
+    // Toggle split orientation: Cmd+Shift+O
+    if (isMod && e.shiftKey && !e.altKey && key === 'o') {
+      e.preventDefault();
+      toggleSplitDirection();
+      return;
+    }
+
     // Navigate tiles: Cmd+Arrow
-    if (isMod && !e.altKey && ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) {
+    if (isMod && !e.altKey && !e.shiftKey && ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) {
       e.preventDefault();
       const dir = e.key.replace('Arrow', '').toLowerCase() as 'left' | 'right' | 'up' | 'down';
       navigateTile(dir);
@@ -218,7 +271,6 @@ export function App() {
 
     // Cancel streaming: Escape
     if (e.key === 'Escape') {
-      // Read fresh state at event time
       const state = useStore.getState();
       const ws = state.workspaces[state.activeWorkspaceIndex];
       const fTileId = ws?.focusedTileId;
@@ -235,7 +287,17 @@ export function App() {
       }
       return;
     }
-  }, [createTile, closeTile, navigateTile, switchWorkspace, switchWorkspaceRelative, abortStream]);
+  }, [
+    createTile,
+    closeTile,
+    moveTile,
+    navigateTile,
+    switchWorkspace,
+    switchWorkspaceRelative,
+    toggleSplitDirection,
+    abortStream,
+    showShortcutDialog,
+  ]);
 
   useEffect(() => {
     document.addEventListener('keydown', handleKeyDown);
@@ -258,6 +320,55 @@ export function App() {
     setShowApiKeysScreen(false);
   }, [setShowApiKeysScreen]);
 
+  const shortcutDialog = showShortcutDialog ? (
+    <div
+      className="fixed inset-0 z-50 bg-black/55 flex items-center justify-center p-4"
+      onClick={() => setShowShortcutDialog(false)}
+    >
+      <div
+        className="w-full max-w-4xl max-h-[80vh] overflow-hidden rounded-lg border border-[#2a3142] bg-[#1a1f2e] shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="px-4 py-3 border-b border-[#2a3142] flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-gray-100">Shortcuts & Commands</h2>
+          <button
+            type="button"
+            className="text-xs text-gray-400 hover:text-gray-200"
+            onClick={() => setShowShortcutDialog(false)}
+          >
+            Esc
+          </button>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2">
+          <section className="border-b md:border-b-0 md:border-r border-[#2a3142] min-h-0">
+            <div className="px-4 py-2 text-xs font-medium text-gray-500">Keyboard Shortcuts</div>
+            <div className="max-h-[60vh] overflow-auto">
+              {KEYBOARD_SHORTCUTS.map((shortcut) => (
+                <div key={shortcut.combo} className="px-4 py-2 flex items-center justify-between gap-4 border-t border-[#232a3a]">
+                  <span className="text-xs text-gray-300">{shortcut.description}</span>
+                  <kbd className="text-[11px] text-gray-400 bg-[#111827] border border-[#2a3142] rounded px-2 py-0.5 whitespace-nowrap">
+                    {shortcut.combo}
+                  </kbd>
+                </div>
+              ))}
+            </div>
+          </section>
+          <section className="min-h-0">
+            <div className="px-4 py-2 text-xs font-medium text-gray-500">Slash Commands</div>
+            <div className="max-h-[60vh] overflow-auto">
+              {commandList.map((command) => (
+                <div key={command.name} className="px-4 py-2 border-t border-[#232a3a]">
+                  <div className="text-sm text-gray-200">/{command.name}</div>
+                  <div className="text-xs text-gray-500">{command.description}</div>
+                </div>
+              ))}
+            </div>
+          </section>
+        </div>
+      </div>
+    </div>
+  ) : null;
+
   if (shouldShowApiKeysScreen) {
     return (
       <div className="flex flex-col h-screen bg-[#1a2332] text-gray-100">
@@ -271,6 +382,7 @@ export function App() {
           />
         </div>
         <StatusBar />
+        {shortcutDialog}
       </div>
     );
   }
@@ -297,6 +409,7 @@ export function App() {
         })}
       </div>
       <StatusBar />
+      {shortcutDialog}
     </div>
   );
 }
