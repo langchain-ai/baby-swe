@@ -73,17 +73,15 @@ export const ShellCommand = memo(function ShellCommand({
             </div>
           </div>
           {output && (
-            <div className="min-h-0 flex-1">
-              <div
-                ref={outputRef}
-                onScroll={handleOutputScroll}
-                className="h-full overflow-auto px-3 pb-1"
-                style={{ boxShadow: outputEdgeShadows || "none" }}
-              >
-                <pre className="mt-1 text-[color:var(--ui-text-muted)] whitespace-pre font-mono text-xs">
-                  {output}
-                </pre>
-              </div>
+            <div
+              ref={outputRef}
+              onScroll={handleOutputScroll}
+              className="min-h-0 flex-1 overflow-auto px-3 pb-1"
+              style={{ boxShadow: outputEdgeShadows || "none" }}
+            >
+              <pre className="mt-1 text-[color:var(--ui-text-muted)] whitespace-pre font-mono text-xs w-max min-w-full">
+                {output}
+              </pre>
             </div>
           )}
           <div className="px-3 py-1.5 flex justify-end shrink-0">
