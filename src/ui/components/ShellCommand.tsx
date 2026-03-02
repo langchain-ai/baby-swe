@@ -62,23 +62,25 @@ export const ShellCommand = memo(function ShellCommand({
             </div>
           </div>
           {output && (
-            <div
-              ref={outputRef}
-              onScroll={handleOutputScroll}
-              className="relative min-h-0 flex-1 overflow-auto px-3 pb-1"
-            >
+            <div className="relative min-h-0 flex-1">
               <div
-                className="sticky top-0 inset-x-0 h-6 -mb-6 pointer-events-none z-10 transition-opacity duration-200"
-                style={{
-                  opacity: scrolledFromTop ? 1 : 0,
-                  background: "linear-gradient(to bottom, var(--ui-accent-bubble), transparent)",
-                }}
-              />
-              <pre className="mt-1 text-[color:var(--ui-text-muted)] whitespace-pre font-mono text-xs">
-                {output}
-              </pre>
+                ref={outputRef}
+                onScroll={handleOutputScroll}
+                className="h-full overflow-auto px-3 pb-1"
+              >
+                <div
+                  className="sticky top-0 inset-x-0 h-6 -mb-6 pointer-events-none z-10 transition-opacity duration-200"
+                  style={{
+                    opacity: scrolledFromTop ? 1 : 0,
+                    background: "linear-gradient(to bottom, var(--ui-accent-bubble), transparent)",
+                  }}
+                />
+                <pre className="mt-1 text-[color:var(--ui-text-muted)] whitespace-pre font-mono text-xs">
+                  {output}
+                </pre>
+              </div>
               <div
-                className="sticky bottom-0 inset-x-0 h-6 -mt-6 pointer-events-none z-10 transition-opacity duration-200"
+                className="absolute bottom-0 inset-x-0 h-6 pointer-events-none z-10 transition-opacity duration-200"
                 style={{
                   opacity: scrolledFromBottom ? 1 : 0,
                   background: "linear-gradient(to top, var(--ui-accent-bubble), transparent)",

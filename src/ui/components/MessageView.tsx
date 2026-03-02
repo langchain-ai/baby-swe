@@ -275,6 +275,20 @@ function UserMessage({ message }: { message: Message }) {
     .join("");
 
   const images = message.chunks.filter((c) => c.kind === "image");
+  const textRef = useRef<HTMLDivElement>(null);
+  const [scrolledFromTop, setScrolledFromTop] = useState(false);
+  const [scrolledFromBottom, setScrolledFromBottom] = useState(false);
+
+  const updateScrollIndicators = useCallback(() => {
+    const el = textRef.current;
+    if (!el) return;
+    setScrolledFromTop(el.scrollTop > 0);
+    setScrolledFromBottom(el.scrollTop < el.scrollHeight - el.clientHeight - 1);
+  }, []);
+
+  useLayoutEffect(() => {
+    updateScrollIndicators();
+  }, [text, updateScrollIndicators]);
 
   return (
     <div className="flex justify-end my-4">
@@ -294,9 +308,29 @@ function UserMessage({ message }: { message: Message }) {
           </div>
         )}
         {text && (
-          <span className="inline-block text-[color:var(--ui-text)] text-[13px] bg-[var(--ui-accent-bubble)] px-3 py-1.5 rounded-2xl">
-            {text}
-          </span>
+          <div className="relative inline-block max-w-full rounded-2xl bg-[var(--ui-accent-bubble)] overflow-hidden">
+            <div
+              ref={textRef}
+              onScroll={updateScrollIndicators}
+              className="max-h-[250px] overflow-auto px-3 py-1.5 text-[color:var(--ui-text)] text-[13px] whitespace-pre-wrap break-words"
+            >
+              {text}
+            </div>
+            <div
+              className="absolute top-0 inset-x-0 h-6 pointer-events-none z-10 transition-opacity duration-200"
+              style={{
+                opacity: scrolledFromTop ? 1 : 0,
+                background: "linear-gradient(to bottom, var(--ui-accent-bubble), transparent)",
+              }}
+            />
+            <div
+              className="absolute bottom-0 inset-x-0 h-6 pointer-events-none z-10 transition-opacity duration-200"
+              style={{
+                opacity: scrolledFromBottom ? 1 : 0,
+                background: "linear-gradient(to top, var(--ui-accent-bubble), transparent)",
+              }}
+            />
+          </div>
         )}
       </div>
     </div>
