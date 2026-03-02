@@ -1,82 +1,56 @@
-# Baby-SWE
+# Baby SWE
 
-A terminal-style AI coding assistant built with Electron and React.
+Terminal-first AI coding app built with Electron + React + Zustand + DeepAgents.
 
 ## Package Manager
 
-**This project uses [Bun](https://bun.sh). Always use `bun` — never `npm`, `yarn`, or `pnpm`.**
+Use **Bun only**.
 
 ```bash
-bun install          # install dependencies
-bun run dev          # build + launch
-bun run build        # build only
-bun run watch        # build + watch mode
+bun install
+bun run dev
+bun run watch
+bun run build
 ```
 
-## Architecture
+## Current Architecture
 
-- **Electron** - Desktop app shell (main process in `src/main.ts`)
-- **React** - UI framework (renderer in `src/renderer.tsx`)
-- **Zustand** - State management (`src/store.ts`)
-- **DeepAgents** - LangChain agent framework (`src/agent.ts`)
-- **Anthropic Claude** - LLM provider
+- `src/main.ts`: Electron main process, terminal PTY, git/worktree IPC, project/file IPC
+- `src/preload.ts`: context bridge for `agent`, `storage`, `tile`, `fs`, `terminal`, `git`
+- `src/agent.ts`: DeepAgent setup, model selection, web tools, approval interrupts, stream + compaction
+- `src/store.ts`: global app/session/workspace/tile state and stream event reducers
+- `src/ui/App.tsx`: app shell, keyboard shortcuts, stream event wiring
+- `src/ui/components/*`: prompt bar, message/tool rendering, source control, terminal, worktree UI
+- `src/prompts/index.ts`: builds dynamic system prompt from env + git status + AGENTS.md
 
-## Docs
+## User-Facing Features
 
-- Deepagents JS: https://docs.langchain.com/oss/javascript/deepagents/overview
-- Langgraph JS: https://docs.langchain.com/oss/javascript/langgraph/overview
-- LangChain JS: https://docs.langchain.com/oss/javascript/langchain/overview
+- Multi-workspace tiling (5 workspaces)
+- Tile types: `agent`, `terminal`, `source-control`, `file-viewer`
+- Project and git-aware sessions with thread persistence
+- Tool approval flow (`agent`/`plan`) and no-approval flow (`yolo`)
+- Session TODO tracking via `write_todos`
+- Manual + automatic context compaction
+- Model options: Claude, GPT-5.3 Codex (effort levels), Kimi K2.5
 
-## Project Structure
+## Commands
 
-```
-src/
-├── main.ts           # Electron main process
-├── preload.ts        # Electron context bridge
-├── renderer.tsx      # React entry point
-├── store.ts          # Zustand global state
-├── types.ts          # TypeScript types
-├── agent.ts          # DeepAgents configuration + streaming
-├── backends/
-│   └── local-sandbox.ts  # Shell execution backend
-├── commands/
-│   ├── index.ts      # Command exports
-│   ├── registry.ts   # Command registration and parsing
-│   ├── clear.ts      # /clear command
-│   ├── help.ts       # /help command
-│   ├── new.ts        # /new command
-│   └── tokens.ts     # /tokens command
-└── ui/
-    ├── App.tsx       # Main app component
-    └── components/
-        ├── ToolExecution.tsx     # Tool execution UI (shell-specific)
-        ├── CommandAutocomplete.tsx
-        ├── FileAutocomplete.tsx
-        └── ...
-```
+Registered commands live in `src/commands`:
 
-## Key Components
+- `/help`, `/clear`, `/new`, `/tokens`, `/compact`
+- `/keys` (API key management UI)
+- `/remember` (update AGENTS memory)
+- `/resume` (resume prior thread for open project)
+- `/model` (selection entrypoint + autocomplete in prompt UI)
 
-- **App.tsx** - Handles user input, invokes agent, renders messages, processes stream events
-- **agent.ts** - Creates DeepAgent with Anthropic model and tools, streams tool events to renderer
-- **store.ts** - Manages messages, token usage, model config, tool execution state
-- **LocalSandboxBackend** - Wraps FilesystemBackend with shell execution capability
+## Memory + Storage
 
-## Tool Execution Streaming
+- Project memory: `<repo>/AGENTS.md`
+- User memory: `~/.baby-swe/AGENTS.md`
+- App data stored under Electron `userData` (set to `~/Library/Application Support/Baby SWE` on macOS)
 
-Tool executions are streamed in real-time to the UI:
-1. `on_tool_start` event → `addToolStart()` creates a tool-execution chunk
-2. `on_tool_end` event → `updateToolEnd()` updates the chunk with output
-3. `MessageView` renders tool chunks during streaming via `StreamingContent`
-4. `finalizeStream()` preserves tool chunks when stream completes
+## Dev Notes
 
-## Environment
-
-Requires `.env` with `ANTHROPIC_API_KEY`
-
-## Development Guidelines
-
-- Always run `bun run build` after making changes to verify TypeScript compiles without errors
-- Watch for circular dependencies when creating new modules
-- Tool events flow: main process → IPC → renderer → store → UI components
-- When adding new tools that need visual feedback, handle both `on_tool_start` and `on_tool_end` events in agent.ts
+- Always run `bun run build` after edits.
+- Keep IPC contracts synchronized across `main.ts`, `preload.ts`, `types.ts`, and store/UI handlers.
+- Prefer updating existing files over adding new ones unless necessary.

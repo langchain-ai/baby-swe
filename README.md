@@ -1,146 +1,73 @@
 # Baby SWE
 
-A desktop AI coding assistant built with Electron, React, and TypeScript.
+Terminal-style desktop AI coding assistant built with Electron, React, Zustand, and DeepAgents.
 
-## Prerequisites
+## Requirements
 
-- [Bun](https://bun.sh/) (v1.0 or later)
-- macOS, Windows, or Linux
+- [Bun](https://bun.sh)
+- At least one LLM API key:
+  - Anthropic (`ANTHROPIC_API_KEY`) or
+  - OpenAI (`OPENAI_API_KEY`) or
+  - Baseten (`BASETEN_API_KEY`, for Kimi)
+- Optional: Tavily (`TAVILY_API_KEY`) for web search
 
-## Getting Started
+You can set keys via `.env` or in-app with `/keys`.
 
-### Install Dependencies
+## Development
 
 ```bash
 bun install
+bun run dev    # build + launch
+bun run watch  # watch mode (main/renderer/css/electron)
+bun run build  # production build to ./dist
 ```
 
-### Development
-
-Run the app in development mode with hot reloading:
+## Packaging
 
 ```bash
-bun run dev
+bun run pack       # unpacked app
+bun run dist       # current platform
+bun run dist:mac   # macOS (zip target)
+bun run dist:win   # Windows (nsis + portable)
+bun run dist:linux # Linux (AppImage + deb)
 ```
 
-### Build
+Artifacts are written to `release/`.
 
-Compile TypeScript and bundle the app:
+## Features
 
-```bash
-bun run build
+- 5 workspaces with tiling layout
+- Tile types: `agent`, `terminal`, `source-control`, `file-viewer`
+- Git branch + PR awareness, plus worktree support
+- Tool-call streaming with inline outputs and approvals
+- Modes: `agent`, `plan`, `yolo`
+- Session TODO tracking (`write_todos`)
+- Thread persistence and `/resume`
+- Context compaction (`/compact` + automatic fallback)
+
+## Project Layout
+
+```text
+src/
+  main.ts            Electron main process + IPC + git/worktree + terminal PTY
+  preload.ts         Secure renderer bridge APIs
+  agent.ts           DeepAgent setup, models, tools, streaming/approval logic
+  store.ts           Zustand app/session/workspace state
+  commands/          Slash command registration and handlers
+  memory/            AGENTS.md memory loading
+  prompts/           Prompt templates + dynamic system prompt builder
+  ui/                React app and components
 ```
 
-## Building Installers
+## Slash Commands
 
-### Quick Build (Current Platform)
+`/help`, `/clear`, `/new`, `/tokens`, `/compact`, `/model`, `/keys`, `/resume`, `/remember`
 
-```bash
-# Build and package for your current platform
-bun run dist
-```
+## Notes
 
-### Platform-Specific Builds
-
-```bash
-# macOS (.dmg and .zip)
-bun run dist:mac
-
-# Windows (.exe installer)
-bun run dist:win
-
-# Linux (.AppImage and .deb)
-bun run dist:linux
-```
-
-### Manual DMG Creation (macOS)
-
-If `electron-builder` fails to create a DMG (known issue with some macOS versions), you can create one manually:
-
-```bash
-# 1. First, build the app bundle
-bun run build
-bun run pack
-
-# 2. Create a temporary DMG folder
-mkdir -p release/dmg
-cp -R "release/mac-arm64/Baby SWE.app" release/dmg/
-
-# 3. Create the DMG using hdiutil
-hdiutil create -volname "Baby SWE" \
-  -srcfolder release/dmg \
-  -ov -format UDZO \
-  "release/Baby SWE-1.0.0-arm64.dmg"
-
-# 4. Clean up
-rm -rf release/dmg
-```
-
-### Build Output
-
-After building, installers are placed in the `release/` directory:
-
-| Platform | File | Description |
-|----------|------|-------------|
-| macOS | `Baby SWE-x.x.x-arm64.dmg` | DMG installer |
-| macOS | `Baby SWE-x.x.x-arm64-mac.zip` | ZIP archive |
-| Windows | `Baby SWE Setup x.x.x.exe` | NSIS installer |
-| Linux | `Baby SWE-x.x.x.AppImage` | AppImage |
-| Linux | `baby-swe_x.x.x_amd64.deb` | Debian package |
-
-## Installation Notes
-
-### macOS
-
-The app is signed ad-hoc (not notarized with Apple). On first launch:
-
-1. Right-click the app and select **Open**, or
-2. Go to **System Preferences → Security & Privacy** and click **Open Anyway**
-
-### Code Signing (Optional)
-
-For distribution, you should sign and notarize the app:
-
-```bash
-# Set environment variables for signing
-export CSC_LINK=/path/to/certificate.p12
-export CSC_KEY_PASSWORD=your-password
-export APPLE_ID=your-apple-id
-export APPLE_APP_SPECIFIC_PASSWORD=your-app-specific-password
-
-# Build with signing
-bun run dist:mac
-```
-
-## Project Structure
-
-```
-baby-swe/
-├── src/
-│   ├── main.ts          # Electron main process
-│   ├── preload.ts       # Preload script
-│   ├── agent.ts         # AI agent logic
-│   ├── backends/        # Sandbox backends
-│   ├── commands/        # Command handlers
-│   ├── memory/          # Memory/context management
-│   ├── styles/          # CSS styles
-│   └── ui/              # React UI components
-├── dist/                # Compiled output
-├── release/             # Built installers
-└── package.json
-```
-
-## Scripts
-
-| Script | Description |
-|--------|-------------|
-| `bun run dev` | Start in development mode |
-| `bun run build` | Compile TypeScript and bundle |
-| `bun run pack` | Build unpacked app (for testing) |
-| `bun run dist` | Build installer for current platform |
-| `bun run dist:mac` | Build macOS installer |
-| `bun run dist:win` | Build Windows installer |
-| `bun run dist:linux` | Build Linux installer |
+- Use **Bun only** (no npm/yarn/pnpm).
+- App settings/projects/threads are stored under Electron `userData`.
+- On macOS this app pins `userData` to `~/Library/Application Support/Baby SWE`.
 
 ## License
 

@@ -1,0 +1,129 @@
+name: Create Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version_bump:
+        description: "Version increment type"
+        required: true
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+
+permissions:
+  contents: write
+
+jobs:
+  create-release:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Bump package.json version
+        id: bump
+        env:
+          BUMP_TYPE: ${{ github.event.inputs.version_bump }}
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const path = 'package.json';
+          const bump = process.env.BUMP_TYPE;
+
+          const pkg = JSON.parse(fs.readFileSync(path, 'utf8'));
+          const current = pkg.version;
+          const parts = current.split('.').map(Number);
+
+          if (parts.length !== 3 || parts.some((n) => Number.isNaN(n))) {
+            throw new Error(`Invalid semver in package.json: ${current}`);
+          }
+
+          let [major, minor, patch] = parts;
+          if (bump === 'major') {
+            major += 1;
+            minor = 0;
+            patch = 0;
+          } else if (bump === 'minor') {
+            minor += 1;
+            patch = 0;
+          } else if (bump === 'patch') {
+            patch += 1;
+          } else {
+            throw new Error(`Unsupported bump type: ${bump}`);
+          }
+
+          const next = `${major}.${minor}.${patch}`;
+          pkg.version = next;
+          fs.writeFileSync(path, `${JSON.stringify(pkg, null, 2)}\n`);
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `new_version=${next}\n`);
+          NODE
+
+      - name: Commit and tag version
+        env:
+          VERSION: ${{ steps.bump.outputs.new_version }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add package.json
+          git commit -m "chore(release): bump version to v${VERSION}"
+          git tag "v${VERSION}"
+
+          git push
+          git push --tags
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build mac distribution
+        run: bun run dist:mac
+
+      - name: Package .app for release asset
+        id: package_app
+        env:
+          VERSION: ${{ steps.bump.outputs.new_version }}
+        run: |
+          MAC_ZIP=$(compgen -G "release/Baby SWE-${VERSION}-*-mac.zip" | head -n 1 || true)
+          if [ -z "$MAC_ZIP" ]; then
+            echo "Could not find built mac zip for version ${VERSION}"
+            ls -la release
+            exit 1
+          fi
+
+          mkdir -p release/unpacked
+          ditto -x -k "$MAC_ZIP" release/unpacked
+
+          APP_PATH="release/unpacked/Baby SWE.app"
+          if [ ! -d "$APP_PATH" ]; then
+            APP_PATH=$(ls -d release/unpacked/*.app | head -n 1 || true)
+          fi
+
+          if [ -z "$APP_PATH" ] || [ ! -d "$APP_PATH" ]; then
+            echo "Could not find .app bundle after unzipping $MAC_ZIP"
+            ls -la release/unpacked
+            exit 1
+          fi
+
+          APP_ZIP="release/Baby SWE-${VERSION}.app.zip"
+          ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "$APP_ZIP"
+
+          echo "mac_zip=$MAC_ZIP" >> "$GITHUB_OUTPUT"
+          echo "app_zip=$APP_ZIP" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.bump.outputs.new_version }}
+          name: v${{ steps.bump.outputs.new_version }}
+          generate_release_notes: true
+          files: |
+            ${{ steps.package_app.outputs.mac_zip }}
+            ${{ steps.package_app.outputs.app_zip }}
