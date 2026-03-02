@@ -259,6 +259,17 @@ export interface Thread {
   messages: Message[];
 }
 
+export interface TokenUsageStats {
+  input: number;
+  output: number;
+  total: number;
+}
+
+export interface SessionTokenUsage {
+  lastCall: TokenUsageStats;
+  cumulative: TokenUsageStats;
+}
+
 export interface Session {
   id: string;
   title: string;
@@ -274,6 +285,7 @@ export interface Session {
   mode: Mode;
   agentStatus: AgentStatus;
   isCompacting: boolean;
+  tokenUsage: SessionTokenUsage;
 }
 
 export interface ToolStartEvent {

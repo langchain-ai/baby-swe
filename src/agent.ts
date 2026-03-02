@@ -16,7 +16,6 @@ import TurndownService from "turndown";
 import { loadSettings } from "./storage";
 import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
 import { buildSystemPrompt } from "./prompts";
-import { getContextLimit, COMPACT_THRESHOLD } from "./context-limits";
 import { Command, MemorySaver } from "@langchain/langgraph";
 
 const sessionControllers = new Map<string, AbortController>();
@@ -566,8 +565,8 @@ export function setupAgentIPC(mainWindow: BrowserWindow, getTileProject: (tileId
     const interruptedToolCalls = new Set<string>();
     const interruptedToolNames = new Map<string, string[]>();
     const toolIdRemapping = new Map<string, string>();
+    const streamedModelRunIds = new Set<string>();
     let sentFinalEvent = false;
-    let lastInputTokens = 0;
 
     const send = (data: Record<string, unknown>) => {
       safeSend(event.sender, 'agent:stream-event', data);
@@ -635,6 +634,8 @@ export function setupAgentIPC(mainWindow: BrowserWindow, getTileProject: (tileId
               if (event.event === "on_chat_model_stream") {
                 const chunk = event.data?.chunk;
                 if (chunk?.content) {
+                  streamedModelRunIds.add(event.run_id);
+
                   let token = '';
                   if (typeof chunk.content === 'string') {
                     token = chunk.content;
@@ -654,15 +655,15 @@ export function setupAgentIPC(mainWindow: BrowserWindow, getTileProject: (tileId
 
               if (event.event === "on_chat_model_end") {
                 const message = event.data?.output;
-                if (message?.usage_metadata) {
+                if (message?.usage_metadata && streamedModelRunIds.has(event.run_id)) {
                   const { input_tokens, output_tokens } = message.usage_metadata;
-                  lastInputTokens = input_tokens || 0;
                   send({
                     type: 'token-usage',
                     sessionId,
                     inputTokens: input_tokens || 0,
                     outputTokens: output_tokens || 0,
                   });
+                  streamedModelRunIds.delete(event.run_id);
                 }
               }
 
@@ -927,29 +928,6 @@ export function setupAgentIPC(mainWindow: BrowserWindow, getTileProject: (tileId
       if (!controller.signal.aborted) {
         console.log(`[agent:stream] Stream completed for session ${sessionId}`);
         sendFinal({ type: 'done', sessionId });
-
-        // Check if context usage crossed the compact threshold
-        const contextLimit = getContextLimit(modelConfig.name);
-        const contextUsage = lastInputTokens / contextLimit;
-        if (contextUsage >= COMPACT_THRESHOLD && messages.length > 4) {
-          console.log(`[agent:stream] Context at ${(contextUsage * 100).toFixed(1)}% (${lastInputTokens}/${contextLimit}), triggering compact for session ${sessionId}`);
-          send({ type: 'compact-start', sessionId });
-
-          const settings = loadSettings();
-          const result = await runCompaction(messages, modelConfig, settings.apiKeys);
-          if (result) {
-            console.log(`[agent:stream] Compact complete for session ${sessionId}, summarized ${messages.length - result.keptMessages.length} messages`);
-            send({
-              type: 'compact',
-              sessionId,
-              summary: result.summary,
-              keptMessages: result.keptMessages,
-            });
-          } else {
-            console.log(`[agent:stream] Compact failed or skipped for session ${sessionId}`);
-            send({ type: 'compact-end', sessionId });
-          }
-        }
       }
     } catch (error) {
       if (controller.signal.aborted || isAbortError(error)) {

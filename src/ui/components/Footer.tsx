@@ -28,7 +28,6 @@ function formatDuration(startTime: number): string {
 }
 
 export function Footer() {
-  const tokenUsage = useStore(state => state.tokenUsage);
   const activeSession = useStore(state => {
     const ws = state.workspaces[state.activeWorkspaceIndex];
     if (!ws?.focusedTileId) return null;
@@ -68,7 +67,8 @@ export function Footer() {
   if (startTime) {
     parts.push(formatDuration(startTime));
   }
-  parts.push(`↓ ${formatTokens(tokenUsage.total)} tokens`);
+  const cumulativeTotal = activeSession?.tokenUsage.cumulative.total ?? 0;
+  parts.push(`↓ ${formatTokens(cumulativeTotal)} session tokens`);
   if (streaming) {
     parts.push('streaming');
   }

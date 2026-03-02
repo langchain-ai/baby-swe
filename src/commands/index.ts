@@ -59,14 +59,18 @@ registerCommand({
   description: 'Show token usage for this session',
   category: 'Debug',
   execute: (ctx) => {
-    const { input, output, total } = ctx.tokenUsage;
+    const { lastCall, cumulative } = ctx.tokenUsage;
 
     const tokenText = [
-      '**Token Usage**',
+      '**Token Usage (Session)**',
       '',
-      `- Input tokens: ${input.toLocaleString()}`,
-      `- Output tokens: ${output.toLocaleString()}`,
-      `- Total tokens: ${total.toLocaleString()}`,
+      `- Last call input: ${lastCall.input.toLocaleString()}`,
+      `- Last call output: ${lastCall.output.toLocaleString()}`,
+      `- Last call total: ${lastCall.total.toLocaleString()}`,
+      '',
+      `- Cumulative input: ${cumulative.input.toLocaleString()}`,
+      `- Cumulative output: ${cumulative.output.toLocaleString()}`,
+      `- Cumulative total: ${cumulative.total.toLocaleString()}`,
     ].join('\n');
 
     const sessionId = ctx.sessionId || ctx.createSession();

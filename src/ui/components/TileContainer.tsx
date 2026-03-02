@@ -103,7 +103,6 @@ export function TileContainer({
     return t ? state.sessions[t.sessionId] ?? null : null;
   });
   const recentProjects = useStore(state => state.recentProjects);
-  const tokenUsage = useStore(state => state.tokenUsage);
   const modelConfig = useStore(state => state.modelConfig);
   const actions = useStore(useShallow(state => ({
     loadRecentProjects: state.loadRecentProjects,
@@ -346,7 +345,10 @@ export function TileContainer({
           createSession: () => createSession(tileId),
           clearSession,
           addSystemMessage: (sessionId, chunks) => addMessageToSession(sessionId, 'system', chunks),
-          tokenUsage,
+          tokenUsage: session?.tokenUsage || {
+            lastCall: { input: 0, output: 0, total: 0 },
+            cumulative: { input: 0, output: 0, total: 0 },
+          },
           modelConfig,
           setModelConfig,
           setShowApiKeysScreen,
@@ -385,7 +387,6 @@ export function TileContainer({
       pendingImages,
       createSession,
       clearSession,
-      tokenUsage,
       modelConfig,
       setModelConfig,
       setShowApiKeysScreen,

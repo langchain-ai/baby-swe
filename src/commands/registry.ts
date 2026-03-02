@@ -1,4 +1,4 @@
-import type { Chunk, ModelConfig, Project, Session } from '../types';
+import type { Chunk, ModelConfig, Project, SessionTokenUsage } from '../types';
 
 export type CommandCategory = 'Actions' | 'Navigation' | 'Debug';
 
@@ -7,7 +7,7 @@ export interface CommandContext {
   createSession: () => string;
   clearSession: (sessionId: string) => void;
   addSystemMessage: (sessionId: string, chunks: Chunk[]) => void;
-  tokenUsage: { input: number; output: number; total: number };
+  tokenUsage: SessionTokenUsage;
   sendAgentPrompt?: (prompt: string) => void;
   modelConfig: ModelConfig;
   setModelConfig: (config: Partial<ModelConfig>) => void;

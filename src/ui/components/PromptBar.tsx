@@ -674,7 +674,7 @@ export const PromptBar = memo(function PromptBar({
                 </>
               )}
               <span className="ml-auto" />
-              <ContextIndicator />
+              <ContextIndicator sessionId={sessionId} />
               {gitBranch && projectPath && (
                 <>
                   <WorktreeSelector
@@ -796,7 +796,7 @@ export const PromptBar = memo(function PromptBar({
                 </>
               )}
               <span className="ml-auto" />
-              <ContextIndicator />
+              <ContextIndicator sessionId={sessionId} />
               {gitBranch && projectPath && (
                 <>
                   <WorktreeSelector

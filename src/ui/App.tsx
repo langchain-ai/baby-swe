@@ -110,7 +110,7 @@ export function App() {
           break;
         }
         case 'token-usage':
-          updateTokenUsage(event.inputTokens, event.outputTokens);
+          updateTokenUsage(event.sessionId, event.inputTokens, event.outputTokens);
           break;
         case 'todo-update':
           updateTodos(event.sessionId, event.todos);

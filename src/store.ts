@@ -33,7 +33,7 @@ interface AppState {
   sessions: Record<string, Session>;
   mode: Mode;
   modelConfig: ModelConfig;
-  tokenUsage: { input: number; output: number; total: number };
+  getSessionTokenUsage: (sessionId: string) => import('./types').SessionTokenUsage;
   blink: boolean;
   recentProjects: Project[];
   showApiKeysScreen: boolean;
@@ -84,7 +84,7 @@ interface AppState {
 
   setMode: (mode: Mode) => void;
   setModelConfig: (config: Partial<ModelConfig>) => void;
-  updateTokenUsage: (input: number, output: number) => void;
+  updateTokenUsage: (sessionId: string, input: number, output: number) => void;
   compactSession: (sessionId: string, summary: string, keptMessages: import('./types').ChatMessage[]) => void;
   setCompacting: (sessionId: string, isCompacting: boolean) => void;
   toggleBlink: () => void;
@@ -108,6 +108,13 @@ function createEmptyWorkspace(id: number): Workspace {
 
 function createInitialWorkspaces(): Workspace[] {
   return Array.from({ length: NUM_WORKSPACES }, (_, i) => createEmptyWorkspace(i + 1));
+}
+
+function createEmptySessionTokenUsage() {
+  return {
+    lastCall: { input: 0, output: 0, total: 0 },
+    cumulative: { input: 0, output: 0, total: 0 },
+  };
 }
 
 function persistSessionAsThread(get: () => AppState, sessionId: string): void {
@@ -146,7 +153,6 @@ export const useStore = create<AppState>((set, get) => ({
     provider: 'anthropic',
     effort: 'medium',
   },
-  tokenUsage: { input: 0, output: 0, total: 0 },
   blink: true,
   recentProjects: [],
   showApiKeysScreen: false,
@@ -215,6 +221,7 @@ export const useStore = create<AppState>((set, get) => ({
       mode: 'agent',
       agentStatus: 'idle',
       isCompacting: false,
+      tokenUsage: createEmptySessionTokenUsage(),
     };
 
     const tile: Tile = {
@@ -465,6 +472,7 @@ export const useStore = create<AppState>((set, get) => ({
       mode: 'agent',
       agentStatus: 'idle',
       isCompacting: false,
+      tokenUsage: createEmptySessionTokenUsage(),
     };
 
     const tile: Tile = {
@@ -590,6 +598,7 @@ export const useStore = create<AppState>((set, get) => ({
       mode: 'agent',
       agentStatus: 'idle',
       isCompacting: false,
+      tokenUsage: createEmptySessionTokenUsage(),
     };
     set((state) => {
       const workspace = state.workspaces[state.activeWorkspaceIndex];
@@ -631,9 +640,9 @@ export const useStore = create<AppState>((set, get) => ({
             todos: [],
             agentStatus: 'idle',
             isCompacting: false,
+            tokenUsage: createEmptySessionTokenUsage(),
           },
         },
-        tokenUsage: { input: 0, output: 0, total: 0 },
       };
     });
   },
@@ -1013,13 +1022,39 @@ export const useStore = create<AppState>((set, get) => ({
       return { modelConfig: newConfig };
     }),
   toggleBlink: () => set((state) => ({ blink: !state.blink })),
-  updateTokenUsage: (input, output) =>
-    set({
-      tokenUsage: {
-        input,
-        output,
-        total: input + output,
-      },
+  getSessionTokenUsage: (sessionId) => {
+    const session = get().sessions[sessionId];
+    return session?.tokenUsage || createEmptySessionTokenUsage();
+  },
+  updateTokenUsage: (sessionId, input, output) =>
+    set((state) => {
+      const session = state.sessions[sessionId];
+      if (!session) return state;
+
+      const lastCallTotal = input + output;
+      const nextCumulativeInput = session.tokenUsage.cumulative.input + input;
+      const nextCumulativeOutput = session.tokenUsage.cumulative.output + output;
+
+      return {
+        sessions: {
+          ...state.sessions,
+          [sessionId]: {
+            ...session,
+            tokenUsage: {
+              lastCall: {
+                input,
+                output,
+                total: lastCallTotal,
+              },
+              cumulative: {
+                input: nextCumulativeInput,
+                output: nextCumulativeOutput,
+                total: nextCumulativeInput + nextCumulativeOutput,
+              },
+            },
+          },
+        },
+      };
     }),
 
   setCompacting: (sessionId, isCompacting) =>
@@ -1078,7 +1113,6 @@ export const useStore = create<AppState>((set, get) => ({
             updatedAt: Date.now(),
           },
         },
-        tokenUsage: { input: 0, output: 0, total: 0 },
       };
     }),
 

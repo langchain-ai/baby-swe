@@ -8,15 +8,18 @@ function formatTokens(n: number): string {
   return String(n);
 }
 
-export function ContextIndicator() {
-  const tokenUsage = useStore(state => state.tokenUsage);
+interface ContextIndicatorProps {
+  sessionId: string;
+}
+
+export function ContextIndicator({ sessionId }: ContextIndicatorProps) {
   const modelName = useStore(state => state.modelConfig.name);
+  const usedTokens = useStore(state => state.sessions[sessionId]?.tokenUsage.lastCall.input ?? 0);
   const [showTooltip, setShowTooltip] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
   const contextLimit = getContextLimit(modelName);
-  // Context window usage is based on input tokens (what's sent to the model)
-  const usedTokens = tokenUsage.input;
+  // Context window usage is based on last call input tokens sent to the model
   const fraction = contextLimit > 0 ? Math.min(usedTokens / contextLimit, 1) : 0;
   const percentage = Math.round(fraction * 100);
   const isNearLimit = fraction >= COMPACT_THRESHOLD;
@@ -85,7 +88,7 @@ export function ContextIndicator() {
       {showTooltip && (
         <div className="absolute bottom-full mb-2 right-0 bg-[#1a1f2e] border border-[#2a3142] rounded-lg shadow-xl px-3 py-2 z-50 whitespace-nowrap text-xs font-sans">
           <div className="text-gray-300 font-medium">
-            {percentage}% — {formatTokens(usedTokens)} / {formatTokens(contextLimit)} context used
+            Context: {percentage}% — {formatTokens(usedTokens)} / {formatTokens(contextLimit)} input tokens
           </div>
           {isNearLimit && (
             <div className="text-amber-400 text-[10px] mt-1">
