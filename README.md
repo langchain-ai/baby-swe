@@ -1,6 +1,6 @@
 # Baby SWE
 
-Terminal-style desktop AI coding assistant built with Electron, React, Zustand, and DeepAgents.
+Terminal-style desktop AI coding assistant built with Electron, React, Zustand, and Deep Agents.
 
 ## Requirements
 
