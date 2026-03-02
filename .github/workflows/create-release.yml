@@ -84,7 +84,7 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Build mac distribution
-        run: bun run dist:mac
+        run: bun run build && electron-builder --mac --publish never
 
       - name: Package .app for release asset
         id: package_app
