@@ -13,7 +13,7 @@ import { ModelAutocomplete, AVAILABLE_MODELS, getModelCount, getModelAtIndex, ty
 import { ContextIndicator } from './ContextIndicator';
 import { WorktreeSelector } from './WorktreeSelector';
 import type { Command } from '../../commands';
-import type { ApprovalDecision, DiffData, ImageChunk, WorktreeType } from '../../types';
+import type { ApprovalDecision, DiffData, ImageChunk, PermissionMode, WorktreeType } from '../../types';
 
 const MODELS: Record<string, string> = {
   'claude-opus-4-6': 'Opus 4.6',
@@ -21,6 +21,11 @@ const MODELS: Record<string, string> = {
   'gpt-5.3-codex': 'GPT-5.3-Codex',
   'kimi-k2.5': 'Kimi K2.5',
 };
+
+const PERMISSION_OPTIONS: Array<{ value: PermissionMode; label: string }> = [
+  { value: 'default', label: 'Default permissions' },
+  { value: 'full', label: 'Full access' },
+];
 
 interface PromptApprovalRequest {
   requestId: string;
@@ -153,15 +158,15 @@ export const PromptBar = memo(function PromptBar({
 }: PromptBarProps) {
   const {
     query,
-    mode,
-    setSessionMode,
+    permissionMode,
+    setPermissionMode,
     modelConfig,
     setModelConfig,
     setSessionPromptDraft,
   } = useStore(useShallow(state => ({
     query: state.sessions[sessionId]?.promptDraft ?? '',
-    mode: state.sessions[sessionId]?.mode ?? 'agent',
-    setSessionMode: state.setSessionMode,
+    permissionMode: state.permissionMode,
+    setPermissionMode: state.setPermissionMode,
     modelConfig: state.modelConfig,
     setModelConfig: state.setModelConfig,
     setSessionPromptDraft: state.setSessionPromptDraft,
@@ -170,8 +175,8 @@ export const PromptBar = memo(function PromptBar({
   const [commandSelectedIndex, setCommandSelectedIndex] = useState(0);
   const [fileSelectedIndex, setFileSelectedIndex] = useState(0);
   const [modelSelectedIndex, setModelSelectedIndex] = useState(0);
-  const [modeDropdownOpen, setModeDropdownOpen] = useState(false);
-  const modeDropdownRef = useRef<HTMLDivElement>(null);
+  const [permissionDropdownOpen, setPermissionDropdownOpen] = useState(false);
+  const permissionDropdownRef = useRef<HTMLDivElement>(null);
   const [modelDropdownOpen, setModelDropdownOpen] = useState(false);
   const modelDropdownRef = useRef<HTMLDivElement>(null);
   const [modelDropdownIndex, setModelDropdownIndex] = useState(0);
@@ -234,7 +239,7 @@ export const PromptBar = memo(function PromptBar({
 
   useEffect(() => {
     if (hasPendingApproval) {
-      setModeDropdownOpen(false);
+      setPermissionDropdownOpen(false);
       setModelDropdownOpen(false);
     }
   }, [hasPendingApproval]);
@@ -345,8 +350,8 @@ export const PromptBar = memo(function PromptBar({
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
-      if (modeDropdownRef.current && !modeDropdownRef.current.contains(e.target as Node)) {
-        setModeDropdownOpen(false);
+      if (permissionDropdownRef.current && !permissionDropdownRef.current.contains(e.target as Node)) {
+        setPermissionDropdownOpen(false);
       }
       if (modelDropdownRef.current && !modelDropdownRef.current.contains(e.target as Node)) {
         setModelDropdownOpen(false);
@@ -362,13 +367,12 @@ export const PromptBar = memo(function PromptBar({
       if (hasPendingApproval) return;
       if (e.shiftKey && e.key === 'Tab') {
         e.preventDefault();
-        const nextMode = mode === 'agent' ? 'plan' : mode === 'plan' ? 'yolo' : 'agent';
-        setSessionMode(sessionId, nextMode);
+        void setPermissionMode(permissionMode === 'default' ? 'full' : 'default');
       }
     }
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [mode, setSessionMode, sessionId, isFocused, hasPendingApproval]);
+  }, [isFocused, hasPendingApproval, permissionMode, setPermissionMode]);
 
   const handleCommandSelect = (command: Command) => {
     setQuery(`/${command.name} `);
@@ -619,30 +623,6 @@ export const PromptBar = memo(function PromptBar({
             </div>
 
             <div className="mt-auto pt-2 text-xs text-[color:var(--ui-text-dim)] flex flex-wrap items-center gap-x-2 gap-y-1 min-w-0">
-              <div ref={modeDropdownRef} className="relative shrink-0">
-                <button
-                  type="button"
-                  onClick={() => setModeDropdownOpen(o => !o)}
-                  className={`cursor-pointer hover:opacity-80 transition-opacity ${mode === 'agent' ? 'text-[#87CEEB]' : mode === 'plan' ? 'text-purple-400' : 'text-red-500'}`}
-                >
-                  {mode}
-                </button>
-                {modeDropdownOpen && (
-                  <div className={`absolute ${dropUp ? 'bottom-full mb-1' : 'top-full mt-1'} left-0 bg-gray-800 border border-gray-700 rounded shadow-lg overflow-hidden z-50`}>
-                    {(['agent', 'plan', 'yolo'] as const).map(m => (
-                      <button
-                        key={m}
-                        type="button"
-                        onClick={() => { setSessionMode(sessionId, m); setModeDropdownOpen(false); }}
-                        className={`block w-full text-left px-3 py-1.5 hover:bg-gray-700 transition-colors ${m === mode ? (m === 'agent' ? 'text-[#87CEEB]' : m === 'plan' ? 'text-purple-400' : 'text-red-500') : 'text-gray-400'}`}
-                      >
-                        {m}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-              <span className="text-[#435069]">·</span>
               <div ref={modelDropdownRef} className="relative shrink min-w-0">
                 <button
                   type="button"
@@ -683,6 +663,34 @@ export const PromptBar = memo(function PromptBar({
                   </button>
                 </>
               )}
+              <span className="text-[#435069]">·</span>
+              <div ref={permissionDropdownRef} className="relative shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setPermissionDropdownOpen(o => !o)}
+                  className={`cursor-pointer hover:opacity-80 transition-opacity ${permissionMode === 'full' ? 'text-orange-400' : 'text-[color:var(--ui-text-muted)]'}`}
+                >
+                  {permissionMode === 'full' ? 'Full access' : 'Default permissions'}
+                </button>
+                {permissionDropdownOpen && (
+                  <div className={`absolute ${dropUp ? 'bottom-full mb-1' : 'top-full mt-1'} left-0 bg-gray-800 border border-gray-700 rounded-2xl shadow-lg overflow-hidden z-50 min-w-[220px]`}>
+                    {PERMISSION_OPTIONS.map((option) => {
+                      const selected = option.value === permissionMode;
+                      return (
+                        <button
+                          key={option.value}
+                          type="button"
+                          onClick={() => { void setPermissionMode(option.value); setPermissionDropdownOpen(false); }}
+                          className={`block w-full text-left px-3 py-2 hover:bg-gray-700 transition-colors flex items-center gap-2 ${selected ? 'text-gray-200' : 'text-gray-400'}`}
+                        >
+                          <span className="w-4 text-center">{selected ? '✓' : ''}</span>
+                          <span>{option.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
               <span className="ml-auto" />
               <ContextIndicator sessionId={sessionId} />
               {gitBranch && projectPath && (
@@ -741,30 +749,6 @@ export const PromptBar = memo(function PromptBar({
             />
 
             <div className="mt-auto pt-2 text-xs text-[color:var(--ui-text-dim)] flex flex-wrap items-center gap-x-2 gap-y-1 min-w-0">
-              <div ref={modeDropdownRef} className="relative shrink-0">
-                <button
-                  type="button"
-                  onClick={() => setModeDropdownOpen(o => !o)}
-                  className={`cursor-pointer hover:opacity-80 transition-opacity ${mode === 'agent' ? 'text-[#87CEEB]' : mode === 'plan' ? 'text-purple-400' : 'text-red-500'}`}
-                >
-                  {mode}
-                </button>
-                {modeDropdownOpen && (
-                  <div className={`absolute ${dropUp ? 'bottom-full mb-1' : 'top-full mt-1'} left-0 bg-gray-800 border border-gray-700 rounded shadow-lg overflow-hidden z-50`}>
-                    {(['agent', 'plan', 'yolo'] as const).map(m => (
-                      <button
-                        key={m}
-                        type="button"
-                        onClick={() => { setSessionMode(sessionId, m); setModeDropdownOpen(false); }}
-                        className={`block w-full text-left px-3 py-1.5 hover:bg-gray-700 transition-colors ${m === mode ? (m === 'agent' ? 'text-[#87CEEB]' : m === 'plan' ? 'text-purple-400' : 'text-red-500') : 'text-gray-400'}`}
-                      >
-                        {m}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-              <span className="text-[#435069]">·</span>
               <div ref={modelDropdownRef} className="relative shrink min-w-0">
                 <button
                   type="button"
@@ -805,6 +789,34 @@ export const PromptBar = memo(function PromptBar({
                   </button>
                 </>
               )}
+              <span className="text-[#435069]">·</span>
+              <div ref={permissionDropdownRef} className="relative shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setPermissionDropdownOpen(o => !o)}
+                  className={`cursor-pointer hover:opacity-80 transition-opacity ${permissionMode === 'full' ? 'text-orange-400' : 'text-[color:var(--ui-text-muted)]'}`}
+                >
+                  {permissionMode === 'full' ? 'Full access' : 'Default permissions'}
+                </button>
+                {permissionDropdownOpen && (
+                  <div className={`absolute ${dropUp ? 'bottom-full mb-1' : 'top-full mt-1'} left-0 bg-gray-800 border border-gray-700 rounded-2xl shadow-lg overflow-hidden z-50 min-w-[220px]`}>
+                    {PERMISSION_OPTIONS.map((option) => {
+                      const selected = option.value === permissionMode;
+                      return (
+                        <button
+                          key={option.value}
+                          type="button"
+                          onClick={() => { void setPermissionMode(option.value); setPermissionDropdownOpen(false); }}
+                          className={`block w-full text-left px-3 py-2 hover:bg-gray-700 transition-colors flex items-center gap-2 ${selected ? 'text-gray-200' : 'text-gray-400'}`}
+                        >
+                          <span className="w-4 text-center">{selected ? '✓' : ''}</span>
+                          <span>{option.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
               <span className="ml-auto" />
               <ContextIndicator sessionId={sessionId} />
               {gitBranch && projectPath && (

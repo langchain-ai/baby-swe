@@ -59,13 +59,14 @@ export function App() {
     saveApiKeys: state.saveApiKeys,
     setShowApiKeysScreen: state.setShowApiKeysScreen,
     loadModelConfig: state.loadModelConfig,
+    loadPermissionMode: state.loadPermissionMode,
   })));
   const {
     createTile, closeTile, navigateTile, moveTile, toggleSplitDirection, setTileProject,
     switchWorkspace, switchWorkspaceRelative, loadRecentProjects,
     appendStreamToken, addToolStart, updateToolEnd, updateToolStatus,
     updateTokenUsage, compactSession, setCompacting, updateTodos, finalizeStream, abortStream,
-    loadApiKeys, saveApiKeys, setShowApiKeysScreen, loadModelConfig,
+    loadApiKeys, saveApiKeys, setShowApiKeysScreen, loadModelConfig, loadPermissionMode,
   } = actions;
 
   const workspace = workspaces[activeWorkspaceIndex];
@@ -75,7 +76,8 @@ export function App() {
     loadRecentProjects();
     loadApiKeys();
     loadModelConfig();
-  }, [loadRecentProjects, loadApiKeys, loadModelConfig]);
+    loadPermissionMode();
+  }, [loadRecentProjects, loadApiKeys, loadModelConfig, loadPermissionMode]);
 
   useEffect(() => {
     const unsubscribe = window.tile.onProjectChanged((tileId, project) => {

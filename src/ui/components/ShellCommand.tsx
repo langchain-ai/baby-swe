@@ -1,4 +1,4 @@
-import { memo, useState, useRef, useCallback } from "react";
+import { memo, useState, useRef, useCallback, useLayoutEffect } from "react";
 import type { ToolExecutionChunk } from "../../types";
 
 interface ShellCommandProps {
@@ -34,6 +34,17 @@ export const ShellCommand = memo(function ShellCommand({
   const output = chunk.output || "";
   const headerText = getHeaderText(chunk);
 
+  useLayoutEffect(() => {
+    handleOutputScroll();
+  }, [handleOutputScroll, output, expanded]);
+
+  const outputEdgeShadows = [
+    scrolledFromTop ? "inset 0 12px 10px -10px rgba(42, 63, 95, 0.95)" : "",
+    scrolledFromBottom ? "inset 0 -12px 10px -10px rgba(42, 63, 95, 0.95)" : "",
+  ]
+    .filter(Boolean)
+    .join(", ");
+
   return (
     <div className="my-1">
       <button
@@ -62,30 +73,17 @@ export const ShellCommand = memo(function ShellCommand({
             </div>
           </div>
           {output && (
-            <div className="relative min-h-0 flex-1">
+            <div className="min-h-0 flex-1">
               <div
                 ref={outputRef}
                 onScroll={handleOutputScroll}
                 className="h-full overflow-auto px-3 pb-1"
+                style={{ boxShadow: outputEdgeShadows || "none" }}
               >
-                <div
-                  className="sticky top-0 inset-x-0 h-6 -mb-6 pointer-events-none z-10 transition-opacity duration-200"
-                  style={{
-                    opacity: scrolledFromTop ? 1 : 0,
-                    background: "linear-gradient(to bottom, var(--ui-accent-bubble), transparent)",
-                  }}
-                />
                 <pre className="mt-1 text-[color:var(--ui-text-muted)] whitespace-pre font-mono text-xs">
                   {output}
                 </pre>
               </div>
-              <div
-                className="absolute bottom-0 inset-x-0 h-6 pointer-events-none z-10 transition-opacity duration-200"
-                style={{
-                  opacity: scrolledFromBottom ? 1 : 0,
-                  background: "linear-gradient(to top, var(--ui-accent-bubble), transparent)",
-                }}
-              />
             </div>
           )}
           <div className="px-3 py-1.5 flex justify-end shrink-0">

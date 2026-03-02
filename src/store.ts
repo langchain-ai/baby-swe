@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { v4 as uuidv4 } from 'uuid';
-import type { Message, Chunk, Mode, ModelConfig, ToolStatus, Thread, Session, Project, ApprovalRequest, DiffData, TodoItem, Tile, LayoutNode, SplitDirection, TileType, Workspace, ApiKeys, FileViewerData, AgentStatus } from './types';
+import type { Message, Chunk, Mode, ModelConfig, ToolStatus, Thread, Session, Project, ApprovalRequest, DiffData, TodoItem, Tile, LayoutNode, SplitDirection, TileType, Workspace, ApiKeys, FileViewerData, AgentStatus, PermissionMode } from './types';
 import { loadSettings, saveSettings, loadRecentProjects } from './persistence';
 import {
   createInitialLayout,
@@ -32,6 +32,7 @@ function generateTitle(messages: Message[]): string {
 interface AppState {
   sessions: Record<string, Session>;
   mode: Mode;
+  permissionMode: PermissionMode;
   modelConfig: ModelConfig;
   getSessionTokenUsage: (sessionId: string) => import('./types').SessionTokenUsage;
   blink: boolean;
@@ -84,6 +85,7 @@ interface AppState {
   setSessionPromptDraft: (sessionId: string, promptDraft: string) => void;
 
   setMode: (mode: Mode) => void;
+  setPermissionMode: (mode: PermissionMode) => Promise<void>;
   setModelConfig: (config: Partial<ModelConfig>) => void;
   updateTokenUsage: (sessionId: string, input: number, output: number) => void;
   compactSession: (sessionId: string, summary: string, keptMessages: import('./types').ChatMessage[]) => void;
@@ -94,6 +96,7 @@ interface AppState {
   loadApiKeys: () => Promise<void>;
   saveApiKeys: (keys: ApiKeys) => Promise<void>;
   loadModelConfig: () => Promise<void>;
+  loadPermissionMode: () => Promise<void>;
 }
 
 const NUM_WORKSPACES = 5;
@@ -149,6 +152,7 @@ function persistSessionAsThread(get: () => AppState, sessionId: string): void {
 export const useStore = create<AppState>((set, get) => ({
   sessions: {},
   mode: 'agent',
+  permissionMode: 'default',
   modelConfig: {
     name: 'claude-sonnet-4-6',
     provider: 'anthropic',
@@ -220,7 +224,7 @@ export const useStore = create<AppState>((set, get) => ({
       autoApproveSession: false,
       pendingApprovals: {},
       todos: [],
-      mode: 'agent',
+      mode: get().mode,
       agentStatus: 'idle',
       isCompacting: false,
       tokenUsage: createEmptySessionTokenUsage(),
@@ -472,7 +476,7 @@ export const useStore = create<AppState>((set, get) => ({
       autoApproveSession: false,
       pendingApprovals: {},
       todos: [],
-      mode: 'agent',
+      mode: get().mode,
       agentStatus: 'idle',
       isCompacting: false,
       tokenUsage: createEmptySessionTokenUsage(),
@@ -599,7 +603,7 @@ export const useStore = create<AppState>((set, get) => ({
       autoApproveSession: false,
       pendingApprovals: {},
       todos: [],
-      mode: 'agent',
+      mode: get().mode,
       agentStatus: 'idle',
       isCompacting: false,
       tokenUsage: createEmptySessionTokenUsage(),
@@ -1031,6 +1035,27 @@ export const useStore = create<AppState>((set, get) => ({
   },
 
   setMode: (mode) => set({ mode }),
+  setPermissionMode: async (permissionMode) => {
+    const selectedMode: Mode = permissionMode === 'full' ? 'yolo' : 'agent';
+
+    set((state) => ({
+      mode: selectedMode,
+      permissionMode,
+      sessions: Object.fromEntries(
+        Object.entries(state.sessions).map(([sessionId, session]) => [
+          sessionId,
+          { ...session, mode: selectedMode },
+        ]),
+      ),
+    }));
+
+    const existingSettings = await loadSettings();
+    await saveSettings({
+      ...existingSettings,
+      permissionMode,
+      yoloMode: permissionMode === 'full',
+    });
+  },
   setModelConfig: (config) =>
     set((state) => {
       const newConfig = { ...state.modelConfig, ...config };
@@ -1157,5 +1182,26 @@ export const useStore = create<AppState>((set, get) => ({
     if (settings.modelConfig) {
       set({ modelConfig: settings.modelConfig });
     }
+  },
+
+  loadPermissionMode: async () => {
+    const settings = await loadSettings();
+    const permissionMode: PermissionMode = settings.permissionMode
+      ? settings.permissionMode
+      : settings.yoloMode
+        ? 'full'
+        : 'default';
+    const selectedMode: Mode = permissionMode === 'full' ? 'yolo' : 'agent';
+
+    set((state) => ({
+      permissionMode,
+      mode: selectedMode,
+      sessions: Object.fromEntries(
+        Object.entries(state.sessions).map(([sessionId, session]) => [
+          sessionId,
+          { ...session, mode: selectedMode },
+        ]),
+      ),
+    }));
   },
 }));

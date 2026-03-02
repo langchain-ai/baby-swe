@@ -102,9 +102,12 @@ export interface ApiKeys {
   tavily?: string;
 }
 
+export type PermissionMode = 'default' | 'full';
+
 export interface GlobalSettings {
   version: number;
   modelConfig: ModelConfig;
+  permissionMode?: PermissionMode;
   yoloMode?: boolean;
   apiKeys?: ApiKeys;
 }
@@ -242,7 +245,7 @@ export interface Message {
   hidden?: boolean;
 }
 
-export type Mode = 'agent' | 'plan' | 'yolo';
+export type Mode = 'agent' | 'yolo';
 
 export interface ModelConfig {
   name: string;

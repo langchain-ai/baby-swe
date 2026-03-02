@@ -290,6 +290,13 @@ function UserMessage({ message }: { message: Message }) {
     updateScrollIndicators();
   }, [text, updateScrollIndicators]);
 
+  const textEdgeShadows = [
+    scrolledFromTop ? "inset 0 12px 10px -10px rgba(42, 63, 95, 0.95)" : "",
+    scrolledFromBottom ? "inset 0 -12px 10px -10px rgba(42, 63, 95, 0.95)" : "",
+  ]
+    .filter(Boolean)
+    .join(", ");
+
   return (
     <div className="flex justify-end my-4">
       <div className="max-w-[78%]">
@@ -308,28 +315,15 @@ function UserMessage({ message }: { message: Message }) {
           </div>
         )}
         {text && (
-          <div className="relative inline-block max-w-full rounded-2xl bg-[var(--ui-accent-bubble)] overflow-hidden">
+          <div className="inline-block max-w-full rounded-2xl bg-[var(--ui-accent-bubble)] overflow-hidden">
             <div
               ref={textRef}
               onScroll={updateScrollIndicators}
               className="max-h-[250px] overflow-auto px-3 py-1.5 text-[color:var(--ui-text)] text-[13px] whitespace-pre-wrap break-words"
+              style={{ boxShadow: textEdgeShadows || "none" }}
             >
               {text}
             </div>
-            <div
-              className="absolute top-0 inset-x-0 h-6 pointer-events-none z-10 transition-opacity duration-200"
-              style={{
-                opacity: scrolledFromTop ? 1 : 0,
-                background: "linear-gradient(to bottom, var(--ui-accent-bubble), transparent)",
-              }}
-            />
-            <div
-              className="absolute bottom-0 inset-x-0 h-6 pointer-events-none z-10 transition-opacity duration-200"
-              style={{
-                opacity: scrolledFromBottom ? 1 : 0,
-                background: "linear-gradient(to top, var(--ui-accent-bubble), transparent)",
-              }}
-            />
           </div>
         )}
       </div>

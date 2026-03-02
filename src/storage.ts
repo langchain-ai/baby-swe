@@ -52,6 +52,7 @@ export function loadSettings(): GlobalSettings {
       provider: 'anthropic',
       effort: 'medium',
     },
+    permissionMode: 'default',
     yoloMode: false,
   };
 }
