@@ -151,12 +151,20 @@ export const PromptBar = memo(function PromptBar({
   onRejectApproval,
   onAutoApproveApproval,
 }: PromptBarProps) {
-  const [query, setQuery] = useState('');
-  const mode = useStore(state => state.sessions[sessionId]?.mode ?? 'agent');
-  const { setSessionMode, modelConfig, setModelConfig } = useStore(useShallow(state => ({
+  const {
+    query,
+    mode,
+    setSessionMode,
+    modelConfig,
+    setModelConfig,
+    setSessionPromptDraft,
+  } = useStore(useShallow(state => ({
+    query: state.sessions[sessionId]?.promptDraft ?? '',
+    mode: state.sessions[sessionId]?.mode ?? 'agent',
     setSessionMode: state.setSessionMode,
     modelConfig: state.modelConfig,
     setModelConfig: state.setModelConfig,
+    setSessionPromptDraft: state.setSessionPromptDraft,
   })));
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const [commandSelectedIndex, setCommandSelectedIndex] = useState(0);
@@ -171,6 +179,9 @@ export const PromptBar = memo(function PromptBar({
   const [filesLoading, setFilesLoading] = useState(false);
   const [cursorPosition, setCursorPosition] = useState(0);
   const [approvalSelectedIndex, setApprovalSelectedIndex] = useState(0);
+  const setQuery = useCallback((nextQuery: string) => {
+    setSessionPromptDraft(sessionId, nextQuery);
+  }, [sessionId, setSessionPromptDraft]);
 
   const hasPendingApproval = Boolean(pendingApproval?.requestId);
   const approvalContent = useMemo(
@@ -383,7 +394,6 @@ export const PromptBar = memo(function PromptBar({
 
   const handleModelSelect = (model: ModelOption) => {
     setModelConfig({ name: model.id, effort: model.effort || 'default' });
-    setQuery('');
     inputRef.current?.focus();
   };
 

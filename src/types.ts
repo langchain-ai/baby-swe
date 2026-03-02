@@ -274,6 +274,7 @@ export interface Session {
   id: string;
   title: string;
   messages: Message[];
+  promptDraft: string;
   streamingMessageId: string | null;
   isStreaming: boolean;
   busy: boolean;

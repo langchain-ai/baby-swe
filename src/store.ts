@@ -81,6 +81,7 @@ interface AppState {
   updateToolStatus: (sessionId: string, toolCallId: string, status: ToolStatus) => void;
   updateTodos: (sessionId: string, todos: TodoItem[]) => void;
   setSessionMode: (sessionId: string, mode: Mode) => void;
+  setSessionPromptDraft: (sessionId: string, promptDraft: string) => void;
 
   setMode: (mode: Mode) => void;
   setModelConfig: (config: Partial<ModelConfig>) => void;
@@ -210,6 +211,7 @@ export const useStore = create<AppState>((set, get) => ({
       id: sessionId,
       title: 'New Chat',
       messages: [],
+      promptDraft: '',
       streamingMessageId: null,
       isStreaming: false,
       busy: false,
@@ -461,6 +463,7 @@ export const useStore = create<AppState>((set, get) => ({
       id: sessionId,
       title: fileViewerData.filePath.split('/').pop() || 'File Viewer',
       messages: [],
+      promptDraft: '',
       streamingMessageId: null,
       isStreaming: false,
       busy: false,
@@ -587,6 +590,7 @@ export const useStore = create<AppState>((set, get) => ({
       id,
       title: 'New Chat',
       messages: [],
+      promptDraft: '',
       streamingMessageId: null,
       isStreaming: false,
       busy: false,
@@ -630,6 +634,7 @@ export const useStore = create<AppState>((set, get) => ({
           [sessionId]: {
             ...session,
             messages: [],
+            promptDraft: '',
             title: 'New Chat',
             streamingMessageId: null,
             isStreaming: false,
@@ -1007,6 +1012,19 @@ export const useStore = create<AppState>((set, get) => ({
         sessions: {
           ...state.sessions,
           [sessionId]: { ...session, mode },
+        },
+      };
+    });
+  },
+
+  setSessionPromptDraft: (sessionId, promptDraft) => {
+    set((state) => {
+      const session = state.sessions[sessionId];
+      if (!session || session.promptDraft === promptDraft) return state;
+      return {
+        sessions: {
+          ...state.sessions,
+          [sessionId]: { ...session, promptDraft },
         },
       };
     });
