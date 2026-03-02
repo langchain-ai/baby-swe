@@ -12,8 +12,8 @@ const KEYBOARD_SHORTCUTS = [
   { combo: 'Cmd/Ctrl+H', description: 'Toggle shortcuts & commands dialog' },
   { combo: 'Cmd/Ctrl+1-5', description: 'Switch workspace' },
   { combo: 'Opt+Cmd/Ctrl+←/→', description: 'Switch workspace left/right' },
-  { combo: 'Cmd/Ctrl+A', description: 'Create new agent tile' },
-  { combo: 'Cmd/Ctrl+T', description: 'Create new terminal tile' },
+  { combo: 'Cmd/Ctrl+T', description: 'Create new agent tile' },
+  { combo: 'Cmd/Ctrl+Shift+T', description: 'Create new terminal tile' },
   { combo: 'Cmd/Ctrl+Shift+G', description: 'Create new source control tile' },
   { combo: 'Cmd/Ctrl+←/→/↑/↓', description: 'Focus adjacent tile' },
   { combo: 'Cmd/Ctrl+Shift+←/→/↑/↓', description: 'Move focused tile (swap with adjacent)' },
@@ -206,15 +206,15 @@ export function App() {
       return;
     }
 
-    // New terminal tile: Cmd+T
-    if (isMod && !e.shiftKey && !e.altKey && key === 't') {
+    // New terminal tile: Cmd+Shift+T
+    if (isMod && e.shiftKey && !e.altKey && key === 't') {
       e.preventDefault();
       createTile('auto', 'terminal');
       return;
     }
 
-    // New agent tile: Cmd+A
-    if (isMod && !e.shiftKey && !e.altKey && key === 'a') {
+    // New agent tile: Cmd+T
+    if (isMod && !e.shiftKey && !e.altKey && key === 't') {
       e.preventDefault();
       const state = useStore.getState();
       const ws = state.workspaces[state.activeWorkspaceIndex];
