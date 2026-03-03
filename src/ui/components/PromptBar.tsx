@@ -27,6 +27,8 @@ const PERMISSION_OPTIONS: Array<{ value: PermissionMode; label: string }> = [
   { value: 'full', label: 'Full access' },
 ];
 
+const PROMPT_TEXTAREA_MAX_HEIGHT = 200;
+
 interface PromptApprovalRequest {
   requestId: string;
   toolName: string;
@@ -297,10 +299,12 @@ export const PromptBar = memo(function PromptBar({
   useLayoutEffect(() => {
     const el = inputRef.current;
     if (!el) return;
+
     el.style.height = 'auto';
-    const clamped = Math.min(el.scrollHeight, 200);
-    el.style.height = `${clamped}px`;
-    el.style.overflowY = el.scrollHeight > 200 ? 'auto' : 'hidden';
+
+    const clampedHeight = Math.min(el.scrollHeight, PROMPT_TEXTAREA_MAX_HEIGHT);
+    el.style.height = `${clampedHeight}px`;
+    el.style.overflowY = el.scrollHeight > PROMPT_TEXTAREA_MAX_HEIGHT ? 'auto' : 'hidden';
   }, [query]);
 
   useEffect(() => {
@@ -744,8 +748,8 @@ export const PromptBar = memo(function PromptBar({
               onSelect={handleInputSelect}
               onKeyDown={handleKeyDown}
               placeholder={busy ? "Send a message to queue next..." : "Ask baby-swe anything, @ to add files, / for commands"}
-              className="w-full flex-1 min-h-[52px] bg-transparent text-[color:var(--ui-text)] outline-none placeholder-[color:var(--ui-text-dim)] resize-none overflow-hidden leading-[1.45] min-w-0"
-              style={{ maxHeight: 200 }}
+              className="w-full min-h-[52px] bg-transparent text-[color:var(--ui-text)] outline-none placeholder-[color:var(--ui-text-dim)] resize-none overflow-hidden leading-[1.45] min-w-0"
+              style={{ maxHeight: PROMPT_TEXTAREA_MAX_HEIGHT }}
             />
 
             <div className="mt-auto pt-2 text-xs text-[color:var(--ui-text-dim)] flex flex-wrap items-center gap-x-2 gap-y-1 min-w-0">
