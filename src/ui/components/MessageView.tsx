@@ -1,4 +1,5 @@
 import { useRef, useEffect, useLayoutEffect, useCallback, memo, useMemo, useState } from "react";
+import { ChevronDown } from "lucide-react";
 import { diffLines } from "diff";
 import { CodeBlock } from "./CodeBlock";
 import { Markdown } from "./Markdown";
@@ -629,6 +630,7 @@ export const MessageView = memo(function MessageView({
   const lastManualScrollTopRef = useRef(0);
   const previousScrollTopRef = useRef(0);
   const pendingScrollFrameRef = useRef<number | null>(null);
+  const [showScrollToBottom, setShowScrollToBottom] = useState(false);
 
   const clearScheduledScroll = useCallback(() => {
     if (pendingScrollFrameRef.current === null) return;
@@ -641,6 +643,10 @@ export const MessageView = memo(function MessageView({
     return distanceFromBottom <= BOTTOM_LOCK_THRESHOLD_PX;
   }, []);
 
+  const syncScrollButtonVisibility = useCallback((el: HTMLDivElement) => {
+    setShowScrollToBottom(!isNearBottom(el));
+  }, [isNearBottom]);
+
   const scrollToBottomNow = useCallback(() => {
     const el = scrollRef.current;
     if (!el) return;
@@ -649,7 +655,8 @@ export const MessageView = memo(function MessageView({
     const currentTop = el.scrollTop;
     lastManualScrollTopRef.current = currentTop;
     previousScrollTopRef.current = currentTop;
-  }, []);
+    syncScrollButtonVisibility(el);
+  }, [syncScrollButtonVisibility]);
 
   const scheduleScrollToBottom = useCallback(() => {
     if (!autoScrollEnabledRef.current) return;
@@ -669,14 +676,16 @@ export const MessageView = memo(function MessageView({
     const handleScroll = () => {
       const currentTop = el.scrollTop;
       const scrolledUp = currentTop < previousScrollTopRef.current - 1;
+      const nearBottom = isNearBottom(el);
 
       if (scrolledUp) {
         autoScrollEnabledRef.current = false;
         clearScheduledScroll();
-      } else if (isNearBottom(el)) {
+      } else if (nearBottom) {
         autoScrollEnabledRef.current = true;
       }
 
+      syncScrollButtonVisibility(el);
       lastManualScrollTopRef.current = currentTop;
       previousScrollTopRef.current = currentTop;
     };
@@ -689,7 +698,7 @@ export const MessageView = memo(function MessageView({
       el.removeEventListener("scroll", handleScroll);
       clearScheduledScroll();
     };
-  }, [clearScheduledScroll, isNearBottom, scrollToBottomNow]);
+  }, [clearScheduledScroll, isNearBottom, scrollToBottomNow, syncScrollButtonVisibility]);
 
   useLayoutEffect(() => {
     const el = scrollRef.current;
@@ -709,7 +718,8 @@ export const MessageView = memo(function MessageView({
     }
 
     previousScrollTopRef.current = el.scrollTop;
-  }, [messages, isStreaming, scheduleScrollToBottom]);
+    syncScrollButtonVisibility(el);
+  }, [messages, isStreaming, scheduleScrollToBottom, syncScrollButtonVisibility]);
 
   useEffect(() => {
     const scroller = scrollRef.current;
@@ -728,37 +738,58 @@ export const MessageView = memo(function MessageView({
         lastManualScrollTopRef.current = maxTop;
         previousScrollTopRef.current = maxTop;
       }
+
+      syncScrollButtonVisibility(scroller);
     });
 
     resizeObserver.observe(scroller);
     resizeObserver.observe(content);
 
     return () => resizeObserver.disconnect();
-  }, [scheduleScrollToBottom]);
+  }, [scheduleScrollToBottom, syncScrollButtonVisibility]);
 
   const visibleMessages = useMemo(() => messages.filter((message) => !message.hidden), [messages]);
 
+  const handleScrollToBottom = useCallback(() => {
+    autoScrollEnabledRef.current = true;
+    clearScheduledScroll();
+    scrollToBottomNow();
+  }, [clearScheduledScroll, scrollToBottomNow]);
+
   return (
-    <div
-      ref={scrollRef}
-      className="flex-1 min-h-0 min-w-0 overflow-y-auto px-3 sm:px-5 py-5 text-[13px] leading-6 font-sans antialiased"
-    >
-      <div ref={contentRef} className={`w-full ${contentWidthClass} mx-auto min-w-0`}>
-        {showHeader && <div className="flex justify-start pb-6"><Logo /></div>}
-        {visibleMessages.map((message, index) => (
-          <MessageBubble
-            key={message.id}
-            message={message}
-            isStreaming={isStreaming && index === visibleMessages.length - 1}
-            projectPath={project?.path}
-            onApprove={onApprove}
-            onReject={onReject}
-            onAutoApprove={onAutoApprove}
-            onOpenDiff={onOpenDiff}
-          />
-        ))}
-        <ThinkingSpinner isStreaming={isStreaming} />
+    <div className="relative flex-1 min-h-0 min-w-0">
+      <div
+        ref={scrollRef}
+        className="h-full min-h-0 min-w-0 overflow-y-auto px-3 sm:px-5 py-5 text-[13px] leading-6 font-sans antialiased"
+      >
+        <div ref={contentRef} className={`w-full ${contentWidthClass} mx-auto min-w-0`}>
+          {showHeader && <div className="flex justify-start pb-6"><Logo /></div>}
+          {visibleMessages.map((message, index) => (
+            <MessageBubble
+              key={message.id}
+              message={message}
+              isStreaming={isStreaming && index === visibleMessages.length - 1}
+              projectPath={project?.path}
+              onApprove={onApprove}
+              onReject={onReject}
+              onAutoApprove={onAutoApprove}
+              onOpenDiff={onOpenDiff}
+            />
+          ))}
+          <ThinkingSpinner isStreaming={isStreaming} />
+        </div>
       </div>
+
+      {showScrollToBottom && (
+        <button
+          type="button"
+          onClick={handleScrollToBottom}
+          aria-label="Scroll to bottom"
+          className="absolute bottom-4 left-1/2 z-30 inline-flex h-8 w-8 -translate-x-1/2 items-center justify-center rounded-full bg-[var(--ui-panel-2)] text-[color:var(--ui-text-muted)] shadow-md transition-colors hover:bg-[var(--ui-panel)] hover:text-[color:var(--ui-text)]"
+        >
+          <ChevronDown className="h-3.5 w-3.5" />
+        </button>
+      )}
     </div>
   );
 });
