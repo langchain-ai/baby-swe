@@ -775,14 +775,27 @@ function setupStorageIPC(): void {
   ipcMain.handle('git:switchBranch', (_event, projectPath: string, branchName: string) => {
     const result = switchGitBranch(projectPath, branchName);
     if (result.success) {
+      const updatedBranch = getGitBranch(projectPath) || branchName;
+
       for (const [tileId, project] of tileProjects.entries()) {
         // Only update tiles on the local checkout, not worktree tiles
         if (project?.path === projectPath && !project.worktreePath) {
-          const updatedProject = { ...project, gitBranch: branchName };
+          const updatedProject = { ...project, gitBranch: updatedBranch, githubPR: null };
           tileProjects.set(tileId, updatedProject);
           mainWindow?.webContents.send('tile:projectChanged', tileId, updatedProject);
         }
       }
+
+      setTimeout(() => {
+        const githubPR = getGithubPR(projectPath);
+        for (const [tileId, project] of tileProjects.entries()) {
+          if (project?.path === projectPath && !project.worktreePath && project.gitBranch === updatedBranch) {
+            const refreshedProject = { ...project, githubPR };
+            tileProjects.set(tileId, refreshedProject);
+            mainWindow?.webContents.send('tile:projectChanged', tileId, refreshedProject);
+          }
+        }
+      }, 0);
     }
     return result;
   });
@@ -794,14 +807,27 @@ function setupStorageIPC(): void {
   ipcMain.handle('git:createBranch', (_event, projectPath: string, branchName: string) => {
     const result = createGitBranch(projectPath, branchName);
     if (result.success) {
+      const updatedBranch = getGitBranch(projectPath) || branchName;
+
       for (const [tileId, project] of tileProjects.entries()) {
         // Only update tiles on the local checkout, not worktree tiles
         if (project?.path === projectPath && !project.worktreePath) {
-          const updatedProject = { ...project, gitBranch: branchName };
+          const updatedProject = { ...project, gitBranch: updatedBranch, githubPR: null };
           tileProjects.set(tileId, updatedProject);
           mainWindow?.webContents.send('tile:projectChanged', tileId, updatedProject);
         }
       }
+
+      setTimeout(() => {
+        const githubPR = getGithubPR(projectPath);
+        for (const [tileId, project] of tileProjects.entries()) {
+          if (project?.path === projectPath && !project.worktreePath && project.gitBranch === updatedBranch) {
+            const refreshedProject = { ...project, githubPR };
+            tileProjects.set(tileId, refreshedProject);
+            mainWindow?.webContents.send('tile:projectChanged', tileId, refreshedProject);
+          }
+        }
+      }, 0);
     }
     return result;
   });
