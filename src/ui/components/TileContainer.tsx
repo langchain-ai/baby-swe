@@ -104,7 +104,8 @@ export function TileContainer({
     return t ? state.sessions[t.sessionId] ?? null : null;
   });
   const recentProjects = useStore(state => state.recentProjects);
-  const modelConfig = useStore(state => state.modelConfig);
+  const defaultModelConfig = useStore(state => state.modelConfig);
+  const modelConfig = session?.modelConfig ?? defaultModelConfig;
   const actions = useStore(useShallow(state => ({
     loadRecentProjects: state.loadRecentProjects,
     setTileProject: state.setTileProject,
@@ -113,7 +114,7 @@ export function TileContainer({
     addMessageToSession: state.addMessageToSession,
     startStreaming: state.startStreaming,
     setAutoApproveSession: state.setAutoApproveSession,
-    setModelConfig: state.setModelConfig,
+    setSessionModelConfig: state.setSessionModelConfig,
     setShowApiKeysScreen: state.setShowApiKeysScreen,
     resumeThread: state.resumeThread,
     openDiffViewer: state.openDiffViewer,
@@ -126,7 +127,7 @@ export function TileContainer({
     addMessageToSession,
     startStreaming,
     setAutoApproveSession,
-    setModelConfig,
+    setSessionModelConfig,
     setShowApiKeysScreen,
     resumeThread,
     openDiffViewer,
@@ -302,10 +303,10 @@ export function TileContainer({
       sessionId,
       tileId,
       chatHistory,
-      modelConfig,
+      freshSession.modelConfig,
       freshSession.mode,
     );
-  }, [addMessageToSession, startStreaming, tileId, modelConfig]);
+  }, [addMessageToSession, startStreaming, tileId]);
 
   useEffect(() => {
     if (!session) return;
@@ -332,7 +333,10 @@ export function TileContainer({
             cumulative: { input: 0, output: 0, total: 0 },
           },
           modelConfig,
-          setModelConfig,
+          setModelConfig: (config) => {
+            if (!session?.id) return;
+            setSessionModelConfig(session.id, config);
+          },
           setShowApiKeysScreen,
           project: tile.project,
           resumeThread,
@@ -341,7 +345,7 @@ export function TileContainer({
             const s = useStore.getState().sessions[sessionId];
             if (!s) return;
             const chatMessages = messagesToChatMessages(s.messages);
-            window.agent.compact(sessionId, chatMessages, modelConfig);
+            window.agent.compact(sessionId, chatMessages, s.modelConfig);
           },
         });
         if (commandExecuted) return;
@@ -370,7 +374,7 @@ export function TileContainer({
       createSession,
       clearSession,
       modelConfig,
-      setModelConfig,
+      setSessionModelConfig,
       setShowApiKeysScreen,
       startAgentRun,
       resumeThread,

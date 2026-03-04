@@ -13,7 +13,7 @@ import { ModelAutocomplete, AVAILABLE_MODELS, getModelCount, getModelAtIndex, ty
 import { ContextIndicator } from './ContextIndicator';
 import { WorktreeSelector } from './WorktreeSelector';
 import type { Command } from '../../commands';
-import type { ApprovalDecision, DiffData, ImageChunk, PermissionMode, WorktreeType } from '../../types';
+import type { ApprovalDecision, DiffData, ImageChunk, ModelConfig, PermissionMode, WorktreeType } from '../../types';
 
 const MODELS: Record<string, string> = {
   'claude-opus-4-6': 'Opus 4.6',
@@ -162,15 +162,17 @@ export const PromptBar = memo(function PromptBar({
     query,
     permissionMode,
     setPermissionMode,
-    modelConfig,
-    setModelConfig,
+    defaultModelConfig,
+    sessionModelConfig,
+    setSessionModelConfig,
     setSessionPromptDraft,
   } = useStore(useShallow(state => ({
     query: state.sessions[sessionId]?.promptDraft ?? '',
     permissionMode: state.permissionMode,
     setPermissionMode: state.setPermissionMode,
-    modelConfig: state.modelConfig,
-    setModelConfig: state.setModelConfig,
+    defaultModelConfig: state.modelConfig,
+    sessionModelConfig: state.sessions[sessionId]?.modelConfig,
+    setSessionModelConfig: state.setSessionModelConfig,
     setSessionPromptDraft: state.setSessionPromptDraft,
   })));
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -186,6 +188,10 @@ export const PromptBar = memo(function PromptBar({
   const [filesLoading, setFilesLoading] = useState(false);
   const [cursorPosition, setCursorPosition] = useState(0);
   const [approvalSelectedIndex, setApprovalSelectedIndex] = useState(0);
+  const modelConfig = sessionModelConfig ?? defaultModelConfig;
+  const setModelConfig = useCallback((config: Partial<ModelConfig>) => {
+    setSessionModelConfig(sessionId, config);
+  }, [sessionId, setSessionModelConfig]);
   const setQuery = useCallback((nextQuery: string) => {
     setSessionPromptDraft(sessionId, nextQuery);
   }, [sessionId, setSessionPromptDraft]);

@@ -13,7 +13,7 @@ interface ContextIndicatorProps {
 }
 
 export function ContextIndicator({ sessionId }: ContextIndicatorProps) {
-  const modelName = useStore(state => state.modelConfig.name);
+  const modelName = useStore(state => state.sessions[sessionId]?.modelConfig.name ?? state.modelConfig.name);
   const usedTokens = useStore(state => state.sessions[sessionId]?.tokenUsage.lastCall.input ?? 0);
   const [showTooltip, setShowTooltip] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
