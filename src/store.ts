@@ -88,6 +88,7 @@ interface AppState {
   setMode: (mode: Mode) => void;
   setPermissionMode: (mode: PermissionMode) => Promise<void>;
   setModelConfig: (config: Partial<ModelConfig>) => void;
+  setSessionModelConfig: (sessionId: string, config: Partial<ModelConfig>) => void;
   updateTokenUsage: (sessionId: string, input: number, output: number) => void;
   compactSession: (sessionId: string, summary: string, keptMessages: import('./types').ChatMessage[]) => void;
   setCompacting: (sessionId: string, isCompacting: boolean) => void;
@@ -226,6 +227,7 @@ export const useStore = create<AppState>((set, get) => ({
       pendingApprovals: {},
       todos: [],
       mode: get().mode,
+      modelConfig: { ...get().modelConfig },
       agentStatus: 'idle',
       isCompacting: false,
       tokenUsage: createEmptySessionTokenUsage(),
@@ -478,6 +480,7 @@ export const useStore = create<AppState>((set, get) => ({
       pendingApprovals: {},
       todos: [],
       mode: get().mode,
+      modelConfig: { ...get().modelConfig },
       agentStatus: 'idle',
       isCompacting: false,
       tokenUsage: createEmptySessionTokenUsage(),
@@ -581,6 +584,7 @@ export const useStore = create<AppState>((set, get) => ({
       pendingApprovals: {},
       todos: [],
       mode: get().mode,
+      modelConfig: { ...get().modelConfig },
       agentStatus: 'idle',
       isCompacting: false,
       tokenUsage: createEmptySessionTokenUsage(),
@@ -707,6 +711,7 @@ export const useStore = create<AppState>((set, get) => ({
       pendingApprovals: {},
       todos: [],
       mode: get().mode,
+      modelConfig: { ...get().modelConfig },
       agentStatus: 'idle',
       isCompacting: false,
       tokenUsage: createEmptySessionTokenUsage(),
@@ -1166,6 +1171,24 @@ export const useStore = create<AppState>((set, get) => ({
         saveSettings({ ...existingSettings, modelConfig: newConfig });
       });
       return { modelConfig: newConfig };
+    }),
+  setSessionModelConfig: (sessionId, config) =>
+    set((state) => {
+      const session = state.sessions[sessionId];
+      if (!session) return state;
+
+      const newConfig = { ...session.modelConfig, ...config };
+      loadSettings().then((existingSettings) => {
+        saveSettings({ ...existingSettings, modelConfig: newConfig });
+      });
+
+      return {
+        modelConfig: newConfig,
+        sessions: {
+          ...state.sessions,
+          [sessionId]: { ...session, modelConfig: newConfig },
+        },
+      };
     }),
   toggleBlink: () => set((state) => ({ blink: !state.blink })),
   getSessionTokenUsage: (sessionId) => {

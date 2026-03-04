@@ -291,6 +291,7 @@ export interface Session {
   pendingApprovals: Record<string, ApprovalRequest>;
   todos: TodoItem[];
   mode: Mode;
+  modelConfig: ModelConfig;
   agentStatus: AgentStatus;
   isCompacting: boolean;
   tokenUsage: SessionTokenUsage;
