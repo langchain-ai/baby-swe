@@ -176,21 +176,34 @@ function LocalTab({ projectPath, currentBranch, isLocalMode, tileId, onClose, on
   }, [branches, search]);
 
   const handleSwitchBranch = useCallback(async (branch: string) => {
+    setError(null);
+
     if (!isLocalMode) {
       // Currently in worktree mode — switch back to local
       const project = await window.tile.openProject(tileId, projectPath);
-      if (project && branch !== project.gitBranch) {
-        await window.git.switchBranch(projectPath, branch);
+      if (!project) {
+        setError('Failed to switch to local checkout');
+        return;
       }
+
+      if (branch !== project.gitBranch) {
+        const result = await window.git.switchBranch(projectPath, branch);
+        if (!result.success) {
+          setError(result.error || 'Failed to switch branch');
+          return;
+        }
+      }
+
       onWorktreeChanged?.();
       onClose();
       return;
     }
+
     if (branch === currentBranch) {
       onClose();
       return;
     }
-    setError(null);
+
     const result = await window.git.switchBranch(projectPath, branch);
     if (result.success) {
       onClose();
@@ -244,9 +257,19 @@ function LocalTab({ projectPath, currentBranch, isLocalMode, tileId, onClose, on
   return (
     <div>
       {!isLocalMode && (
-        <div className="px-3 py-1.5 text-[11px] text-orange-400/80 bg-orange-400/5 border-b border-gray-700">
-          Currently in worktree. Switching here will move this tile to the local checkout.
-        </div>
+        <>
+          <div className="px-3 py-1.5 text-[11px] text-orange-400/80 bg-orange-400/5 border-b border-gray-700">
+            Currently in worktree. Switching here will move this tile to the local checkout.
+          </div>
+          <button
+            type="button"
+            onClick={() => handleSwitchBranch(currentBranch)}
+            className="block w-full text-left px-3 py-1.5 text-orange-300 hover:bg-gray-700 transition-colors whitespace-nowrap text-xs"
+          >
+            Hand off to local ({currentBranch})
+          </button>
+          <div className="border-t border-gray-700 my-0.5" />
+        </>
       )}
       <button
         type="button"
@@ -317,6 +340,7 @@ function WorktreeTab({ projectPath, currentWorktreePath, currentBranch, tileId, 
   const [action, setAction] = useState<'new-branch' | 'existing-branch' | null>(null);
   const [newBranchName, setNewBranchName] = useState('');
   const [branchSearch, setBranchSearch] = useState('');
+  const isLocalMode = !currentWorktreePath;
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -325,11 +349,11 @@ function WorktreeTab({ projectPath, currentWorktreePath, currentBranch, tileId, 
       window.git.listBranches(projectPath),
     ]);
     setWorktrees(wts);
-    // Filter out branches that already have a worktree
+    // Filter out branches that already have a worktree, and hide current local branch (use handoff for that)
     const wtBranches = new Set(wts.map(w => w.branch));
-    setBranches(branchResult.branches.filter(b => !wtBranches.has(b)));
+    setBranches(branchResult.branches.filter(b => !wtBranches.has(b) && (!isLocalMode || b !== currentBranch)));
     setLoading(false);
-  }, [projectPath]);
+  }, [projectPath, currentBranch, isLocalMode]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
@@ -344,6 +368,19 @@ function WorktreeTab({ projectPath, currentWorktreePath, currentBranch, tileId, 
     onWorktreeChanged?.();
     onClose();
   }, [tileId, projectPath, currentWorktreePath, onClose, onWorktreeChanged]);
+
+  const handleHandoffToWorktree = useCallback(async () => {
+    setError(null);
+    const result = await window.git.handoffToWorktree(projectPath, currentBranch);
+    if (result.success && result.worktreePath) {
+      await window.tile.openWorktree(tileId, projectPath, result.worktreePath);
+      onWorktreeChanged?.();
+      onClose();
+    } else {
+      setError(result.error || 'Failed to hand off to worktree');
+      loadData();
+    }
+  }, [projectPath, currentBranch, tileId, onClose, onWorktreeChanged, loadData]);
 
   const handleCreateWorktreeNewBranch = useCallback(async () => {
     const name = newBranchName.trim();
@@ -464,6 +501,21 @@ function WorktreeTab({ projectPath, currentWorktreePath, currentBranch, tileId, 
 
   return (
     <div>
+      {isLocalMode && (
+        <>
+          <div className="px-3 py-1.5 text-[11px] text-orange-400/80 bg-orange-400/5 border-b border-gray-700">
+            Currently in local. Hand off this branch to a worktree to keep it running in the background.
+          </div>
+          <button
+            type="button"
+            onClick={handleHandoffToWorktree}
+            className="block w-full text-left px-3 py-1.5 text-orange-300 hover:bg-gray-700 transition-colors whitespace-nowrap text-xs"
+          >
+            Hand off to worktree ({currentBranch})
+          </button>
+          <div className="border-t border-gray-700 my-0.5" />
+        </>
+      )}
       <button
         type="button"
         onClick={() => setAction('new-branch')}

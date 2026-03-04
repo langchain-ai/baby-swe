@@ -154,6 +154,7 @@ declare global {
     git: {
       listBranches: (projectPath: string) => Promise<{ branches: string[]; current: string | null }>;
       switchBranch: (projectPath: string, branchName: string) => Promise<{ success: boolean; error?: string }>;
+      handoffToWorktree: (projectPath: string, branchName: string) => Promise<{ success: boolean; worktreePath?: string; localBranch?: string; error?: string }>;
       createBranch: (projectPath: string, branchName: string) => Promise<{ success: boolean; error?: string }>;
       getPR: (projectPath: string) => Promise<GithubPR | null>;
       diffFile: (projectPath: string, filePath: string) => Promise<{ original: string; modified: string } | null>;

@@ -115,8 +115,48 @@ function listGitBranches(projectPath: string): { branches: string[]; current: st
   }
 }
 
-function switchGitBranch(projectPath: string, branchName: string): { success: boolean; error?: string } {
+function switchGitBranch(projectPath: string, branchName: string): { success: boolean; error?: string; promotedWorktreePath?: string } {
   try {
+    const repoRoot = getGitRepoRoot(projectPath) || projectPath;
+    const worktreeToPromote = listGitWorktrees(repoRoot).find(
+      (wt) => !wt.isMain && !wt.isBare && wt.branch === branchName,
+    );
+
+    if (worktreeToPromote) {
+      const worktreeStatus = execFileSync('git', ['status', '--porcelain', '-uall'], {
+        cwd: worktreeToPromote.path,
+        encoding: 'utf-8',
+        timeout: 5000,
+        stdio: ['pipe', 'pipe', 'pipe'],
+        env: GIT_ENV,
+      });
+
+      if (worktreeStatus.trim().length > 0) {
+        return {
+          success: false,
+          error: `Branch ${branchName} is checked out in worktree ${worktreeToPromote.path}. Commit/stash/push changes there before promoting it to local.`,
+        };
+      }
+
+      execFileSync('git', ['worktree', 'remove', worktreeToPromote.path], {
+        cwd: repoRoot,
+        encoding: 'utf-8',
+        timeout: 10000,
+        stdio: ['pipe', 'pipe', 'pipe'],
+        env: GIT_ENV,
+      });
+
+      execFileSync('git', ['checkout', branchName], {
+        cwd: projectPath,
+        encoding: 'utf-8',
+        timeout: 10000,
+        stdio: ['pipe', 'pipe', 'pipe'],
+        env: GIT_ENV,
+      });
+
+      return { success: true, promotedWorktreePath: worktreeToPromote.path };
+    }
+
     execFileSync('git', ['checkout', branchName], {
       cwd: projectPath,
       encoding: 'utf-8',
@@ -128,6 +168,89 @@ function switchGitBranch(projectPath: string, branchName: string): { success: bo
   } catch (e: any) {
     return { success: false, error: e.stderr?.trim() || e.message || 'Failed to switch branch' };
   }
+}
+
+function pickFallbackLocalBranch(projectPath: string, currentBranch: string): string | null {
+  const { branches } = listGitBranches(projectPath);
+  if (branches.length === 0) return null;
+
+  const repoRoot = getGitRepoRoot(projectPath) || projectPath;
+  const checkedOutWorktreeBranches = new Set(
+    listGitWorktrees(repoRoot)
+      .filter((wt) => !wt.isMain && !wt.isBare)
+      .map((wt) => wt.branch),
+  );
+
+  const availableBranches = branches.filter(
+    (branch) => branch !== currentBranch && !checkedOutWorktreeBranches.has(branch),
+  );
+
+  if (availableBranches.length === 0) return null;
+
+  const preferredBranches = ['main', 'master', 'develop', 'dev', 'trunk'];
+  for (const preferred of preferredBranches) {
+    if (availableBranches.includes(preferred)) return preferred;
+  }
+
+  return availableBranches[0];
+}
+
+function handoffLocalBranchToWorktree(projectPath: string, branchName: string): {
+  success: boolean;
+  worktreePath?: string;
+  localBranch?: string;
+  error?: string;
+} {
+  const localBranch = getGitBranch(projectPath);
+  if (!localBranch) {
+    return { success: false, error: 'Failed to determine local branch' };
+  }
+
+  if (localBranch !== branchName) {
+    return {
+      success: false,
+      error: `Local checkout is on ${localBranch}, but this tile is on ${branchName}. Refresh and try again.`,
+      localBranch,
+    };
+  }
+
+  const fallbackLocalBranch = pickFallbackLocalBranch(projectPath, branchName);
+  if (!fallbackLocalBranch) {
+    return {
+      success: false,
+      error: `Cannot hand off ${branchName} to a worktree because no other local branch is available. Create another branch first.`,
+      localBranch,
+    };
+  }
+
+  const switchResult = switchGitBranch(projectPath, fallbackLocalBranch);
+  if (!switchResult.success) {
+    return {
+      success: false,
+      error: switchResult.error || `Failed to switch local checkout to ${fallbackLocalBranch}`,
+      localBranch,
+    };
+  }
+
+  const addResult = addGitWorktree(projectPath, branchName, false);
+  if (addResult.success && addResult.worktreePath) {
+    return { success: true, worktreePath: addResult.worktreePath, localBranch: fallbackLocalBranch };
+  }
+
+  const rollbackResult = switchGitBranch(projectPath, branchName);
+  if (!rollbackResult.success) {
+    return {
+      success: false,
+      error: `${addResult.error || 'Failed to create worktree'} Local checkout was moved to ${fallbackLocalBranch} and automatic rollback to ${branchName} failed: ${rollbackResult.error || 'unknown error'}.`,
+      localBranch: fallbackLocalBranch,
+    };
+  }
+
+  return {
+    success: false,
+    error: addResult.error || 'Failed to create worktree',
+    localBranch: branchName,
+  };
 }
 
 function createGitBranch(projectPath: string, branchName: string): { success: boolean; error?: string } {
@@ -778,9 +901,23 @@ function setupStorageIPC(): void {
       const updatedBranch = getGitBranch(projectPath) || branchName;
 
       for (const [tileId, project] of tileProjects.entries()) {
-        // Only update tiles on the local checkout, not worktree tiles
+        // Update local checkout tiles
         if (project?.path === projectPath && !project.worktreePath) {
           const updatedProject = { ...project, gitBranch: updatedBranch, githubPR: null };
+          tileProjects.set(tileId, updatedProject);
+          mainWindow?.webContents.send('tile:projectChanged', tileId, updatedProject);
+          continue;
+        }
+
+        // If this branch was promoted from a worktree, move tiles off that removed worktree
+        if (result.promotedWorktreePath && project?.path === projectPath && project.worktreePath === result.promotedWorktreePath) {
+          const updatedProject: Project = {
+            ...project,
+            gitBranch: updatedBranch,
+            githubPR: null,
+            worktreePath: undefined,
+            worktreeType: 'local',
+          };
           tileProjects.set(tileId, updatedProject);
           mainWindow?.webContents.send('tile:projectChanged', tileId, updatedProject);
         }
@@ -797,6 +934,40 @@ function setupStorageIPC(): void {
         }
       }, 0);
     }
+    return result;
+  });
+
+  ipcMain.handle('git:handoffToWorktree', (_event, projectPath: string, branchName: string) => {
+    const result = handoffLocalBranchToWorktree(projectPath, branchName);
+    const actualLocalBranch = getGitBranch(projectPath);
+
+    if (actualLocalBranch) {
+      for (const [tileId, project] of tileProjects.entries()) {
+        if (project?.path === projectPath && !project.worktreePath) {
+          const updatedProject: Project = {
+            ...project,
+            gitBranch: actualLocalBranch,
+            githubPR: null,
+            worktreePath: undefined,
+            worktreeType: 'local',
+          };
+          tileProjects.set(tileId, updatedProject);
+          mainWindow?.webContents.send('tile:projectChanged', tileId, updatedProject);
+        }
+      }
+
+      setTimeout(() => {
+        const githubPR = getGithubPR(projectPath);
+        for (const [tileId, project] of tileProjects.entries()) {
+          if (project?.path === projectPath && !project.worktreePath && project.gitBranch === actualLocalBranch) {
+            const refreshedProject = { ...project, githubPR };
+            tileProjects.set(tileId, refreshedProject);
+            mainWindow?.webContents.send('tile:projectChanged', tileId, refreshedProject);
+          }
+        }
+      }, 0);
+    }
+
     return result;
   });
 

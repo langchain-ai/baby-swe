@@ -78,6 +78,8 @@ contextBridge.exposeInMainWorld('git', {
   listBranches: (projectPath: string) => ipcRenderer.invoke('git:listBranches', projectPath),
   switchBranch: (projectPath: string, branchName: string) =>
     ipcRenderer.invoke('git:switchBranch', projectPath, branchName),
+  handoffToWorktree: (projectPath: string, branchName: string) =>
+    ipcRenderer.invoke('git:handoffToWorktree', projectPath, branchName),
   createBranch: (projectPath: string, branchName: string) =>
     ipcRenderer.invoke('git:createBranch', projectPath, branchName),
   getPR: (projectPath: string) => ipcRenderer.invoke('git:getPR', projectPath),
