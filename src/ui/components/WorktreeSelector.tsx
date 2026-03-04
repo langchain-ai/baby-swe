@@ -56,7 +56,7 @@ export function WorktreeSelector({
         {displayLabel}
       </button>
       {isOpen && (
-        <div className={`absolute ${dropUp ? 'bottom-full mb-1' : 'top-full mt-1'} right-0 bg-gray-800 border border-gray-700 rounded-lg shadow-xl z-50 min-w-72 overflow-hidden`}>
+        <div className={`absolute ${dropUp ? 'bottom-full mb-1' : 'top-full mt-1'} right-0 bg-[#1a2332] border border-gray-700 rounded-lg shadow-xl z-50 min-w-72 overflow-hidden`}>
           {/* Tab bar */}
           <div className="flex border-b border-gray-700">
             <TabButton
@@ -75,7 +75,6 @@ export function WorktreeSelector({
               label="Cloud"
               active={activeTab === 'cloud'}
               onClick={() => setActiveTab('cloud')}
-              disabled
             />
           </div>
 
@@ -577,14 +576,23 @@ function WorktreeTab({ projectPath, currentWorktreePath, currentBranch, tileId, 
   );
 }
 
-// ─── Cloud tab (disabled) ────────────────────────────────────────────────────
+// ─── Cloud tab ───────────────────────────────────────────────────────────────
 
 function CloudTab() {
   return (
-    <div className="px-4 py-6 flex flex-col items-center gap-2">
-      <CloudIcon />
-      <span className="text-xs text-gray-400">Cloud Environments</span>
-      <span className="text-[11px] text-gray-600">Coming Soon</span>
+    <div className="p-3 flex flex-col gap-2">
+      <div className="min-w-0">
+        <div className="text-[11px] font-medium uppercase tracking-wide text-[#5a9bc7]">Cloud Environments</div>
+        <div className="mt-0.5 text-xs text-gray-400">Link your account to run threads in the cloud and re-attach anytime.</div>
+      </div>
+      <a
+        href="https://swe.langchain.com"
+        target="_blank"
+        rel="noreferrer noopener"
+        className="inline-flex items-center justify-center w-full rounded bg-[#5a9bc7] hover:bg-[#4a8ab6] text-white px-3 py-1.5 text-xs font-medium transition-colors"
+      >
+        Connect to OpenSWE
+      </a>
     </div>
   );
 }
@@ -622,10 +630,3 @@ function XIcon() {
   );
 }
 
-function CloudIcon() {
-  return (
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-gray-600">
-      <path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z" />
-    </svg>
-  );
-}
