@@ -40,7 +40,7 @@ function HighlightedLine({ tokens, fallback, isAdd, isRemove }: {
 }) {
   if (!tokens) {
     return (
-      <span className={isAdd ? 'text-green-300' : isRemove ? 'text-red-300' : 'text-gray-400'}>
+      <span className={isAdd ? 'text-[#a5d6a7]' : isRemove ? 'text-[#ffb4ab]' : 'text-gray-400'}>
         {fallback}
       </span>
     );
@@ -153,7 +153,7 @@ function filterToHunks(lines: DiffLineData[], contextLines: number = CONTEXT_LIN
   for (let i = 0; i < lines.length; i++) {
     if (includeSet.has(i)) {
       if (lastIncluded >= 0 && i - lastIncluded > 1) {
-        result.push({ type: 'separator', text: '...' });
+        result.push({ type: 'separator', text: '···' });
       }
       result.push(lines[i]);
       lastIncluded = i;
@@ -260,7 +260,7 @@ export function DiffView({ diffData }: DiffViewProps) {
           if (line.type === 'separator') {
             return (
               <div key={idx} className="text-gray-600 py-0.5">
-                ...
+                {line.text}
               </div>
             );
           }
@@ -274,16 +274,16 @@ export function DiffView({ diffData }: DiffViewProps) {
             <div
               key={idx}
               className={`whitespace-pre ${
-                isAdd ? 'bg-green-900/30' :
-                isRemove ? 'bg-red-900/30' : ''
+                isAdd ? 'bg-[#12261a]' :
+                isRemove ? 'bg-[#2d1a1f]' : ''
               }`}
             >
               <span className="text-gray-600 w-8 inline-block text-right pr-2">
                 {line.oldLineNum || line.newLineNum || ''}
               </span>
               <span className={`w-4 inline-block ${
-                isAdd ? 'text-green-400' :
-                isRemove ? 'text-red-400' : 'text-gray-600'
+                isAdd ? 'text-[#3fb950]' :
+                isRemove ? 'text-[#f85149]' : 'text-gray-600'
               }`}>
                 {isAdd ? '+' : isRemove ? '-' : ' '}
               </span>
