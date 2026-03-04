@@ -45,7 +45,7 @@ Registered commands live in `src/commands`:
 
 ## Memory + Storage
 
-- Project memory: `<repo>/AGENTS.md`
+- Project memory: `<repo>/AGENTS.md` plus nested `<repo>/**/AGENTS.md` (path-scoped)
 - User memory: `~/.baby-swe/AGENTS.md`
 - App data stored under Electron `userData` (set to `~/Library/Application Support/Baby SWE` on macOS)
 
