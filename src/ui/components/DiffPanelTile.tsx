@@ -1,5 +1,6 @@
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { diffLines } from "diff";
+import * as monaco from "monaco-editor";
 import type { FileViewerData } from "../../types";
 
 interface DiffPanelTileProps {
@@ -18,11 +19,155 @@ type DiffLine = {
   newLineNum?: number;
 };
 
-type DiffDisplayEntry =
-  | { type: "line"; key: string; line: DiffLine }
-  | { type: "collapsed"; key: string; count: number; lines: DiffLine[] };
-
 const CONTEXT_LINES = 3;
+const MONACO_THEME = "baby-swe-dark";
+
+let monacoEnvironmentConfigured = false;
+let monacoThemeConfigured = false;
+
+function createWorkerByLabel(label: string): Worker {
+  switch (label) {
+    case "json":
+      return new Worker("./ui/monaco/json.worker.js", { name: "json" });
+    case "css":
+    case "scss":
+    case "less":
+      return new Worker("./ui/monaco/css.worker.js", { name: "css" });
+    case "html":
+    case "handlebars":
+    case "razor":
+      return new Worker("./ui/monaco/html.worker.js", { name: "html" });
+    case "typescript":
+    case "javascript":
+      return new Worker("./ui/monaco/ts.worker.js", { name: "typescript" });
+    default:
+      return new Worker("./ui/monaco/editor.worker.js", { name: "editor" });
+  }
+}
+
+function ensureMonacoEnvironment() {
+  if (monacoEnvironmentConfigured) return;
+
+  (globalThis as typeof globalThis & {
+    MonacoEnvironment?: {
+      getWorker: (_workerId: string, label: string) => Worker;
+    };
+  }).MonacoEnvironment = {
+    getWorker(_workerId: string, label: string) {
+      return createWorkerByLabel(label);
+    },
+  };
+
+  monacoEnvironmentConfigured = true;
+}
+
+function ensureMonacoTheme() {
+  if (monacoThemeConfigured) return;
+
+  monaco.editor.defineTheme(MONACO_THEME, {
+    base: "vs-dark",
+    inherit: true,
+    rules: [],
+    colors: {
+      "editor.background": "#152239",
+      "editor.foreground": "#e5ecf7",
+      "editorLineNumber.foreground": "#7086a8",
+      "editorLineNumber.activeForeground": "#9eb3d3",
+      "editor.selectionBackground": "#5a9bc755",
+      "editor.lineHighlightBackground": "#1b2d49",
+      "editorGutter.background": "#152239",
+      "diffEditor.insertedTextBackground": "#81b29a22",
+      "diffEditor.removedTextBackground": "#e07a5f22",
+      "diffEditor.insertedLineBackground": "#81b29a15",
+      "diffEditor.removedLineBackground": "#e07a5f15",
+      "diffEditor.diagonalFill": "#00000000",
+      "editorOverviewRuler.border": "#00000000",
+      "editorStickyScroll.border": "#00000000",
+      "editorStickyScroll.shadow": "#00000000",
+    },
+  });
+
+  monacoThemeConfigured = true;
+}
+
+function getLanguageFromFile(file: FileViewerData): string {
+  const normalizedPath = file.filePath.replace(/\\/g, "/").toLowerCase();
+  const filename = normalizedPath.split("/").pop() ?? "";
+  const extension = filename.includes(".") ? filename.split(".").pop() ?? "" : "";
+
+  const extensionMap: Record<string, string> = {
+    ts: "typescript",
+    tsx: "typescript",
+    mts: "typescript",
+    cts: "typescript",
+    js: "javascript",
+    jsx: "javascript",
+    mjs: "javascript",
+    cjs: "javascript",
+    py: "python",
+    pyw: "python",
+    py3: "python",
+    python3: "python",
+    rb: "ruby",
+    rs: "rust",
+    go: "go",
+    java: "java",
+    kt: "kotlin",
+    swift: "swift",
+    c: "c",
+    cpp: "cpp",
+    cs: "csharp",
+    html: "html",
+    css: "css",
+    scss: "scss",
+    json: "json",
+    yaml: "yaml",
+    yml: "yaml",
+    toml: "toml",
+    md: "markdown",
+    sh: "shell",
+    bash: "shell",
+    zsh: "shell",
+    sql: "sql",
+    xml: "xml",
+    php: "php",
+    lua: "lua",
+    graphql: "graphql",
+  };
+
+  if (filename === "dockerfile") return "dockerfile";
+  if (filename === "makefile") return "plaintext";
+
+  const fromPath = extensionMap[extension];
+  if (fromPath) return fromPath;
+
+  const declared = (file.language ?? "").trim().toLowerCase();
+  const declaredMap: Record<string, string> = {
+    typescript: "typescript",
+    ts: "typescript",
+    tsx: "typescript",
+    javascript: "javascript",
+    js: "javascript",
+    jsx: "javascript",
+    python: "python",
+    py: "python",
+    py3: "python",
+    shell: "shell",
+    bash: "shell",
+    sh: "shell",
+    zsh: "shell",
+    yaml: "yaml",
+    yml: "yaml",
+    json: "json",
+    markdown: "markdown",
+    md: "markdown",
+    text: "plaintext",
+    plaintext: "plaintext",
+    txt: "plaintext",
+  };
+
+  return declaredMap[declared] ?? "plaintext";
+}
 
 function toLineArray(text: string): string[] {
   if (text.length === 0) return [];
@@ -78,59 +223,6 @@ function computeDiffLines(originalContent: string, modifiedContent: string): Dif
   return lines;
 }
 
-function buildDisplayEntries(lines: DiffLine[]): DiffDisplayEntry[] {
-  if (lines.length === 0) {
-    return [];
-  }
-
-  const changedIndices: number[] = [];
-  for (let i = 0; i < lines.length; i += 1) {
-    const line = lines[i];
-    if (line.type === "add" || line.type === "remove") {
-      changedIndices.push(i);
-    }
-  }
-
-  if (changedIndices.length === 0) {
-    return lines.map((line, i) => ({ type: "line", key: `line-${i}`, line }));
-  }
-
-  const includeSet = new Set<number>();
-  for (const changeIndex of changedIndices) {
-    const start = Math.max(0, changeIndex - CONTEXT_LINES);
-    const end = Math.min(lines.length - 1, changeIndex + CONTEXT_LINES);
-    for (let i = start; i <= end; i += 1) {
-      includeSet.add(i);
-    }
-  }
-
-  const entries: DiffDisplayEntry[] = [];
-  let i = 0;
-
-  while (i < lines.length) {
-    if (includeSet.has(i)) {
-      entries.push({ type: "line", key: `line-${i}`, line: lines[i] });
-      i += 1;
-      continue;
-    }
-
-    const start = i;
-    while (i < lines.length && !includeSet.has(i)) {
-      i += 1;
-    }
-
-    const hiddenLines = lines.slice(start, i);
-    entries.push({
-      type: "collapsed",
-      key: `collapsed-${start}-${i}`,
-      count: hiddenLines.length,
-      lines: hiddenLines,
-    });
-  }
-
-  return entries;
-}
-
 function countStats(lines: DiffLine[]): { additions: number; deletions: number } {
   let additions = 0;
   let deletions = 0;
@@ -143,43 +235,144 @@ function countStats(lines: DiffLine[]): { additions: number; deletions: number }
   return { additions, deletions };
 }
 
-function DiffLineRow({ line }: { line: DiffLine }) {
-  const isAdded = line.type === "add";
-  const isRemoved = line.type === "remove";
+function countLines(text: string): number {
+  if (text.length === 0) return 1;
+  let lineCount = 1;
+  for (let i = 0; i < text.length; i += 1) {
+    if (text.charCodeAt(i) === 10) lineCount += 1;
+  }
+  return lineCount;
+}
+
+const MonacoInlineDiff = memo(function MonacoInlineDiff({
+  modelKey,
+  language,
+  originalContent,
+  modifiedContent,
+}: {
+  modelKey: string;
+  language: string;
+  originalContent: string;
+  modifiedContent: string;
+}) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const editorRef = useRef<monaco.editor.IStandaloneDiffEditor | null>(null);
+  const modelsRef = useRef<{
+    original: monaco.editor.ITextModel;
+    modified: monaco.editor.ITextModel;
+  } | null>(null);
+
+  const editorHeight = useMemo(() => {
+    const lineCount = Math.max(countLines(originalContent), countLines(modifiedContent));
+    return Math.min(560, Math.max(180, lineCount * 20 + 24));
+  }, [originalContent, modifiedContent]);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container || editorRef.current) return;
+
+    ensureMonacoEnvironment();
+    ensureMonacoTheme();
+
+    const encodedModelKey = encodeURIComponent(modelKey);
+    const originalModel = monaco.editor.createModel(
+      originalContent,
+      language,
+      monaco.Uri.parse(`inmemory://baby-swe/diff-panel/original/${encodedModelKey}`),
+    );
+    const modifiedModel = monaco.editor.createModel(
+      modifiedContent,
+      language,
+      monaco.Uri.parse(`inmemory://baby-swe/diff-panel/modified/${encodedModelKey}`),
+    );
+
+    const diffEditor = monaco.editor.createDiffEditor(container, {
+      theme: MONACO_THEME,
+      readOnly: true,
+      automaticLayout: true,
+      fontSize: 12,
+      lineHeight: 20,
+      fontFamily: "JetBrains Mono, Menlo, Monaco, monospace",
+      minimap: { enabled: false },
+      scrollBeyondLastLine: false,
+      renderSideBySide: false,
+      useInlineViewWhenSpaceIsLimited: true,
+      renderIndicators: true,
+      enableSplitViewResizing: false,
+      lineNumbers: "on",
+      glyphMargin: false,
+      folding: true,
+      lineDecorationsWidth: 12,
+      lineNumbersMinChars: 4,
+      renderOverviewRuler: false,
+      overviewRulerBorder: false,
+      diffAlgorithm: "advanced",
+      ignoreTrimWhitespace: false,
+      originalEditable: false,
+      hideUnchangedRegions: {
+        enabled: true,
+        contextLineCount: CONTEXT_LINES,
+        minimumLineCount: 3,
+        revealLineCount: 3,
+      },
+      padding: {
+        top: 8,
+        bottom: 8,
+      },
+      scrollbar: {
+        verticalScrollbarSize: 8,
+        horizontalScrollbarSize: 8,
+      },
+    });
+
+    diffEditor.setModel({
+      original: originalModel,
+      modified: modifiedModel,
+    });
+
+    const diffDisposable = diffEditor.onDidUpdateDiff(() => {
+      const changes = diffEditor.getLineChanges();
+      if (changes && changes.length > 0) {
+        const firstChange = changes[0];
+        diffEditor.getModifiedEditor().revealLineNearTop(Math.max(1, firstChange.modifiedStartLineNumber - 2));
+      }
+      diffDisposable.dispose();
+    });
+
+    editorRef.current = diffEditor;
+    modelsRef.current = { original: originalModel, modified: modifiedModel };
+
+    return () => {
+      diffDisposable.dispose();
+      editorRef.current = null;
+      modelsRef.current = null;
+      diffEditor.dispose();
+      originalModel.dispose();
+      modifiedModel.dispose();
+    };
+  }, []);
+
+  useEffect(() => {
+    const models = modelsRef.current;
+    if (!models) return;
+
+    if (models.original.getValue() !== originalContent) {
+      models.original.setValue(originalContent);
+    }
+    if (models.modified.getValue() !== modifiedContent) {
+      models.modified.setValue(modifiedContent);
+    }
+
+    monaco.editor.setModelLanguage(models.original, language);
+    monaco.editor.setModelLanguage(models.modified, language);
+  }, [language, originalContent, modifiedContent]);
 
   return (
-    <div
-      className={`grid grid-cols-[56px_56px_20px_minmax(0,1fr)] items-start text-[11px] font-mono leading-5 ${
-        isAdded ? "bg-green-500/10" : isRemoved ? "bg-red-500/10" : ""
-      }`}
-    >
-      <span className="select-none pr-2 text-right text-[color:var(--ui-text-dim)]">{line.oldLineNum ?? ""}</span>
-      <span className="select-none pr-2 text-right text-[color:var(--ui-text-dim)]">{line.newLineNum ?? ""}</span>
-      <span
-        className={`select-none text-center ${
-          isAdded
-            ? "text-green-400"
-            : isRemoved
-              ? "text-red-400"
-              : "text-[color:var(--ui-text-dim)]"
-        }`}
-      >
-        {isAdded ? "+" : isRemoved ? "-" : " "}
-      </span>
-      <span
-        className={`whitespace-pre ${
-          isAdded
-            ? "text-green-200"
-            : isRemoved
-              ? "text-red-200"
-              : "text-[color:var(--ui-text-muted)]"
-        }`}
-      >
-        {line.text.length > 0 ? line.text : " "}
-      </span>
+    <div className="overflow-hidden rounded-lg border border-[var(--ui-border-subtle)] bg-[var(--ui-panel)]">
+      <div ref={containerRef} style={{ height: `${editorHeight}px` }} className="w-full" />
     </div>
   );
-}
+});
 
 export const DiffPanelTile = memo(function DiffPanelTile({
   tileId: _tileId,
@@ -191,19 +384,16 @@ export const DiffPanelTile = memo(function DiffPanelTile({
 }: DiffPanelTileProps) {
   const fileRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const [expandedFiles, setExpandedFiles] = useState<Record<string, boolean>>({});
-  const [expandedCollapsedGroups, setExpandedCollapsedGroups] = useState<Record<string, boolean>>({});
 
   const filesWithDiff = useMemo(() => {
     return files.map((file) => {
       const lines = computeDiffLines(file.originalContent, file.modifiedContent);
       const stats = countStats(lines);
-      const displayEntries = buildDisplayEntries(lines);
       return {
         file,
+        language: getLanguageFromFile(file),
         displayPath: stripProjectPath(file.filePath, projectPath),
-        lines,
         stats,
-        displayEntries,
       };
     });
   }, [files, projectPath]);
@@ -245,13 +435,6 @@ export const DiffPanelTile = memo(function DiffPanelTile({
     }));
   };
 
-  const toggleCollapsedGroup = (groupKey: string) => {
-    setExpandedCollapsedGroups((prev) => ({
-      ...prev,
-      [groupKey]: !(prev[groupKey] ?? false),
-    }));
-  };
-
   if (filesWithDiff.length === 0) {
     return (
       <div
@@ -284,7 +467,7 @@ export const DiffPanelTile = memo(function DiffPanelTile({
       )}
 
       <div className="flex-1 min-h-0 space-y-3 overflow-y-auto p-3">
-        {filesWithDiff.map(({ file, displayPath, stats, displayEntries }) => {
+        {filesWithDiff.map(({ file, language, displayPath, stats }) => {
           const isExpanded = expandedFiles[file.filePath] ?? false;
           const isActive = activeFilePath === file.filePath;
 
@@ -313,7 +496,9 @@ export const DiffPanelTile = memo(function DiffPanelTile({
               >
                 <span className="min-w-0 flex items-center gap-2">
                   <span className="text-xs text-[color:var(--ui-text-dim)]">{isExpanded ? "▾" : "▸"}</span>
-                  <span className={`truncate text-[13px] ${isActive ? "text-[color:var(--ui-accent)]" : "text-[color:var(--ui-text)]"}`}>
+                  <span
+                    className={`truncate text-[13px] ${isActive ? "text-[color:var(--ui-accent)]" : "text-[color:var(--ui-text)]"}`}
+                  >
                     {displayPath}
                   </span>
                 </span>
@@ -324,57 +509,17 @@ export const DiffPanelTile = memo(function DiffPanelTile({
               </button>
 
               {isExpanded && (
-                <div className="bg-[var(--ui-panel)]">
-                  <div className="overflow-x-auto">
-                    <div className="min-w-[620px]">
-                      {displayEntries.length === 0 && (
-                        <div className="px-3 py-2 text-xs text-[color:var(--ui-text-dim)]">No line changes</div>
-                      )}
-
-                      {displayEntries.map((entry) => {
-                        if (entry.type === "line") {
-                          return <DiffLineRow key={`${file.filePath}:${entry.key}`} line={entry.line} />;
-                        }
-
-                        const groupKey = `${file.filePath}:${entry.key}`;
-                        const isGroupExpanded = expandedCollapsedGroups[groupKey] ?? false;
-
-                        if (!isGroupExpanded) {
-                          return (
-                            <button
-                              key={groupKey}
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                toggleCollapsedGroup(groupKey);
-                              }}
-                              className="h-7 w-full bg-[var(--ui-accent-bubble)] px-3 text-left text-[11px] font-mono text-[color:var(--ui-text-dim)] transition-colors hover:bg-[var(--ui-panel-2)]"
-                            >
-                              ▸ {entry.count} unmodified line{entry.count === 1 ? "" : "s"}
-                            </button>
-                          );
-                        }
-
-                        return (
-                          <div key={groupKey}>
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                toggleCollapsedGroup(groupKey);
-                              }}
-                              className="h-7 w-full bg-[var(--ui-accent-bubble)] px-3 text-left text-[11px] font-mono text-[color:var(--ui-text-dim)] transition-colors hover:bg-[var(--ui-panel-2)]"
-                            >
-                              ▾ Hide {entry.count} unmodified line{entry.count === 1 ? "" : "s"}
-                            </button>
-                            {entry.lines.map((line, idx) => (
-                              <DiffLineRow key={`${groupKey}:${idx}`} line={line} />
-                            ))}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
+                <div className="bg-[var(--ui-panel)] p-2">
+                  {stats.additions === 0 && stats.deletions === 0 ? (
+                    <div className="px-2 py-1 text-xs text-[color:var(--ui-text-dim)]">No line changes</div>
+                  ) : (
+                    <MonacoInlineDiff
+                      modelKey={file.filePath}
+                      language={language}
+                      originalContent={file.originalContent}
+                      modifiedContent={file.modifiedContent}
+                    />
+                  )}
                 </div>
               )}
             </section>
