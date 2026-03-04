@@ -55,7 +55,7 @@ function ensureMonacoTheme() {
       "editorLineNumber.foreground": "#4a5568",
       "editorLineNumber.activeForeground": "#9ca3af",
       "editor.selectionBackground": "#5a9bc755",
-      "editor.lineHighlightBackground": "#1e2a3a",
+      "editor.lineHighlightBackground": "#2e4468",
       "editorGutter.background": "#1a2332",
       "diffEditor.insertedTextBackground": "#22c55e3a",
       "diffEditor.removedTextBackground": "#ef44443a",
@@ -308,7 +308,7 @@ export const FileViewerTile = memo(function FileViewerTile({
   }, [filePath, originalContent, modifiedContent, language]);
 
   return (
-    <div className="file-viewer-tile relative h-full w-full min-h-0 min-w-0 overflow-hidden bg-[#1a2332] flex flex-col" onClick={onFocus}>
+    <div className="file-viewer-tile relative h-full w-full min-h-0 min-w-0 overflow-hidden bg-[#2a3f5f] flex flex-col" onClick={onFocus}>
       {isFocused && (
         <div
           aria-hidden
@@ -326,7 +326,7 @@ export const FileViewerTile = memo(function FileViewerTile({
                 key={`${tab.filePath}-${index}`}
                 className={`group relative flex items-center gap-1.5 px-3 h-[34px] text-xs border-r border-[#1e2d3d] shrink-0 max-w-[180px] ${
                   isActive
-                    ? "bg-[#1a2332] text-gray-200"
+                    ? "bg-[#2a3f5f] text-gray-200"
                     : "bg-[#141c28] text-gray-500 hover:text-gray-300 hover:bg-[#172030]"
                 }`}
                 onClick={() => handleTabClick(index)}
