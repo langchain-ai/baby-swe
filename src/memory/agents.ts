@@ -1,26 +1,11 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
+import { execFileSync } from 'child_process';
 
 const AGENTS_FILENAME = 'AGENTS.md';
 const MAX_NESTED_FILES = 20;
 const MAX_NESTED_CONTENT_CHARS = 20_000;
-const MAX_SCANNED_DIRS = 5_000;
-
-const IGNORED_DIRS = new Set([
-  '.git',
-  'node_modules',
-  'dist',
-  'build',
-  'release',
-  '.next',
-  '.turbo',
-  '.cache',
-  'coverage',
-  '.venv',
-  'venv',
-  '__pycache__',
-]);
 
 function readNonEmptyFile(filePath: string): string | null {
   try {
@@ -31,52 +16,52 @@ function readNonEmptyFile(filePath: string): string | null {
   }
 }
 
+function isPathInsideDirectory(filePath: string, dirPath: string): boolean {
+  const relative = path.relative(dirPath, filePath);
+  return relative !== '' && !relative.startsWith('..') && !path.isAbsolute(relative);
+}
+
 function findNestedAgentFiles(rootDir: string): string[] {
-  const nestedFiles: string[] = [];
-  const rootAgentsPath = path.resolve(path.join(rootDir, AGENTS_FILENAME));
-  const stack: string[] = [rootDir];
-  let scannedDirs = 0;
+  const normalizedRootDir = path.resolve(rootDir);
+  const rootAgentsPath = path.resolve(path.join(normalizedRootDir, AGENTS_FILENAME));
 
-  while (stack.length > 0 && nestedFiles.length < MAX_NESTED_FILES && scannedDirs < MAX_SCANNED_DIRS) {
-    const dirPath = stack.pop();
-    if (!dirPath) break;
-    scannedDirs += 1;
-
-    let entries: fs.Dirent[];
-    try {
-      entries = fs.readdirSync(dirPath, { withFileTypes: true });
-    } catch {
-      continue;
-    }
-
-    entries.sort((a, b) => a.name.localeCompare(b.name));
-
-    for (const entry of entries) {
-      const entryPath = path.join(dirPath, entry.name);
-
-      if (entry.isDirectory()) {
-        if (!IGNORED_DIRS.has(entry.name)) {
-          stack.push(entryPath);
-        }
-        continue;
-      }
-
-      if (!entry.isFile() || entry.name !== AGENTS_FILENAME) {
-        continue;
-      }
-
-      if (path.resolve(entryPath) === rootAgentsPath) {
-        continue;
-      }
-
-      nestedFiles.push(entryPath);
-      if (nestedFiles.length >= MAX_NESTED_FILES) {
-        break;
-      }
-    }
+  let repoRoot: string;
+  try {
+    repoRoot = execFileSync('git', ['-C', normalizedRootDir, 'rev-parse', '--show-toplevel'], {
+      encoding: 'utf-8',
+    }).trim();
+  } catch {
+    return [];
   }
 
-  return nestedFiles.sort((a, b) => a.localeCompare(b));
+  let output: string;
+  try {
+    output = execFileSync(
+      'git',
+      ['-C', repoRoot, 'ls-files', '--cached', '--others', '--exclude-standard', '--', AGENTS_FILENAME, `**/${AGENTS_FILENAME}`],
+      { encoding: 'utf-8' },
+    );
+  } catch {
+    return [];
+  }
+
+  const nestedFiles = new Set<string>();
+
+  for (const repoRelativePath of output.split('\n')) {
+    const trimmedPath = repoRelativePath.trim();
+    if (!trimmedPath) continue;
+
+    const absolutePath = path.resolve(repoRoot, trimmedPath);
+
+    if (absolutePath === rootAgentsPath) continue;
+    if (path.basename(absolutePath) !== AGENTS_FILENAME) continue;
+    if (!isPathInsideDirectory(absolutePath, normalizedRootDir)) continue;
+
+    nestedFiles.add(absolutePath);
+    if (nestedFiles.size >= MAX_NESTED_FILES) break;
+  }
+
+  return Array.from(nestedFiles).sort((a, b) => a.localeCompare(b));
 }
 
 function loadNestedProjectMemory(rootDir: string): string | null {
