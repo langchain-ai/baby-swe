@@ -154,7 +154,7 @@ export function summarizeChangedFiles(chunks: Chunk[]): ChangedFileSummaryItem[]
   for (const chunk of chunks) {
     if (chunk.kind !== "tool-execution") continue;
     if (!chunk.diffData) continue;
-    if (chunk.status !== "success" && chunk.status !== "error") continue;
+    if (chunk.status !== "success") continue;
 
     const diffData = chunk.diffData as DiffData;
     const existing = byFile.get(diffData.filePath);
