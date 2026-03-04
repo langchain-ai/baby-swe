@@ -232,13 +232,6 @@ export const PromptBar = memo(function PromptBar({
     onRejectApproval?.(pendingApproval.requestId);
   }, [pendingApproval?.requestId, onApproveApproval, onAutoApproveApproval, onRejectApproval]);
 
-  const submitSelectedApproval = useCallback(() => {
-    if (!approvalContent) return;
-    const selectedOption = approvalContent.options[approvalSelectedIndex];
-    if (!selectedOption) return;
-    submitApprovalDecision(selectedOption.decision);
-  }, [approvalContent, approvalSelectedIndex, submitApprovalDecision]);
-
   useEffect(() => {
     if (hasPendingApproval) {
       setPermissionDropdownOpen(false);
@@ -611,8 +604,10 @@ export const PromptBar = memo(function PromptBar({
                   <button
                     key={option.label}
                     type="button"
-                    onClick={() => setApprovalSelectedIndex(index)}
-                    onDoubleClick={() => submitApprovalDecision(option.decision)}
+                    onClick={() => {
+                      setApprovalSelectedIndex(index);
+                      submitApprovalDecision(option.decision);
+                    }}
                     className={`w-full rounded-lg px-3 py-1.5 text-left transition-colors flex items-center gap-2 min-w-0 ${
                       selected
                         ? 'bg-[var(--ui-accent-bubble)] text-[color:var(--ui-text)]'
@@ -728,13 +723,6 @@ export const PromptBar = memo(function PromptBar({
                 className="text-[color:var(--ui-text-muted)] hover:text-[color:var(--ui-text)] transition-colors cursor-pointer"
               >
                 Skip
-              </button>
-              <button
-                type="button"
-                onClick={submitSelectedApproval}
-                className="rounded-md bg-[color:var(--ui-accent-bubble)] px-2.5 py-0.5 text-[color:var(--ui-text)] hover:bg-[color:var(--ui-surface)] transition-colors"
-              >
-                Submit
               </button>
             </div>
           </div>
