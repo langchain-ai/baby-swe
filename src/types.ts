@@ -31,7 +31,7 @@ export interface Project {
   worktreeType?: WorktreeType;
 }
 
-export type TileType = 'agent' | 'terminal' | 'file-viewer' | 'source-control';
+export type TileType = 'agent' | 'terminal' | 'file-viewer' | 'source-control' | 'diff-viewer';
 
 export type GitFileStatus =
   | 'index-modified' | 'index-added' | 'index-deleted' | 'index-renamed' | 'index-copied'
@@ -60,6 +60,8 @@ export interface Tile {
   fileViewerData?: FileViewerData;
   fileViewerTabs?: FileViewerData[];
   activeFileViewerTab?: number;
+  diffViewerFiles?: FileViewerData[];
+  activeDiffViewerFilePath?: string;
 }
 
 export type SplitDirection = 'horizontal' | 'vertical';

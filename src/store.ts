@@ -58,6 +58,7 @@ interface AppState {
   getTile: (tileId: string) => Tile | null;
   getFocusedTile: () => Tile | null;
   openFileViewer: (fileViewerData: FileViewerData, direction?: SplitDirection | 'auto') => string;
+  openDiffViewer: (fileViewerData: FileViewerData, direction?: SplitDirection | 'auto') => string;
   setActiveFileViewerTab: (tileId: string, tabIndex: number) => void;
   closeFileViewerTab: (tileId: string, tabIndex: number) => void;
 
@@ -490,6 +491,108 @@ export const useStore = create<AppState>((set, get) => ({
       fileViewerData,
       fileViewerTabs: [fileViewerData],
       activeFileViewerTab: 0,
+    };
+
+    let newLayout: LayoutNode;
+    if (layout && focusedTileId) {
+      let splitDir: 'horizontal' | 'vertical';
+      if (direction === 'auto' || !direction) {
+        const dims = getTileDimensions(layout, focusedTileId, window.innerWidth, window.innerHeight);
+        splitDir = dims ? getSmartDirection(dims.width, dims.height) : 'horizontal';
+      } else {
+        splitDir = direction;
+      }
+      newLayout = splitTile(layout, focusedTileId, tileId, splitDir);
+    } else {
+      newLayout = createInitialLayout(tileId);
+    }
+
+    const updatedWorkspace: Workspace = {
+      ...workspace,
+      tiles: { ...tiles, [tileId]: tile },
+      layout: newLayout,
+      focusedTileId: tileId,
+    };
+
+    const updatedWorkspaces = [...workspaces];
+    updatedWorkspaces[activeWorkspaceIndex] = updatedWorkspace;
+
+    set((state) => ({
+      sessions: { ...state.sessions, [sessionId]: session },
+      workspaces: updatedWorkspaces,
+    }));
+
+    return tileId;
+  },
+
+  openDiffViewer: (fileViewerData, direction) => {
+    const { workspaces, activeWorkspaceIndex } = get();
+    const workspace = workspaces[activeWorkspaceIndex];
+    const { focusedTileId, layout, tiles } = workspace;
+
+    // Look for an existing diff-viewer tile in the workspace to reuse
+    const existingDiffViewerEntry = Object.entries(tiles).find(
+      ([, t]) => t.type === 'diff-viewer',
+    );
+
+    if (existingDiffViewerEntry) {
+      const [existingTileId, existingTile] = existingDiffViewerEntry;
+      const files = existingTile.diffViewerFiles ?? [];
+      const existingFileIndex = files.findIndex(f => f.filePath === fileViewerData.filePath);
+
+      const updatedFiles = existingFileIndex >= 0
+        ? files.map((f, index) => (index === existingFileIndex ? fileViewerData : f))
+        : [...files, fileViewerData];
+
+      const updatedTile: Tile = {
+        ...existingTile,
+        diffViewerFiles: updatedFiles,
+        activeDiffViewerFilePath: fileViewerData.filePath,
+      };
+
+      const updatedWorkspace: Workspace = {
+        ...workspace,
+        tiles: { ...tiles, [existingTileId]: updatedTile },
+        focusedTileId: existingTileId,
+      };
+
+      const updatedWorkspaces = [...workspaces];
+      updatedWorkspaces[activeWorkspaceIndex] = updatedWorkspace;
+      set({ workspaces: updatedWorkspaces });
+      return existingTileId;
+    }
+
+    // No existing diff-viewer tile — create a new one
+    const tileId = uuidv4();
+    const sessionId = uuidv4();
+    const now = Date.now();
+
+    const session: Session = {
+      id: sessionId,
+      title: 'Diff Viewer',
+      messages: [],
+      promptDraft: '',
+      streamingMessageId: null,
+      isStreaming: false,
+      busy: false,
+      createdAt: now,
+      updatedAt: now,
+      autoApproveSession: false,
+      pendingApprovals: {},
+      todos: [],
+      mode: get().mode,
+      agentStatus: 'idle',
+      isCompacting: false,
+      tokenUsage: createEmptySessionTokenUsage(),
+    };
+
+    const tile: Tile = {
+      id: tileId,
+      type: 'diff-viewer',
+      sessionId,
+      project: focusedTileId ? tiles[focusedTileId]?.project || null : null,
+      diffViewerFiles: [fileViewerData],
+      activeDiffViewerFilePath: fileViewerData.filePath,
     };
 
     let newLayout: LayoutNode;

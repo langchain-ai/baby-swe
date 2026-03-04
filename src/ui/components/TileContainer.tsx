@@ -7,6 +7,7 @@ import { TodoList } from "./TodoList";
 import { Logo } from "./Logo";
 import { TerminalTile } from "./TerminalTile";
 import { FileViewerTile } from "./FileViewerTile";
+import { DiffPanelTile } from "./DiffPanelTile";
 import { SourceControlTile } from "./SourceControlTile";
 import { ThreadPicker } from "./ThreadPicker";
 import { CompactingIndicator } from "./CompactingIndicator";
@@ -115,7 +116,7 @@ export function TileContainer({
     setModelConfig: state.setModelConfig,
     setShowApiKeysScreen: state.setShowApiKeysScreen,
     resumeThread: state.resumeThread,
-    openFileViewer: state.openFileViewer,
+    openDiffViewer: state.openDiffViewer,
   })));
   const {
     loadRecentProjects,
@@ -128,7 +129,7 @@ export function TileContainer({
     setModelConfig,
     setShowApiKeysScreen,
     resumeThread,
-    openFileViewer,
+    openDiffViewer,
   } = actions;
 
   useEffect(() => {
@@ -249,7 +250,7 @@ export function TileContainer({
         try {
           const workingTreeDiff = await window.git.diffFile(projectPath, diffData.filePath, false);
           if (workingTreeDiff) {
-            openFileViewer({
+            openDiffViewer({
               filePath: diffData.filePath,
               originalContent: workingTreeDiff.original,
               modifiedContent: workingTreeDiff.modified,
@@ -262,14 +263,14 @@ export function TileContainer({
         }
       }
 
-      openFileViewer({
+      openDiffViewer({
         filePath: diffData.filePath,
         originalContent: diffData.originalContent,
         modifiedContent: diffData.modifiedContent,
         language,
       });
     },
-    [openFileViewer, tile?.project?.path, tile?.project?.worktreePath],
+    [openDiffViewer, tile?.project?.path, tile?.project?.worktreePath],
   );
 
   const handleContainerClick = useCallback((event: ReactMouseEvent<HTMLDivElement>) => {
@@ -434,6 +435,19 @@ export function TileContainer({
         tabs={tile.fileViewerTabs}
         activeTabIndex={tile.activeFileViewerTab}
         projectPath={tile.project?.path}
+        isFocused={isFocused}
+        onFocus={onFocus}
+      />
+    );
+  }
+
+  if (tile.type === "diff-viewer" && tile.diffViewerFiles) {
+    return (
+      <DiffPanelTile
+        tileId={tileId}
+        files={tile.diffViewerFiles}
+        activeFilePath={tile.activeDiffViewerFilePath}
+        projectPath={tile.project?.worktreePath || tile.project?.path}
         isFocused={isFocused}
         onFocus={onFocus}
       />
