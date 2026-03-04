@@ -123,6 +123,7 @@ interface PromptBarProps {
   sessionId: string;
   tileId: string;
   isFocused: boolean;
+  isDragOver?: boolean;
   pendingImages?: ImageChunk[];
   onRemoveImage?: (index: number) => void;
   onChangeDirectory?: () => void;
@@ -146,6 +147,7 @@ export const PromptBar = memo(function PromptBar({
   sessionId,
   tileId,
   isFocused,
+  isDragOver = false,
   pendingImages,
   onRemoveImage,
   onChangeDirectory,
@@ -592,7 +594,12 @@ export const PromptBar = memo(function PromptBar({
         </div>
       )}
 
-      <div className={`border border-[#2a3140] bg-[#172131]/95 px-4 py-3.5 min-h-[106px] flex flex-col shadow-[0_0_0_1px_rgba(255,255,255,0.02)_inset rounded-2xl ${connectedTop ? "-mt-px" : ""}`}>
+      <div className={`relative border border-[#2a3140] bg-[#172131]/95 px-4 py-3.5 min-h-[106px] flex flex-col shadow-[0_0_0_1px_rgba(255,255,255,0.02)_inset rounded-2xl ${connectedTop ? "-mt-px" : ""}`}>
+        {isDragOver && (
+          <div className="pointer-events-none absolute inset-0 rounded-2xl border-2 border-[var(--ui-accent)] bg-[#172131]/70 backdrop-blur-sm z-30 flex items-center justify-center">
+            <span className="rounded-md bg-black/20 px-3 py-1.5 text-[color:var(--ui-accent)] text-sm font-medium">Drop images here</span>
+          </div>
+        )}
         {hasPendingApproval && approvalContent ? (
           <div className="flex flex-col gap-2.5 min-h-[76px]">
             <div className="text-[14px] leading-[1.35] text-[color:var(--ui-text)] font-medium">
