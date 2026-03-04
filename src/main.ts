@@ -92,6 +92,69 @@ function getGithubPR(projectPath: string): GithubPR | null {
   }
 }
 
+function normalizeCloneUrl(rawUrl: string): string {
+  return rawUrl.trim().replace(/^git\s+clone\s+/i, '').trim();
+}
+
+function inferCloneTargetName(repoUrl: string): string {
+  const withoutQuery = repoUrl.replace(/[?#].*$/, '').replace(/\/+$/, '');
+  const tail = withoutQuery.split('/').pop() || withoutQuery.split(':').pop() || '';
+  const withoutGitSuffix = tail.replace(/\.git$/i, '');
+  const sanitized = withoutGitSuffix
+    .replace(/[<>:"/\\|?*\x00-\x1f]/g, '-')
+    .replace(/^\.+/, '')
+    .replace(/\.+$/, '')
+    .trim();
+
+  return sanitized || 'repository';
+}
+
+async function cloneRepository(repoUrl: string, parentPath?: string): Promise<string | null> {
+  const normalizedUrl = normalizeCloneUrl(repoUrl);
+  if (!normalizedUrl) {
+    throw new Error('Repository URL is required');
+  }
+
+  if (!parentPath) {
+    const options: Electron.OpenDialogOptions = {
+      properties: ['openDirectory'],
+      defaultPath: os.homedir(),
+      title: `Choose a folder to clone ${normalizedUrl} into`,
+      buttonLabel: 'Select as Repository Destination',
+    };
+
+    const result = mainWindow
+      ? await dialog.showOpenDialog(mainWindow, options)
+      : await dialog.showOpenDialog(options);
+
+    if (result.canceled || result.filePaths.length === 0) {
+      return null;
+    }
+
+    parentPath = result.filePaths[0];
+  }
+
+  const targetName = inferCloneTargetName(normalizedUrl);
+
+  try {
+    execFileSync('git', ['clone', normalizedUrl, targetName], {
+      cwd: parentPath,
+      encoding: 'utf-8',
+      stdio: ['pipe', 'pipe', 'pipe'],
+      env: GIT_ENV,
+    });
+  } catch (e: any) {
+    throw new Error(e.stderr?.trim() || e.message || 'Failed to clone repository');
+  }
+
+  const clonedPath = path.join(parentPath, targetName);
+  if (!fs.existsSync(clonedPath)) {
+    throw new Error('Repository was cloned but destination folder could not be found');
+  }
+
+  return clonedPath;
+}
+
 function listGitBranches(projectPath: string): { branches: string[]; current: string | null } {
   try {
     const result = execFileSync('git', ['branch', '--no-color', '--sort=-committerdate'], {
@@ -863,6 +926,10 @@ function setupStorageIPC(): void {
     tileProjects.set(tileId, projectWithBranch);
     mainWindow?.webContents.send('tile:projectChanged', tileId, projectWithBranch);
     return projectWithBranch;
+  });
+
+  ipcMain.handle('tile:cloneRepository', async (_event, repoUrl: string, parentPath?: string) => {
+    return cloneRepository(repoUrl, parentPath);
   });
 
   ipcMain.handle('tile:openWorktree', async (_event, tileId: string, mainProjectPath: string, worktreePath: string) => {

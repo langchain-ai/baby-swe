@@ -29,6 +29,7 @@ interface Window {
   };
   tile: {
     openProject: (tileId: string, folderPath?: string) => Promise<unknown>;
+    cloneRepository: (repoUrl: string, parentPath?: string) => Promise<string | null>;
     closeProject: (tileId: string) => Promise<unknown>;
     onProjectChanged: (callback: (tileId: string, project: unknown) => void) => () => void;
   };

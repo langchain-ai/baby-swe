@@ -46,6 +46,8 @@ contextBridge.exposeInMainWorld('storage', {
 contextBridge.exposeInMainWorld('tile', {
   openProject: (tileId: string, folderPath?: string) =>
     ipcRenderer.invoke('tile:openProject', tileId, folderPath),
+  cloneRepository: (repoUrl: string, parentPath?: string) =>
+    ipcRenderer.invoke('tile:cloneRepository', repoUrl, parentPath),
   openWorktree: (tileId: string, mainProjectPath: string, worktreePath: string) =>
     ipcRenderer.invoke('tile:openWorktree', tileId, mainProjectPath, worktreePath),
   closeProject: (tileId: string) =>

@@ -177,6 +177,28 @@ export function App() {
     }
   }, [createTile, setTileProject]);
 
+  const handleCloneRepo = useCallback(async (repoUrl: string) => {
+    try {
+      const clonedPath = await window.tile.cloneRepository(repoUrl);
+      if (!clonedPath) {
+        return { success: false, cancelled: true };
+      }
+
+      const tileId = createTile('auto', 'agent');
+      const project = await window.tile.openProject(tileId, clonedPath);
+
+      if (!project) {
+        return { success: false, error: 'Repository cloned, but project could not be opened' };
+      }
+
+      setTileProject(tileId, project);
+      return { success: true };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to clone repository';
+      return { success: false, error: message };
+    }
+  }, [createTile, setTileProject]);
+
   const handleSelectRecent = useCallback(async (path: string) => {
     const tileId = createTile('auto', 'agent');
     const project = await window.tile.openProject(tileId, path);
@@ -477,6 +499,7 @@ export function App() {
         {isEmpty && (
           <FolderSelectScreen
             onOpenFolder={handleOpenFolder}
+            onCloneRepo={handleCloneRepo}
             onSelectRecent={handleSelectRecent}
             recentProjects={recentProjects}
           />

@@ -137,6 +137,7 @@ declare global {
     };
     tile: {
       openProject: (tileId: string, folderPath?: string) => Promise<Project | null>;
+      cloneRepository: (repoUrl: string, parentPath?: string) => Promise<string | null>;
       openWorktree: (tileId: string, mainProjectPath: string, worktreePath: string) => Promise<Project | null>;
       closeProject: (tileId: string) => Promise<void>;
       onProjectChanged: (callback: (tileId: string, project: Project | null) => void) => () => void;
