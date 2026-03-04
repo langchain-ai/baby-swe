@@ -93,6 +93,7 @@ export function TileContainer({
   onFocus,
 }: TileContainerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const dragDepthRef = useRef(0);
   const [pendingImages, setPendingImages] = useState<ImageChunk[]>([]);
   const [queuedSubmissions, setQueuedSubmissions] = useState<Array<{ query: string; images: ImageChunk[] }>>([]);
   const [isDragOver, setIsDragOver] = useState(false);
@@ -194,21 +195,40 @@ export function TileContainer({
     [session, setAutoApproveSession],
   );
 
-  const handleDragOver = useCallback((e: React.DragEvent) => {
+  const hasFileDragData = (e: React.DragEvent) => e.dataTransfer.types.includes("Files");
+
+  const handleDragEnter = useCallback((e: React.DragEvent) => {
+    if (!hasFileDragData(e)) return;
     e.preventDefault();
     e.stopPropagation();
+    dragDepthRef.current += 1;
     setIsDragOver(true);
   }, []);
 
-  const handleDragLeave = useCallback((e: React.DragEvent) => {
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    if (!hasFileDragData(e)) return;
     e.preventDefault();
     e.stopPropagation();
-    setIsDragOver(false);
+    if (!isDragOver) {
+      setIsDragOver(true);
+    }
+  }, [isDragOver]);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    if (!hasFileDragData(e)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
+    if (dragDepthRef.current === 0) {
+      setIsDragOver(false);
+    }
   }, []);
 
   const handleDrop = useCallback((e: React.DragEvent) => {
+    if (!hasFileDragData(e)) return;
     e.preventDefault();
     e.stopPropagation();
+    dragDepthRef.current = 0;
     setIsDragOver(false);
 
     const files = Array.from(e.dataTransfer.files).filter(
@@ -268,6 +288,7 @@ export function TileContainer({
   }, [onFocus]);
 
   const dragProps = {
+    onDragEnter: handleDragEnter,
     onDragOver: handleDragOver,
     onDragLeave: handleDragLeave,
     onDrop: handleDrop,
@@ -465,20 +486,15 @@ export function TileContainer({
     return (
       <div
         ref={containerRef}
-        className={`relative flex flex-col h-full bg-[var(--ui-bg)] text-[color:var(--ui-text)] ${isDragOver ? "ring-2 ring-[var(--ui-accent)] ring-inset" : ""}`}
+        className="relative flex flex-col h-full bg-[var(--ui-bg)] text-[color:var(--ui-text)]"
         onClick={handleContainerClick}
         {...dragProps}
       >
-        {isFocused && !isDragOver && (
+        {isFocused && (
           <div
             aria-hidden
             className="pointer-events-none absolute inset-0 ring-2 ring-[var(--ui-accent)] ring-inset z-20"
           />
-        )}
-        {isDragOver && (
-          <div className="pointer-events-none absolute inset-0 bg-[var(--ui-accent)]/10 border-2 border-dashed border-[var(--ui-accent)] z-30 flex items-center justify-center">
-            <span className="text-[color:var(--ui-accent)] text-sm font-medium">Drop images here</span>
-          </div>
         )}
         <div className="flex-1 flex flex-col items-center justify-center px-4">
           <div className={`w-full ${PROMPT_CONTENT_WIDTH} flex flex-col items-center gap-6 min-w-0`}>
@@ -494,6 +510,7 @@ export function TileContainer({
               sessionId={tile.sessionId}
               tileId={tileId}
               isFocused={isFocused}
+              isDragOver={isDragOver}
               pendingImages={pendingImages}
               onRemoveImage={handleRemoveImage}
               onChangeDirectory={handleOpenFolder}
@@ -527,20 +544,15 @@ export function TileContainer({
   return (
     <div
       ref={containerRef}
-      className={`relative flex flex-col h-full bg-[var(--ui-bg)] text-[color:var(--ui-text)] overflow-hidden ${isDragOver ? "ring-2 ring-[var(--ui-accent)] ring-inset" : ""}`}
+      className="relative flex flex-col h-full bg-[var(--ui-bg)] text-[color:var(--ui-text)] overflow-hidden"
       onClick={handleContainerClick}
       {...dragProps}
     >
-      {isFocused && !isDragOver && (
+      {isFocused && (
         <div
           aria-hidden
           className="pointer-events-none absolute inset-0 ring-2 ring-[var(--ui-accent)] ring-inset z-20"
         />
-      )}
-      {isDragOver && (
-        <div className="pointer-events-none absolute inset-0 bg-[var(--ui-accent)]/10 border-2 border-dashed border-[var(--ui-accent)] z-30 flex items-center justify-center">
-          <span className="text-[color:var(--ui-accent)] text-sm font-medium">Drop images here</span>
-        </div>
       )}
       <MessageView
         messages={session.messages}
@@ -610,6 +622,7 @@ export function TileContainer({
                 sessionId={tile.sessionId}
                 tileId={tileId}
                 isFocused={isFocused}
+                isDragOver={isDragOver}
                 pendingImages={pendingImages}
                 onRemoveImage={handleRemoveImage}
                 onChangeDirectory={handleOpenFolder}
