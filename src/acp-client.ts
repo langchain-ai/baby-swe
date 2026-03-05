@@ -68,6 +68,7 @@ export type RunAcpStreamOptions = {
   folder: string | null;
   controller: AbortController;
   clientVersion: string;
+  envOverrides?: Record<string, string>;
   send: (event: Record<string, unknown>) => void;
   requestApproval: (request: ApprovalRequestInput) => Promise<ApprovalDecision>;
 };
@@ -291,11 +292,11 @@ class NdJsonRpcProcessClient {
   private requestHandler: RpcRequestHandler | null = null;
   private notificationHandler: RpcNotificationHandler | null = null;
 
-  constructor(command: string, args: string[], cwd: string) {
+  constructor(command: string, args: string[], cwd: string, env?: NodeJS.ProcessEnv) {
     this.proc = spawn(command, args, {
       cwd,
       stdio: ["pipe", "pipe", "pipe"],
-      env: process.env,
+      env: env || process.env,
     });
 
     this.proc.stderr.on("data", (chunk: Buffer) => {
@@ -759,7 +760,12 @@ export async function runAcpStream(options: RunAcpStreamOptions): Promise<void> 
   const cwd = options.folder || process.cwd();
   const { command, args } = resolveAcpTarget(options.harness);
 
-  const rpc = new NdJsonRpcProcessClient(command, args, cwd);
+  const childEnv: NodeJS.ProcessEnv = {
+    ...process.env,
+    ...(options.envOverrides || {}),
+  };
+
+  const rpc = new NdJsonRpcProcessClient(command, args, cwd, childEnv);
   const toolStates = new Map<string, ToolState>();
   const toolTimers = new Map<string, number>();
   let acpSessionId: string | null = null;

@@ -2,7 +2,7 @@ import { app, ipcMain, BrowserWindow } from "electron";
 import { v4 as uuidv4 } from "uuid";
 import { setMaxListeners } from "events";
 import "dotenv/config";
-import type { AgentHarness, ApprovalDecision, ApprovalResponse, ChatMessage, ModelConfig, Mode, Project, StreamEvent } from "./types";
+import type { AgentHarness, ApprovalDecision, ApprovalResponse, ChatMessage, GlobalSettings, ModelConfig, Mode, Project, StreamEvent } from "./types";
 import { loadSettings } from "./storage";
 import { getCursorAuthStatus, runAcpStream, runCursorLogout, startCursorLogin } from "./acp-client";
 
@@ -10,9 +10,25 @@ const sessionControllers = new Map<string, AbortController>();
 const sessionModes = new Map<string, Mode>();
 const pendingApprovals = new Map<string, { resolve: (decision: ApprovalDecision) => void }>();
 
-function resolveHarness(): AgentHarness {
+function extractAcpEnvOverrides(settings: GlobalSettings): Record<string, string> | undefined {
+  const apiKeys = settings.apiKeys;
+  if (!apiKeys) return undefined;
+
+  const overrides: Record<string, string> = {};
+  if (apiKeys.anthropic) overrides.ANTHROPIC_API_KEY = apiKeys.anthropic;
+  if (apiKeys.openai) overrides.OPENAI_API_KEY = apiKeys.openai;
+  if (apiKeys.baseten) overrides.BASETEN_API_KEY = apiKeys.baseten;
+  if (apiKeys.tavily) overrides.TAVILY_API_KEY = apiKeys.tavily;
+
+  return Object.keys(overrides).length > 0 ? overrides : undefined;
+}
+
+function resolveAcpRuntimeConfig(): { harness: AgentHarness; envOverrides?: Record<string, string> } {
   const settings = loadSettings();
-  return settings.harness === "deepagents" ? "deepagents" : "cursor";
+  return {
+    harness: settings.harness === "deepagents" ? "deepagents" : "cursor",
+    envOverrides: extractAcpEnvOverrides(settings),
+  };
 }
 
 export interface AgentResponse {
@@ -60,6 +76,7 @@ async function runCompactionViaAcp(
   harness: AgentHarness,
   messages: ChatMessage[],
   modelConfig: { name: string; provider: string; effort: string },
+  envOverrides?: Record<string, string>,
 ): Promise<{ summary: string; keptMessages: ChatMessage[] } | null> {
   // Keep the last 10% of messages (minimum 2)
   const keepCount = Math.max(2, Math.floor(messages.length * 0.10));
@@ -97,6 +114,7 @@ ${conversationText}`;
       folder: null,
       controller,
       clientVersion: app.getVersion(),
+      envOverrides,
       send: (event) => {
         if (event.type === "token" && typeof event.token === "string") {
           summary += event.token;
@@ -148,6 +166,7 @@ export function setupAgentIPC(_mainWindow: BrowserWindow, getTileProject: (tileI
     const invokeSessionId = `invoke-${uuidv4()}`;
     const settings = loadSettings();
     const harness = settings.harness === "deepagents" ? "deepagents" : "cursor";
+    const envOverrides = extractAcpEnvOverrides(settings);
     const modelConfig = settings.modelConfig || { name: "acp-default", provider: "acp-cursor", effort: "default" };
     let content = "";
 
@@ -161,6 +180,7 @@ export function setupAgentIPC(_mainWindow: BrowserWindow, getTileProject: (tileI
         folder: process.cwd(),
         controller,
         clientVersion: app.getVersion(),
+        envOverrides,
         send: (streamEvent) => {
           if (streamEvent.type === "token" && typeof streamEvent.token === "string") {
             content += streamEvent.token;
@@ -205,8 +225,9 @@ export function setupAgentIPC(_mainWindow: BrowserWindow, getTileProject: (tileI
 
     try {
       const folder = getTileProject(tileId);
+      const runtimeConfig = resolveAcpRuntimeConfig();
       await runAcpStream({
-        harness: resolveHarness(),
+        harness: runtimeConfig.harness,
         sessionId,
         messages,
         mode: sessionModes.get(sessionId) || mode,
@@ -214,6 +235,7 @@ export function setupAgentIPC(_mainWindow: BrowserWindow, getTileProject: (tileI
         folder,
         controller,
         clientVersion: app.getVersion(),
+        envOverrides: runtimeConfig.envOverrides,
         send,
         requestApproval: ({ approvalRequestId }) => new Promise<ApprovalDecision>((resolve) => {
           pendingApprovals.set(approvalRequestId, { resolve });
@@ -276,7 +298,8 @@ export function setupAgentIPC(_mainWindow: BrowserWindow, getTileProject: (tileI
 
     send({ type: 'compact-start', sessionId });
 
-    const result = await runCompactionViaAcp(resolveHarness(), messages, modelConfig);
+    const runtimeConfig = resolveAcpRuntimeConfig();
+    const result = await runCompactionViaAcp(runtimeConfig.harness, messages, modelConfig, runtimeConfig.envOverrides);
     if (result) {
       console.log(`[agent:compact] Manual compact for session ${sessionId}, summarized ${messages.length - result.keptMessages.length} messages`);
       send({
