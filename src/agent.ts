@@ -1,70 +1,14 @@
-import { ChatAnthropic } from "@langchain/anthropic";
-import { ChatOpenAI } from "@langchain/openai";
 import { app, ipcMain, BrowserWindow } from "electron";
 import { v4 as uuidv4 } from "uuid";
 import { setMaxListeners } from "events";
 import "dotenv/config";
-import type { ApprovalDecision, ApprovalResponse, ChatMessage, ModelConfig, ApiKeys, Mode, Project, StreamEvent } from "./types";
+import type { ApprovalDecision, ApprovalResponse, ChatMessage, ModelConfig, Mode, Project, StreamEvent } from "./types";
 import { loadSettings } from "./storage";
-import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
 import { runCursorAcpStream } from "./acp-client";
 
 const sessionControllers = new Map<string, AbortController>();
 const sessionModes = new Map<string, Mode>();
 const pendingApprovals = new Map<string, { resolve: (decision: ApprovalDecision) => void }>();
-
-function createModel(modelConfig: ModelConfig, apiKeys?: ApiKeys): BaseChatModel {
-  const { name, effort } = modelConfig;
-
-  if (name === 'kimi-k2.5') {
-    const basetenApiKey = apiKeys?.baseten || process.env.BASETEN_API_KEY;
-    return new ChatOpenAI({
-      model: 'moonshotai/Kimi-K2.5',
-      streaming: true,
-      configuration: {
-        apiKey: basetenApiKey,
-        baseURL: 'https://inference.baseten.co/v1',
-      },
-    });
-  }
-
-  if (name.startsWith('gpt-')) {
-    const openaiApiKey = apiKeys?.openai || process.env.OPENAI_API_KEY;
-    const openaiConfig: ConstructorParameters<typeof ChatOpenAI>[0] = {
-      model: name,
-      apiKey: openaiApiKey,
-      streaming: true,
-      useResponsesApi: true,
-    };
-
-    if (effort && effort !== 'default') {
-      const effortMap: Record<string, string> = {
-        'low': 'low',
-        'medium': 'medium',
-        'medium-fast': 'medium',
-        'high': 'high',
-        'high-fast': 'high',
-        'extra-high': 'xhigh',
-      };
-      const reasoningEffort = effortMap[effort];
-      if (reasoningEffort) {
-        openaiConfig.reasoning = {
-          effort: reasoningEffort as "low" | "medium" | "high",
-        };
-      }
-    }
-
-    return new ChatOpenAI(openaiConfig);
-  }
-
-  const anthropicApiKey = apiKeys?.anthropic || process.env.ANTHROPIC_API_KEY;
-  return new ChatAnthropic({
-    model: name,
-    anthropicApiKey: anthropicApiKey,
-    streaming: true,
-  });
-}
-
 
 export interface AgentResponse {
   content: string;
@@ -92,44 +36,75 @@ Your summary should include the following sections:
 8. Current Work: Describe in detail precisely what was being worked on immediately before this summary request. Include file names and code snippets where applicable.
 9. Optional Next Step: List the next step related to the most recent work. Ensure this step is DIRECTLY in line with the user's most recent explicit requests.`;
 
-async function runCompaction(
+function flattenMessageContent(content: ChatMessage["content"]): string {
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return "";
+
+  const chunks: string[] = [];
+  for (const block of content) {
+    if (block.type === "text") {
+      chunks.push(block.text);
+    } else if (block.type === "image_url") {
+      chunks.push("[Image attachment]");
+    }
+  }
+  return chunks.join("\n");
+}
+
+async function runCompactionViaAcp(
   messages: ChatMessage[],
-  modelConfig: ModelConfig,
-  apiKeys?: ApiKeys,
+  modelConfig: { name: string; provider: string; effort: string },
 ): Promise<{ summary: string; keptMessages: ChatMessage[] } | null> {
+  // Keep the last 10% of messages (minimum 2)
+  const keepCount = Math.max(2, Math.floor(messages.length * 0.10));
+  const messagesToSummarize = messages.slice(0, messages.length - keepCount);
+  const keptMessages = messages.slice(messages.length - keepCount);
+  if (messagesToSummarize.length === 0) return null;
+
+  const conversationText = messagesToSummarize
+    .map((message) => {
+      const role = message.role === "user" ? "User" : "Assistant";
+      return `${role}: ${flattenMessageContent(message.content)}`;
+    })
+    .join("\n\n");
+
+  const compactionPrompt = `${SUMMARIZATION_PROMPT}
+
+Important constraints:
+- Do not call tools.
+- Output only the final summary.
+
+Here is the conversation to summarize:
+
+${conversationText}`;
+
+  let summary = "";
+  const controller = new AbortController();
+
   try {
-    const model = createModel(modelConfig, apiKeys);
-
-    // Keep the last 10% of messages (minimum 2)
-    const keepCount = Math.max(2, Math.floor(messages.length * 0.10));
-    const messagesToSummarize = messages.slice(0, messages.length - keepCount);
-    const keptMessages = messages.slice(messages.length - keepCount);
-
-    if (messagesToSummarize.length === 0) return null;
-
-    // Build conversation text for summarization
-    const conversationText = messagesToSummarize.map(m => {
-      const role = m.role === 'user' ? 'User' : 'Assistant';
-      const content = typeof m.content === 'string' ? m.content : JSON.stringify(m.content);
-      return `${role}: ${content}`;
-    }).join('\n\n');
-
-    const result = await model.invoke([
-      { role: 'system', content: SUMMARIZATION_PROMPT },
-      { role: 'user', content: `Here is the conversation to summarize:\n\n${conversationText}` },
-    ]);
-
-    const summary = typeof result.content === 'string'
-      ? result.content
-      : Array.isArray(result.content)
-        ? result.content.map((b: { type: string; text?: string }) => b.type === 'text' ? b.text || '' : '').join('')
-        : String(result.content);
-
-    return { summary, keptMessages };
-  } catch (err) {
-    console.error('[compact] Summarization failed:', err);
+    await runCursorAcpStream({
+      sessionId: `compact-${uuidv4()}`,
+      messages: [{ role: "user", content: compactionPrompt }],
+      mode: "agent",
+      modelConfig,
+      folder: null,
+      controller,
+      clientVersion: app.getVersion(),
+      send: (event) => {
+        if (event.type === "token" && typeof event.token === "string") {
+          summary += event.token;
+        }
+      },
+      requestApproval: async () => "reject",
+    });
+  } catch (error) {
+    console.error("[compact] ACP compaction failed:", error);
     return null;
   }
+
+  const trimmed = summary.trim();
+  if (!trimmed) return null;
+  return { summary: trimmed, keptMessages };
 }
 
 function isAbortError(error: unknown): boolean {
@@ -279,8 +254,7 @@ export function setupAgentIPC(_mainWindow: BrowserWindow, getTileProject: (tileI
 
     send({ type: 'compact-start', sessionId });
 
-    const settings = loadSettings();
-    const result = await runCompaction(messages, modelConfig, settings.apiKeys);
+    const result = await runCompactionViaAcp(messages, modelConfig);
     if (result) {
       console.log(`[agent:compact] Manual compact for session ${sessionId}, summarized ${messages.length - result.keptMessages.length} messages`);
       send({
