@@ -129,8 +129,10 @@ function resolveDeepagentsAcpTarget(): AcpProcessTarget {
     const packageJsonPath = require.resolve(`${DEEPAGENTS_ACP_PACKAGE}/package.json`);
     const cliPath = path.join(path.dirname(packageJsonPath), "dist", "cli.js");
     return {
-      command: process.execPath,
-      args: parseAcpArgs(process.env.BABY_SWE_DEEPAGENTS_ACP_ARGS, [cliPath]),
+      // Launch the CLI script directly so it uses the Node runtime from the
+      // shebang, instead of Electron's process.execPath.
+      command: cliPath,
+      args: parseAcpArgs(process.env.BABY_SWE_DEEPAGENTS_ACP_ARGS, []),
     };
   } catch {
     throw new Error(
