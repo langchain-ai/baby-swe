@@ -1,4 +1,14 @@
-import type { StreamEvent, ApprovalResponse, ChatMessage, ModelConfig, Mode, Chunk } from './types';
+import type {
+  StreamEvent,
+  ApprovalResponse,
+  ChatMessage,
+  ModelConfig,
+  Mode,
+  Chunk,
+  CursorAuthStatus,
+  CursorLoginResult,
+  CursorLogoutResult,
+} from './types';
 
 interface AgentResponse {
   content: string;
@@ -26,6 +36,9 @@ interface Window {
     onStreamEvent: (callback: (event: StreamEvent) => void) => () => void;
     respondToApproval: (response: ApprovalResponse) => void;
     setMode: (sessionId: string, mode: Mode) => void;
+    cursorAuthStatus: () => Promise<CursorAuthStatus>;
+    cursorLogin: () => Promise<CursorLoginResult>;
+    cursorLogout: () => Promise<CursorLogoutResult>;
   };
   tile: {
     openProject: (tileId: string, folderPath?: string) => Promise<unknown>;

@@ -54,6 +54,7 @@ export function loadSettings(): GlobalSettings {
     },
     permissionMode: 'default',
     yoloMode: false,
+    harness: 'cursor',
   };
 }
 

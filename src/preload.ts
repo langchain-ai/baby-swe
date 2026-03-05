@@ -19,6 +19,9 @@ contextBridge.exposeInMainWorld('agent', {
   compact: (sessionId: string, messages: ChatMessage[], modelConfig: ModelConfig) => {
     ipcRenderer.send('agent:compact', sessionId, messages, modelConfig);
   },
+  cursorAuthStatus: () => ipcRenderer.invoke('agent:cursorAuthStatus'),
+  cursorLogin: () => ipcRenderer.invoke('agent:cursorLogin'),
+  cursorLogout: () => ipcRenderer.invoke('agent:cursorLogout'),
   onStreamEvent: (callback: (event: StreamEvent) => void) => {
     const handler = (_event: Electron.IpcRendererEvent, streamEvent: StreamEvent) => {
       callback(streamEvent);

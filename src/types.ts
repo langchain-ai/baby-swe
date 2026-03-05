@@ -105,6 +105,26 @@ export interface ApiKeys {
 }
 
 export type PermissionMode = 'default' | 'full';
+export type AgentHarness = 'cursor' | 'deepagents';
+
+export interface CursorAuthStatus {
+  cliAvailable: boolean;
+  authenticated: boolean;
+  account: string | null;
+  detail: string | null;
+  error?: string;
+}
+
+export interface CursorLoginResult {
+  started: boolean;
+  error?: string;
+}
+
+export interface CursorLogoutResult {
+  success: boolean;
+  detail?: string | null;
+  error?: string;
+}
 
 export interface GlobalSettings {
   version: number;
@@ -112,6 +132,7 @@ export interface GlobalSettings {
   permissionMode?: PermissionMode;
   yoloMode?: boolean;
   apiKeys?: ApiKeys;
+  harness?: AgentHarness;
 }
 
 declare global {
@@ -120,14 +141,19 @@ declare global {
       node: () => string;
       chrome: () => string;
       electron: () => string;
+      app: () => Promise<string>;
     };
     agent: {
       invoke: (message: string) => Promise<{ content: string }>;
       stream: (sessionId: string, tileId: string, messages: ChatMessage[], modelConfig: ModelConfig, mode: Mode) => void;
       cancel: (sessionId: string) => void;
+      compact: (sessionId: string, messages: ChatMessage[], modelConfig: ModelConfig) => void;
       onStreamEvent: (callback: (event: StreamEvent) => void) => () => void;
       respondToApproval: (response: ApprovalResponse) => void;
       setMode: (sessionId: string, mode: Mode) => void;
+      cursorAuthStatus: () => Promise<CursorAuthStatus>;
+      cursorLogin: () => Promise<CursorLoginResult>;
+      cursorLogout: () => Promise<CursorLogoutResult>;
     };
     storage: {
       getSettings: () => Promise<GlobalSettings>;
