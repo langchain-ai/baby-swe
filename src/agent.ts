@@ -2,13 +2,18 @@ import { app, ipcMain, BrowserWindow } from "electron";
 import { v4 as uuidv4 } from "uuid";
 import { setMaxListeners } from "events";
 import "dotenv/config";
-import type { ApprovalDecision, ApprovalResponse, ChatMessage, ModelConfig, Mode, Project, StreamEvent } from "./types";
+import type { AgentHarness, ApprovalDecision, ApprovalResponse, ChatMessage, ModelConfig, Mode, Project, StreamEvent } from "./types";
 import { loadSettings } from "./storage";
-import { runCursorAcpStream } from "./acp-client";
+import { getCursorAuthStatus, runAcpStream, startCursorLogin } from "./acp-client";
 
 const sessionControllers = new Map<string, AbortController>();
 const sessionModes = new Map<string, Mode>();
 const pendingApprovals = new Map<string, { resolve: (decision: ApprovalDecision) => void }>();
+
+function resolveHarness(): AgentHarness {
+  const settings = loadSettings();
+  return settings.harness === "deepagents" ? "deepagents" : "cursor";
+}
 
 export interface AgentResponse {
   content: string;
@@ -52,6 +57,7 @@ function flattenMessageContent(content: ChatMessage["content"]): string {
 }
 
 async function runCompactionViaAcp(
+  harness: AgentHarness,
   messages: ChatMessage[],
   modelConfig: { name: string; provider: string; effort: string },
 ): Promise<{ summary: string; keptMessages: ChatMessage[] } | null> {
@@ -82,7 +88,8 @@ ${conversationText}`;
   const controller = new AbortController();
 
   try {
-    await runCursorAcpStream({
+    await runAcpStream({
+      harness,
       sessionId: `compact-${uuidv4()}`,
       messages: [{ role: "user", content: compactionPrompt }],
       mode: "agent",
@@ -124,15 +131,25 @@ function safeSend(webContents: Electron.WebContents, channel: string, ...args: u
 }
 
 export function setupAgentIPC(_mainWindow: BrowserWindow, getTileProject: (tileId: string) => string | null, _getTileProjectData?: (tileId: string) => Project | null) {
+  ipcMain.handle("agent:cursorAuthStatus", async () => {
+    return getCursorAuthStatus();
+  });
+
+  ipcMain.handle("agent:cursorLogin", async () => {
+    return startCursorLogin();
+  });
+
   ipcMain.handle("agent:invoke", async (_event, userMessage: string): Promise<AgentResponse> => {
     const controller = new AbortController();
     const invokeSessionId = `invoke-${uuidv4()}`;
     const settings = loadSettings();
+    const harness = settings.harness === "deepagents" ? "deepagents" : "cursor";
     const modelConfig = settings.modelConfig || { name: "acp-default", provider: "acp-cursor", effort: "default" };
     let content = "";
 
     try {
-      await runCursorAcpStream({
+      await runAcpStream({
+        harness,
         sessionId: invokeSessionId,
         messages: [{ role: "user", content: userMessage }],
         mode: "yolo",
@@ -184,7 +201,8 @@ export function setupAgentIPC(_mainWindow: BrowserWindow, getTileProject: (tileI
 
     try {
       const folder = getTileProject(tileId);
-      await runCursorAcpStream({
+      await runAcpStream({
+        harness: resolveHarness(),
         sessionId,
         messages,
         mode: sessionModes.get(sessionId) || mode,
@@ -254,7 +272,7 @@ export function setupAgentIPC(_mainWindow: BrowserWindow, getTileProject: (tileI
 
     send({ type: 'compact-start', sessionId });
 
-    const result = await runCompactionViaAcp(messages, modelConfig);
+    const result = await runCompactionViaAcp(resolveHarness(), messages, modelConfig);
     if (result) {
       console.log(`[agent:compact] Manual compact for session ${sessionId}, summarized ${messages.length - result.keptMessages.length} messages`);
       send({

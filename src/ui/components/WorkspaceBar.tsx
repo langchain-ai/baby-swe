@@ -40,7 +40,13 @@ function useAllWorkspaceStatuses(): AgentStatus[] {
 }
 
 export function WorkspaceBar() {
-  const { workspaces, activeWorkspaceIndex, switchWorkspace } = useStore();
+  const {
+    workspaces,
+    activeWorkspaceIndex,
+    switchWorkspace,
+    showSettingsScreen,
+    setShowSettingsScreen,
+  } = useStore();
   const allStatuses = useAllWorkspaceStatuses();
 
   // Track the last-seen status per workspace. When a workspace is active we
@@ -86,6 +92,21 @@ export function WorkspaceBar() {
           alt="LangChain"
           className="h-5 w-auto opacity-80"
         />
+      </div>
+
+      <div className="absolute right-3 top-1/2 -translate-y-1/2" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+        <button
+          type="button"
+          onClick={() => setShowSettingsScreen(!showSettingsScreen)}
+          className={`flex items-center justify-center w-7 h-7 rounded-md transition-colors ${
+            showSettingsScreen
+              ? 'bg-[#5a9bc7] text-white'
+              : 'text-gray-400 hover:text-gray-200 hover:bg-gray-700'
+          }`}
+          title="Settings"
+        >
+          <SettingsCogIcon />
+        </button>
       </div>
     </div>
   );
@@ -144,6 +165,24 @@ function SpinnerIcon() {
       className="animate-spin"
     >
       <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+    </svg>
+  );
+}
+
+function SettingsCogIcon() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <circle cx="12" cy="12" r="3" />
+      <path d="M19.4 15a1.6 1.6 0 0 0 .32 1.76l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.6 1.6 0 0 0-1.76-.32 1.6 1.6 0 0 0-.97 1.47V21a2 2 0 1 1-4 0v-.09a1.6 1.6 0 0 0-.97-1.47 1.6 1.6 0 0 0-1.76.32l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.6 1.6 0 0 0 .32-1.76 1.6 1.6 0 0 0-1.47-.97H3a2 2 0 1 1 0-4h.09a1.6 1.6 0 0 0 1.47-.97 1.6 1.6 0 0 0-.32-1.76l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.6 1.6 0 0 0 1.76.32h.08a1.6 1.6 0 0 0 .89-1.44V3a2 2 0 1 1 4 0v.09a1.6 1.6 0 0 0 .97 1.47 1.6 1.6 0 0 0 1.76-.32l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.6 1.6 0 0 0-.32 1.76v.08a1.6 1.6 0 0 0 1.44.89H21a2 2 0 1 1 0 4h-.09a1.6 1.6 0 0 0-1.51 1.09z" />
     </svg>
   );
 }

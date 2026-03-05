@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { v4 as uuidv4 } from 'uuid';
-import type { Message, Chunk, Mode, ModelConfig, ToolStatus, Thread, Session, Project, ApprovalRequest, DiffData, TodoItem, Tile, LayoutNode, SplitDirection, TileType, Workspace, ApiKeys, FileViewerData, AgentStatus, PermissionMode } from './types';
+import type { Message, Chunk, Mode, ModelConfig, ToolStatus, Thread, Session, Project, ApprovalRequest, DiffData, TodoItem, Tile, LayoutNode, SplitDirection, TileType, Workspace, ApiKeys, FileViewerData, AgentStatus, PermissionMode, AgentHarness } from './types';
 import { loadSettings, saveSettings, loadRecentProjects } from './persistence';
 import {
   createInitialLayout,
@@ -38,7 +38,9 @@ interface AppState {
   blink: boolean;
   recentProjects: Project[];
   showApiKeysScreen: boolean;
+  showSettingsScreen: boolean;
   apiKeys: ApiKeys | null;
+  harness: AgentHarness;
 
   workspaces: Workspace[];
   activeWorkspaceIndex: number;
@@ -95,8 +97,11 @@ interface AppState {
   toggleBlink: () => void;
   loadRecentProjects: () => Promise<void>;
   setShowApiKeysScreen: (show: boolean) => void;
+  setShowSettingsScreen: (show: boolean) => void;
   loadApiKeys: () => Promise<void>;
   saveApiKeys: (keys: ApiKeys) => Promise<void>;
+  loadHarness: () => Promise<void>;
+  setHarness: (harness: AgentHarness) => Promise<void>;
   loadModelConfig: () => Promise<void>;
   loadPermissionMode: () => Promise<void>;
 }
@@ -163,7 +168,9 @@ export const useStore = create<AppState>((set, get) => ({
   blink: true,
   recentProjects: [],
   showApiKeysScreen: false,
+  showSettingsScreen: false,
   apiKeys: null,
+  harness: 'cursor',
 
   workspaces: createInitialWorkspaces(),
   activeWorkspaceIndex: 0,
@@ -1291,6 +1298,7 @@ export const useStore = create<AppState>((set, get) => ({
   },
 
   setShowApiKeysScreen: (show) => set({ showApiKeysScreen: show }),
+  setShowSettingsScreen: (show) => set({ showSettingsScreen: show }),
 
   loadApiKeys: async () => {
     const settings = await loadSettings();
@@ -1301,6 +1309,18 @@ export const useStore = create<AppState>((set, get) => ({
     const settings = await loadSettings();
     await saveSettings({ ...settings, apiKeys: keys });
     set({ apiKeys: keys, showApiKeysScreen: false });
+  },
+
+  loadHarness: async () => {
+    const settings = await loadSettings();
+    const harness: AgentHarness = settings.harness === 'deepagents' ? 'deepagents' : 'cursor';
+    set({ harness });
+  },
+
+  setHarness: async (harness) => {
+    set({ harness });
+    const settings = await loadSettings();
+    await saveSettings({ ...settings, harness });
   },
 
   loadModelConfig: async () => {

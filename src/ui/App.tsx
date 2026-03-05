@@ -6,6 +6,7 @@ import { WorkspaceBar } from './components/WorkspaceBar';
 import { StatusBar } from './components/StatusBar';
 import { FolderSelectScreen } from './components';
 import { ApiKeysScreen } from './components/ApiKeysScreen';
+import { SettingsScreen } from './components/SettingsScreen';
 import { getAllCommands } from '../commands';
 
 const KEYBOARD_SHORTCUTS = [
@@ -37,7 +38,9 @@ export function App() {
   const activeWorkspaceIndex = useStore(state => state.activeWorkspaceIndex);
   const recentProjects = useStore(state => state.recentProjects);
   const showApiKeysScreen = useStore(state => state.showApiKeysScreen);
+  const showSettingsScreen = useStore(state => state.showSettingsScreen);
   const apiKeys = useStore(state => state.apiKeys);
+  const harness = useStore(state => state.harness);
   const [showShortcutDialog, setShowShortcutDialog] = useState(false);
   const [showQuickStartDialog, setShowQuickStartDialog] = useState(false);
   const commandList = useMemo(
@@ -69,6 +72,9 @@ export function App() {
     loadApiKeys: state.loadApiKeys,
     saveApiKeys: state.saveApiKeys,
     setShowApiKeysScreen: state.setShowApiKeysScreen,
+    setShowSettingsScreen: state.setShowSettingsScreen,
+    loadHarness: state.loadHarness,
+    setHarness: state.setHarness,
     loadModelConfig: state.loadModelConfig,
     loadPermissionMode: state.loadPermissionMode,
   })));
@@ -77,7 +83,7 @@ export function App() {
     switchWorkspace, switchWorkspaceRelative, loadRecentProjects,
     appendStreamToken, addToolStart, updateToolEnd, updateToolStatus,
     updateTokenUsage, compactSession, setCompacting, updateTodos, finalizeStream, abortStream,
-    loadApiKeys, saveApiKeys, setShowApiKeysScreen, loadModelConfig, loadPermissionMode,
+    loadApiKeys, saveApiKeys, setShowApiKeysScreen, setShowSettingsScreen, loadHarness, setHarness, loadModelConfig, loadPermissionMode,
   } = actions;
 
   const workspace = workspaces[activeWorkspaceIndex];
@@ -86,9 +92,10 @@ export function App() {
   useEffect(() => {
     loadRecentProjects();
     loadApiKeys();
+    loadHarness();
     loadModelConfig();
     loadPermissionMode();
-  }, [loadRecentProjects, loadApiKeys, loadModelConfig, loadPermissionMode]);
+  }, [loadRecentProjects, loadApiKeys, loadHarness, loadModelConfig, loadPermissionMode]);
 
   useEffect(() => {
     try {
@@ -235,6 +242,14 @@ export function App() {
       return;
     }
 
+    if (showSettingsScreen) {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setShowSettingsScreen(false);
+      }
+      return;
+    }
+
     // Workspace switching: Cmd+1-5
     if (isMod && !e.shiftKey && !e.altKey && e.key >= '1' && e.key <= '5') {
       e.preventDefault();
@@ -361,6 +376,8 @@ export function App() {
     dismissQuickStartDialog,
     showQuickStartDialog,
     showShortcutDialog,
+    showSettingsScreen,
+    setShowSettingsScreen,
   ]);
 
   useEffect(() => {
@@ -373,8 +390,8 @@ export function App() {
   const focusedTile = focusedTileId ? tiles[focusedTileId] : null;
   const project = focusedTile?.project;
 
-  const needsApiKeys = apiKeys === null || (!apiKeys.anthropic && !apiKeys.openai && !apiKeys.baseten);
-  const shouldShowApiKeysScreen = showApiKeysScreen || (needsApiKeys && isEmpty);
+  const needsApiKeys = harness === 'deepagents' && (apiKeys === null || (!apiKeys.anthropic && !apiKeys.openai && !apiKeys.baseten));
+  const shouldShowApiKeysScreen = !showSettingsScreen && (showApiKeysScreen || (needsApiKeys && isEmpty));
 
   const handleSaveApiKeys = useCallback(async (keys: Parameters<typeof saveApiKeys>[0]) => {
     await saveApiKeys(keys);
@@ -383,6 +400,14 @@ export function App() {
   const handleCancelApiKeys = useCallback(() => {
     setShowApiKeysScreen(false);
   }, [setShowApiKeysScreen]);
+
+  const handleHarnessChange = useCallback(async (nextHarness: 'cursor' | 'deepagents') => {
+    await setHarness(nextHarness);
+  }, [setHarness]);
+
+  const handleCloseSettings = useCallback(() => {
+    setShowSettingsScreen(false);
+  }, [setShowSettingsScreen]);
 
   const quickStartDialog = showQuickStartDialog ? (
     <div
@@ -472,6 +497,24 @@ export function App() {
       </div>
     </div>
   ) : null;
+
+  if (showSettingsScreen) {
+    return (
+      <div className="flex flex-col h-screen bg-[#1a2332] text-gray-100">
+        <WorkspaceBar />
+        <div className="flex-1 min-h-0">
+          <SettingsScreen
+            harness={harness}
+            onHarnessChange={handleHarnessChange}
+            onClose={handleCloseSettings}
+          />
+        </div>
+        <StatusBar />
+        {quickStartDialog}
+        {shortcutDialog}
+      </div>
+    );
+  }
 
   if (shouldShowApiKeysScreen) {
     return (

@@ -2,14 +2,32 @@ import { spawn } from "child_process";
 import * as readline from "readline";
 import { v4 as uuidv4 } from "uuid";
 import { loadAgentMemory } from "./memory/agents";
-import type { ApprovalDecision, ChatMessage, DiffData, Mode, ModelConfig } from "./types";
+import type {
+  AgentHarness,
+  ApprovalDecision,
+  ChatMessage,
+  CursorAuthStatus,
+  CursorLoginResult,
+  DiffData,
+  Mode,
+  ModelConfig,
+} from "./types";
 
 const ACP_PROMPT_CHAR_LIMIT = 120_000;
-const ACP_DEFAULT_COMMAND = "agent";
-const ACP_DEFAULT_ARGS = ["acp"];
+const CURSOR_ACP_DEFAULT_COMMAND = "agent";
+const CURSOR_ACP_DEFAULT_ARGS = ["acp"];
+const CURSOR_CLI_STATUS_ARGS = ["status"];
+const CURSOR_CLI_LOGIN_ARGS = ["login"];
+const DEEPAGENTS_ACP_PACKAGE = "deepagents-acp";
 const ACP_DEFAULT_AUTH_METHOD = "cursor_login";
 const ACP_DEFAULT_CLIENT_NAME = "baby-swe";
 const ACP_PROTOCOL_VERSION = 1;
+const CURSOR_CLI_STATUS_TIMEOUT_MS = 10_000;
+
+type AcpProcessTarget = {
+  command: string;
+  args: string[];
+};
 
 type JsonRpcId = number | string;
 
@@ -37,7 +55,8 @@ export type ApprovalRequestInput = {
   toolArgs: Record<string, unknown>;
 };
 
-export type RunCursorAcpStreamOptions = {
+export type RunAcpStreamOptions = {
+  harness: AgentHarness;
   sessionId: string;
   messages: ChatMessage[];
   mode: Mode;
@@ -53,10 +72,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function parseAcpArgs(rawArgs: string | undefined): string[] {
-  if (!rawArgs) return [...ACP_DEFAULT_ARGS];
+function parseAcpArgs(rawArgs: string | undefined, fallbackArgs: string[]): string[] {
+  if (!rawArgs) return [...fallbackArgs];
   const trimmed = rawArgs.trim();
-  if (!trimmed) return [...ACP_DEFAULT_ARGS];
+  if (!trimmed) return [...fallbackArgs];
 
   if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
     try {
@@ -66,12 +85,167 @@ function parseAcpArgs(rawArgs: string | undefined): string[] {
         if (args.length > 0) return args;
       }
     } catch {
-      // Fallback to splitting by whitespace.
+      // Fall through and split by whitespace.
     }
   }
 
   const args = trimmed.split(/\s+/).filter(Boolean);
-  return args.length > 0 ? args : [...ACP_DEFAULT_ARGS];
+  return args.length > 0 ? args : [...fallbackArgs];
+}
+
+function parseAcpCommand(rawCommand: string | undefined, fallbackCommand: string): string {
+  const trimmed = (rawCommand || "").trim();
+  return trimmed || fallbackCommand;
+}
+
+function resolveCursorCliCommand(): string {
+  return parseAcpCommand(
+    process.env.BABY_SWE_CURSOR_CLI_COMMAND || process.env.BABY_SWE_ACP_COMMAND,
+    CURSOR_ACP_DEFAULT_COMMAND,
+  );
+}
+
+function resolveCursorAcpTarget(): AcpProcessTarget {
+  return {
+    command: parseAcpCommand(process.env.BABY_SWE_ACP_COMMAND, CURSOR_ACP_DEFAULT_COMMAND),
+    args: parseAcpArgs(process.env.BABY_SWE_ACP_ARGS, CURSOR_ACP_DEFAULT_ARGS),
+  };
+}
+
+function resolveDeepagentsAcpTarget(): AcpProcessTarget {
+  const overrideCommand = parseAcpCommand(process.env.BABY_SWE_DEEPAGENTS_ACP_COMMAND, "");
+  if (overrideCommand) {
+    return {
+      command: overrideCommand,
+      args: parseAcpArgs(process.env.BABY_SWE_DEEPAGENTS_ACP_ARGS, []),
+    };
+  }
+
+  try {
+    const cliPath = require.resolve(`${DEEPAGENTS_ACP_PACKAGE}/dist/cli.js`);
+    return {
+      command: process.execPath,
+      args: parseAcpArgs(process.env.BABY_SWE_DEEPAGENTS_ACP_ARGS, [cliPath]),
+    };
+  } catch {
+    throw new Error(
+      `[acp] ${DEEPAGENTS_ACP_PACKAGE} is not installed. Run "bun add ${DEEPAGENTS_ACP_PACKAGE}" or configure BABY_SWE_DEEPAGENTS_ACP_COMMAND.`,
+    );
+  }
+}
+
+function resolveAcpTarget(harness: AgentHarness): AcpProcessTarget {
+  if (harness === "deepagents") {
+    return resolveDeepagentsAcpTarget();
+  }
+  return resolveCursorAcpTarget();
+}
+
+function stripAnsi(input: string): string {
+  return input
+    .replace(/\u001B\[[0-9;?]*[ -/]*[@-~]/g, "")
+    .replace(/\r/g, "")
+    .replace(/\u0007/g, "");
+}
+
+function runCommand(
+  command: string,
+  args: string[],
+  timeoutMs?: number,
+): Promise<{ code: number | null; signal: NodeJS.Signals | null; stdout: string; stderr: string }> {
+  return new Promise((resolve, reject) => {
+    const proc = spawn(command, args, {
+      cwd: process.cwd(),
+      stdio: ["ignore", "pipe", "pipe"],
+      env: process.env,
+    });
+
+    let stdout = "";
+    let stderr = "";
+    let timeoutHandle: NodeJS.Timeout | null = null;
+
+    proc.stdout.on("data", (chunk: Buffer) => {
+      stdout += chunk.toString("utf8");
+    });
+    proc.stderr.on("data", (chunk: Buffer) => {
+      stderr += chunk.toString("utf8");
+    });
+
+    proc.on("error", (error) => {
+      if (timeoutHandle) clearTimeout(timeoutHandle);
+      reject(error);
+    });
+
+    proc.on("exit", (code, signal) => {
+      if (timeoutHandle) clearTimeout(timeoutHandle);
+      resolve({ code, signal, stdout, stderr });
+    });
+
+    if (timeoutMs && timeoutMs > 0) {
+      timeoutHandle = setTimeout(() => {
+        proc.kill("SIGTERM");
+      }, timeoutMs);
+    }
+  });
+}
+
+export async function getCursorAuthStatus(): Promise<CursorAuthStatus> {
+  const command = resolveCursorCliCommand();
+
+  try {
+    const result = await runCommand(command, CURSOR_CLI_STATUS_ARGS, CURSOR_CLI_STATUS_TIMEOUT_MS);
+    const combinedOutput = stripAnsi(`${result.stdout}\n${result.stderr}`).trim();
+    const accountMatch = combinedOutput.match(/logged in as\s+([^\s]+)/i);
+    const authenticated = Boolean(accountMatch);
+
+    return {
+      cliAvailable: true,
+      authenticated,
+      account: accountMatch?.[1] || null,
+      detail: combinedOutput || null,
+      ...(result.code !== 0 && !authenticated
+        ? { error: `Cursor CLI exited with code ${result.code ?? "unknown"}` }
+        : {}),
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return {
+      cliAvailable: false,
+      authenticated: false,
+      account: null,
+      detail: null,
+      error: `Cursor CLI unavailable: ${message}`,
+    };
+  }
+}
+
+export async function startCursorLogin(): Promise<CursorLoginResult> {
+  const command = resolveCursorCliCommand();
+  return new Promise<CursorLoginResult>((resolve) => {
+    const proc = spawn(command, CURSOR_CLI_LOGIN_ARGS, {
+      cwd: process.cwd(),
+      detached: true,
+      stdio: "ignore",
+      env: process.env,
+    });
+
+    let settled = false;
+    const settle = (result: CursorLoginResult) => {
+      if (settled) return;
+      settled = true;
+      resolve(result);
+    };
+
+    proc.once("error", (error) => {
+      const message = error instanceof Error ? error.message : String(error);
+      settle({ started: false, error: `Failed to start Cursor login: ${message}` });
+    });
+
+    proc.once("spawn", () => {
+      proc.unref();
+      settle({ started: true });
+    });
+  });
 }
 
 class NdJsonRpcProcessClient {
@@ -547,10 +721,9 @@ function pickAuthMethod(initResult: unknown): string | null {
   return authMethods[0];
 }
 
-export async function runCursorAcpStream(options: RunCursorAcpStreamOptions): Promise<void> {
+export async function runAcpStream(options: RunAcpStreamOptions): Promise<void> {
   const cwd = options.folder || process.cwd();
-  const command = (process.env.BABY_SWE_ACP_COMMAND || ACP_DEFAULT_COMMAND).trim() || ACP_DEFAULT_COMMAND;
-  const args = parseAcpArgs(process.env.BABY_SWE_ACP_ARGS);
+  const { command, args } = resolveAcpTarget(options.harness);
 
   const rpc = new NdJsonRpcProcessClient(command, args, cwd);
   const toolStates = new Map<string, ToolState>();
@@ -782,15 +955,17 @@ export async function runCursorAcpStream(options: RunCursorAcpStreamOptions): Pr
       },
     });
 
-    const authMethodId = pickAuthMethod(initResult);
-    if (authMethodId) {
-      const authMethods = extractAuthMethods(initResult);
-      try {
-        await rpc.request("authenticate", { methodId: authMethodId });
-      } catch (error) {
-        if (authMethods.length > 0) {
-          const reason = error instanceof Error ? error.message : String(error);
-          throw new Error(`Cursor authentication failed for method "${authMethodId}". Run "agent login" and retry. ${reason}`);
+    if (options.harness === "cursor") {
+      const authMethodId = pickAuthMethod(initResult);
+      if (authMethodId) {
+        const authMethods = extractAuthMethods(initResult);
+        try {
+          await rpc.request("authenticate", { methodId: authMethodId });
+        } catch (error) {
+          if (authMethods.length > 0) {
+            const reason = error instanceof Error ? error.message : String(error);
+            throw new Error(`Cursor authentication failed for method "${authMethodId}". Run "agent login" and retry. ${reason}`);
+          }
         }
       }
     }
