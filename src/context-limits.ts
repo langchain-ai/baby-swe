@@ -13,8 +13,9 @@ export const MODEL_CONTEXT_LIMITS: Record<string, number> = {
   'claude-sonnet-4': 200_000,
   'claude-haiku-3-5': 200_000,
 
-  // OpenAI - GPT-5.3-Codex has 400k context
+  // OpenAI
   'gpt-5.3-codex': 400_000,
+  'gpt-5.4': 512_000,
 
   // Kimi
   'kimi-k2.5': 128_000,

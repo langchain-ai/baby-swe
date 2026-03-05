@@ -9,16 +9,17 @@ import {
   insertFileTag,
   searchFileSuggestions,
 } from './FileAutocomplete';
-import { ModelAutocomplete, AVAILABLE_MODELS, getModelCount, getModelAtIndex, type ModelOption } from './ModelAutocomplete';
+import { ModelAutocomplete, getModelsForHarness, getModelCount, getModelAtIndex, type ModelOption } from './ModelAutocomplete';
 import { ContextIndicator } from './ContextIndicator';
 import { WorktreeSelector } from './WorktreeSelector';
 import type { Command } from '../../commands';
-import type { ApprovalDecision, DiffData, ImageChunk, ModelConfig, PermissionMode, WorktreeType } from '../../types';
+import type { AgentHarness, ApprovalDecision, DiffData, ImageChunk, ModelConfig, PermissionMode, WorktreeType } from '../../types';
 
 const MODELS: Record<string, string> = {
   'claude-opus-4-6': 'Opus 4.6',
   'claude-sonnet-4-6': 'Sonnet 4.6',
   'gpt-5.3-codex': 'GPT-5.3-Codex',
+  'gpt-5.4': 'GPT-5.4',
   'kimi-k2.5': 'Kimi K2.5',
 };
 
@@ -168,6 +169,7 @@ export const PromptBar = memo(function PromptBar({
     sessionModelConfig,
     setSessionModelConfig,
     setSessionPromptDraft,
+    harness,
   } = useStore(useShallow(state => ({
     query: state.sessions[sessionId]?.promptDraft ?? '',
     permissionMode: state.permissionMode,
@@ -176,6 +178,7 @@ export const PromptBar = memo(function PromptBar({
     sessionModelConfig: state.sessions[sessionId]?.modelConfig,
     setSessionModelConfig: state.setSessionModelConfig,
     setSessionPromptDraft: state.setSessionPromptDraft,
+    harness: state.harness,
   })));
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const [commandSelectedIndex, setCommandSelectedIndex] = useState(0);
@@ -422,7 +425,7 @@ export const PromptBar = memo(function PromptBar({
     }
 
     if (showModelAutocomplete) {
-      const count = getModelCount();
+      const count = getModelCount(harness);
 
       if (e.key === 'ArrowDown') {
         e.preventDefault();
@@ -438,7 +441,7 @@ export const PromptBar = memo(function PromptBar({
 
       if (e.key === 'Enter' || e.key === 'Tab') {
         e.preventDefault();
-        const model = getModelAtIndex(modelSelectedIndex);
+        const model = getModelAtIndex(modelSelectedIndex, harness);
         if (model) {
           handleModelSelect(model);
         }
@@ -554,6 +557,7 @@ export const PromptBar = memo(function PromptBar({
           selectedIndex={modelSelectedIndex}
           currentModelId={modelConfig.name}
           currentEffort={modelConfig.effort}
+          harness={harness}
           onSelect={handleModelSelect}
         />
       )}
@@ -645,7 +649,7 @@ export const PromptBar = memo(function PromptBar({
                 </button>
                 {modelDropdownOpen && (
                   <div className={`absolute ${dropUp ? 'bottom-full mb-1' : 'top-full mt-1'} left-0 bg-gray-800 border border-gray-700 rounded shadow-lg overflow-hidden z-50`}>
-                    {AVAILABLE_MODELS.map((model, idx) => {
+                    {getModelsForHarness(harness).map((model, idx) => {
                       const isCurrent = model.id === modelConfig.name && (model.effort || 'default') === (modelConfig.effort || 'default');
                       return (
                         <button
@@ -764,7 +768,7 @@ export const PromptBar = memo(function PromptBar({
                 </button>
                 {modelDropdownOpen && (
                   <div className={`absolute ${dropUp ? 'bottom-full mb-1' : 'top-full mt-1'} left-0 bg-gray-800 border border-gray-700 rounded shadow-lg overflow-hidden z-50`}>
-                    {AVAILABLE_MODELS.map((model, idx) => {
+                    {getModelsForHarness(harness).map((model, idx) => {
                       const isCurrent = model.id === modelConfig.name && (model.effort || 'default') === (modelConfig.effort || 'default');
                       return (
                         <button
