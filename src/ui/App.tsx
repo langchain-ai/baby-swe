@@ -505,7 +505,9 @@ export function App() {
         <div className="flex-1 min-h-0">
           <SettingsScreen
             harness={harness}
+            initialKeys={apiKeys}
             onHarnessChange={handleHarnessChange}
+            onSaveApiKeys={handleSaveApiKeys}
             onClose={handleCloseSettings}
           />
         </div>

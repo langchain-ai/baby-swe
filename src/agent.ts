@@ -4,7 +4,7 @@ import { setMaxListeners } from "events";
 import "dotenv/config";
 import type { AgentHarness, ApprovalDecision, ApprovalResponse, ChatMessage, ModelConfig, Mode, Project, StreamEvent } from "./types";
 import { loadSettings } from "./storage";
-import { getCursorAuthStatus, runAcpStream, startCursorLogin } from "./acp-client";
+import { getCursorAuthStatus, runAcpStream, runCursorLogout, startCursorLogin } from "./acp-client";
 
 const sessionControllers = new Map<string, AbortController>();
 const sessionModes = new Map<string, Mode>();
@@ -137,6 +137,10 @@ export function setupAgentIPC(_mainWindow: BrowserWindow, getTileProject: (tileI
 
   ipcMain.handle("agent:cursorLogin", async () => {
     return startCursorLogin();
+  });
+
+  ipcMain.handle("agent:cursorLogout", async () => {
+    return runCursorLogout();
   });
 
   ipcMain.handle("agent:invoke", async (_event, userMessage: string): Promise<AgentResponse> => {

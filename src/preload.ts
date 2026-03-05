@@ -21,6 +21,7 @@ contextBridge.exposeInMainWorld('agent', {
   },
   cursorAuthStatus: () => ipcRenderer.invoke('agent:cursorAuthStatus'),
   cursorLogin: () => ipcRenderer.invoke('agent:cursorLogin'),
+  cursorLogout: () => ipcRenderer.invoke('agent:cursorLogout'),
   onStreamEvent: (callback: (event: StreamEvent) => void) => {
     const handler = (_event: Electron.IpcRendererEvent, streamEvent: StreamEvent) => {
       callback(streamEvent);

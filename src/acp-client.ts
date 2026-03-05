@@ -1,4 +1,5 @@
 import { spawn } from "child_process";
+import * as path from "path";
 import * as readline from "readline";
 import { v4 as uuidv4 } from "uuid";
 import { loadAgentMemory } from "./memory/agents";
@@ -8,6 +9,7 @@ import type {
   ChatMessage,
   CursorAuthStatus,
   CursorLoginResult,
+  CursorLogoutResult,
   DiffData,
   Mode,
   ModelConfig,
@@ -18,11 +20,13 @@ const CURSOR_ACP_DEFAULT_COMMAND = "agent";
 const CURSOR_ACP_DEFAULT_ARGS = ["acp"];
 const CURSOR_CLI_STATUS_ARGS = ["status"];
 const CURSOR_CLI_LOGIN_ARGS = ["login"];
+const CURSOR_CLI_LOGOUT_ARGS = ["logout"];
 const DEEPAGENTS_ACP_PACKAGE = "deepagents-acp";
 const ACP_DEFAULT_AUTH_METHOD = "cursor_login";
 const ACP_DEFAULT_CLIENT_NAME = "baby-swe";
 const ACP_PROTOCOL_VERSION = 1;
 const CURSOR_CLI_STATUS_TIMEOUT_MS = 10_000;
+const CURSOR_CLI_LOGOUT_TIMEOUT_MS = 10_000;
 
 type AcpProcessTarget = {
   command: string;
@@ -122,7 +126,8 @@ function resolveDeepagentsAcpTarget(): AcpProcessTarget {
   }
 
   try {
-    const cliPath = require.resolve(`${DEEPAGENTS_ACP_PACKAGE}/dist/cli.js`);
+    const packageJsonPath = require.resolve(`${DEEPAGENTS_ACP_PACKAGE}/package.json`);
+    const cliPath = path.join(path.dirname(packageJsonPath), "dist", "cli.js");
     return {
       command: process.execPath,
       args: parseAcpArgs(process.env.BABY_SWE_DEEPAGENTS_ACP_ARGS, [cliPath]),
@@ -246,6 +251,33 @@ export async function startCursorLogin(): Promise<CursorLoginResult> {
       settle({ started: true });
     });
   });
+}
+
+export async function runCursorLogout(): Promise<CursorLogoutResult> {
+  const command = resolveCursorCliCommand();
+  try {
+    const result = await runCommand(command, CURSOR_CLI_LOGOUT_ARGS, CURSOR_CLI_LOGOUT_TIMEOUT_MS);
+    const combinedOutput = stripAnsi(`${result.stdout}\n${result.stderr}`).trim();
+    if (result.code === 0) {
+      return {
+        success: true,
+        detail: combinedOutput || null,
+      };
+    }
+
+    return {
+      success: false,
+      detail: combinedOutput || null,
+      error: `Cursor logout failed with code ${result.code ?? "unknown"}`,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return {
+      success: false,
+      detail: null,
+      error: `Failed to run Cursor logout: ${message}`,
+    };
+  }
 }
 
 class NdJsonRpcProcessClient {

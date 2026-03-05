@@ -120,6 +120,12 @@ export interface CursorLoginResult {
   error?: string;
 }
 
+export interface CursorLogoutResult {
+  success: boolean;
+  detail?: string | null;
+  error?: string;
+}
+
 export interface GlobalSettings {
   version: number;
   modelConfig: ModelConfig;
@@ -147,6 +153,7 @@ declare global {
       setMode: (sessionId: string, mode: Mode) => void;
       cursorAuthStatus: () => Promise<CursorAuthStatus>;
       cursorLogin: () => Promise<CursorLoginResult>;
+      cursorLogout: () => Promise<CursorLogoutResult>;
     };
     storage: {
       getSettings: () => Promise<GlobalSettings>;

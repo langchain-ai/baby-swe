@@ -1,18 +1,46 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Logo } from './Logo';
-import type { AgentHarness, CursorAuthStatus } from '../../types';
+import type { AgentHarness, ApiKeys, CursorAuthStatus } from '../../types';
 
 interface SettingsScreenProps {
   harness: AgentHarness;
+  initialKeys?: ApiKeys | null;
   onHarnessChange: (harness: AgentHarness) => Promise<void>;
+  onSaveApiKeys: (keys: ApiKeys) => Promise<void>;
   onClose: () => void;
 }
 
-export function SettingsScreen({ harness, onHarnessChange, onClose }: SettingsScreenProps) {
+export function SettingsScreen({
+  harness,
+  initialKeys,
+  onHarnessChange,
+  onSaveApiKeys,
+  onClose,
+}: SettingsScreenProps) {
   const [cursorStatus, setCursorStatus] = useState<CursorAuthStatus | null>(null);
   const [statusLoading, setStatusLoading] = useState(false);
   const [loginLoading, setLoginLoading] = useState(false);
-  const [loginMessage, setLoginMessage] = useState<string | null>(null);
+  const [logoutLoading, setLogoutLoading] = useState(false);
+  const [cursorMessage, setCursorMessage] = useState<string | null>(null);
+
+  const [anthropic, setAnthropic] = useState(initialKeys?.anthropic || '');
+  const [openai, setOpenai] = useState(initialKeys?.openai || '');
+  const [baseten, setBaseten] = useState(initialKeys?.baseten || '');
+  const [tavily, setTavily] = useState(initialKeys?.tavily || '');
+  const [showAnthropic, setShowAnthropic] = useState(false);
+  const [showOpenai, setShowOpenai] = useState(false);
+  const [showBaseten, setShowBaseten] = useState(false);
+  const [showTavily, setShowTavily] = useState(false);
+  const [keysLoading, setKeysLoading] = useState(false);
+  const [keysError, setKeysError] = useState<string | null>(null);
+  const [keysMessage, setKeysMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    setAnthropic(initialKeys?.anthropic || '');
+    setOpenai(initialKeys?.openai || '');
+    setBaseten(initialKeys?.baseten || '');
+    setTavily(initialKeys?.tavily || '');
+  }, [initialKeys]);
 
   const refreshCursorStatus = useCallback(async () => {
     setStatusLoading(true);
@@ -39,31 +67,79 @@ export function SettingsScreen({ harness, onHarnessChange, onClose }: SettingsSc
   }, [harness, refreshCursorStatus]);
 
   const handleHarnessChange = useCallback(async (nextHarness: AgentHarness) => {
-    setLoginMessage(null);
+    setCursorMessage(null);
+    setKeysError(null);
+    setKeysMessage(null);
     await onHarnessChange(nextHarness);
   }, [onHarnessChange]);
 
   const handleCursorLogin = useCallback(async () => {
-    setLoginMessage(null);
+    setCursorMessage(null);
     setLoginLoading(true);
     try {
       const result = await window.agent.cursorLogin();
       if (!result.started) {
-        setLoginMessage(result.error || 'Could not start Cursor login.');
+        setCursorMessage(result.error || 'Could not start Cursor login.');
         return;
       }
 
-      setLoginMessage('Cursor login started. Complete authentication in your browser, then refresh status.');
+      setCursorMessage('Cursor login started. Complete authentication in your browser, then refresh status.');
       setTimeout(() => {
         refreshCursorStatus().catch(() => {});
       }, 1500);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      setLoginMessage(message);
+      setCursorMessage(message);
     } finally {
       setLoginLoading(false);
     }
   }, [refreshCursorStatus]);
+
+  const handleCursorLogout = useCallback(async () => {
+    setCursorMessage(null);
+    setLogoutLoading(true);
+    try {
+      const result = await window.agent.cursorLogout();
+      if (!result.success) {
+        setCursorMessage(result.error || 'Could not disconnect Cursor authentication.');
+      } else {
+        setCursorMessage(result.detail || 'Cursor authentication has been disconnected.');
+      }
+      await refreshCursorStatus();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setCursorMessage(message);
+    } finally {
+      setLogoutLoading(false);
+    }
+  }, [refreshCursorStatus]);
+
+  const handleSaveApiKeys = useCallback(async () => {
+    const keys: ApiKeys = {};
+    if (anthropic.trim()) keys.anthropic = anthropic.trim();
+    if (openai.trim()) keys.openai = openai.trim();
+    if (baseten.trim()) keys.baseten = baseten.trim();
+    if (tavily.trim()) keys.tavily = tavily.trim();
+
+    if (!keys.anthropic && !keys.openai && !keys.baseten) {
+      setKeysError('At least one LLM API key is required for deepagents.');
+      setKeysMessage(null);
+      return;
+    }
+
+    setKeysError(null);
+    setKeysMessage(null);
+    setKeysLoading(true);
+    try {
+      await onSaveApiKeys(keys);
+      setKeysMessage('API keys saved.');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setKeysError(message);
+    } finally {
+      setKeysLoading(false);
+    }
+  }, [anthropic, baseten, onSaveApiKeys, openai, tavily]);
 
   return (
     <div className="h-full bg-[#1a2332] text-gray-100 overflow-auto">
@@ -95,59 +171,126 @@ export function SettingsScreen({ harness, onHarnessChange, onClose }: SettingsSc
           </div>
         </section>
 
-        <section className="mt-5 rounded-xl border border-[#2a3142] bg-[#151b26] p-5">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <h3 className="text-sm font-semibold text-gray-200">Cursor Authentication</h3>
-              <p className="mt-1 text-xs text-gray-400">
-                Required when using the Cursor harness.
-              </p>
+        {harness === 'cursor' ? (
+          <section className="mt-5 rounded-xl border border-[#2a3142] bg-[#151b26] p-5">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h3 className="text-sm font-semibold text-gray-200">Cursor Authentication</h3>
+                <p className="mt-1 text-xs text-gray-400">
+                  Required when using the Cursor harness.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => refreshCursorStatus()}
+                disabled={statusLoading}
+                className="px-3 py-1.5 text-xs bg-gray-700 hover:bg-gray-600 disabled:opacity-50 text-gray-100 rounded-md transition-colors"
+              >
+                {statusLoading ? 'Refreshing...' : 'Refresh Status'}
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={() => refreshCursorStatus()}
-              disabled={statusLoading}
-              className="px-3 py-1.5 text-xs bg-gray-700 hover:bg-gray-600 disabled:opacity-50 text-gray-100 rounded-md transition-colors"
-            >
-              {statusLoading ? 'Refreshing...' : 'Refresh Status'}
-            </button>
-          </div>
 
-          <div className="mt-4 rounded-md border border-[#2a3142] bg-[#111827] p-3">
-            <div className="flex items-center gap-2 text-sm">
-              <StatusDot status={cursorStatus} />
-              <span className="text-gray-200">
-                {statusLoading
-                  ? 'Checking Cursor CLI status...'
-                  : formatCursorStatus(cursorStatus)}
-              </span>
+            <div className="mt-4 rounded-md border border-[#2a3142] bg-[#111827] p-3">
+              <div className="flex items-center gap-2 text-sm">
+                <StatusDot status={cursorStatus} />
+                <span className="text-gray-200">
+                  {statusLoading
+                    ? 'Checking Cursor CLI status...'
+                    : formatCursorStatus(cursorStatus)}
+                </span>
+              </div>
+              {cursorStatus?.detail && (
+                <p className="mt-2 text-xs text-gray-500 whitespace-pre-wrap">{cursorStatus.detail}</p>
+              )}
+              {cursorStatus?.error && (
+                <p className="mt-2 text-xs text-red-400">{cursorStatus.error}</p>
+              )}
             </div>
-            {cursorStatus?.detail && (
-              <p className="mt-2 text-xs text-gray-500 whitespace-pre-wrap">{cursorStatus.detail}</p>
-            )}
-            {cursorStatus?.error && (
-              <p className="mt-2 text-xs text-red-400">{cursorStatus.error}</p>
-            )}
-          </div>
 
-          <div className="mt-4 flex items-center gap-3">
-            <button
-              type="button"
-              onClick={handleCursorLogin}
-              disabled={loginLoading}
-              className="px-4 py-2 bg-[#5a9bc7] hover:bg-[#6daad3] disabled:opacity-50 text-white rounded-md text-sm font-medium transition-colors"
-            >
-              {loginLoading ? 'Starting...' : 'Authenticate with Cursor CLI'}
-            </button>
-            <span className="text-xs text-gray-500">
-              This launches `agent login` and opens a browser if needed.
-            </span>
-          </div>
+            <div className="mt-4 flex items-center gap-3">
+              <button
+                type="button"
+                onClick={handleCursorLogin}
+                disabled={loginLoading}
+                className="px-4 py-2 bg-[#5a9bc7] hover:bg-[#6daad3] disabled:opacity-50 text-white rounded-md text-sm font-medium transition-colors"
+              >
+                {loginLoading ? 'Starting...' : 'Authenticate with Cursor CLI'}
+              </button>
+              <button
+                type="button"
+                onClick={handleCursorLogout}
+                disabled={logoutLoading}
+                className="px-4 py-2 bg-gray-700 hover:bg-gray-600 disabled:opacity-50 text-gray-100 rounded-md text-sm font-medium transition-colors"
+              >
+                {logoutLoading ? 'Disconnecting...' : 'Disconnect Cursor Auth'}
+              </button>
+            </div>
 
-          {loginMessage && (
-            <p className="mt-3 text-xs text-gray-300">{loginMessage}</p>
-          )}
-        </section>
+            {cursorMessage && (
+              <p className="mt-3 text-xs text-gray-300">{cursorMessage}</p>
+            )}
+          </section>
+        ) : (
+          <section className="mt-5 rounded-xl border border-[#2a3142] bg-[#151b26] p-5">
+            <h3 className="text-sm font-semibold text-gray-200">Deepagents API Keys</h3>
+            <p className="mt-1 text-xs text-gray-400">
+              Configure model keys used by the deepagents harness.
+            </p>
+
+            <div className="mt-4 space-y-4">
+              <ApiKeyInput
+                label="Anthropic API Key"
+                placeholder="sk-ant-..."
+                value={anthropic}
+                onChange={setAnthropic}
+                visible={showAnthropic}
+                onToggleVisible={() => setShowAnthropic((v) => !v)}
+              />
+              <ApiKeyInput
+                label="OpenAI API Key"
+                placeholder="sk-..."
+                value={openai}
+                onChange={setOpenai}
+                visible={showOpenai}
+                onToggleVisible={() => setShowOpenai((v) => !v)}
+              />
+              <ApiKeyInput
+                label="Baseten API Key (for Kimi K2.5)"
+                placeholder="..."
+                value={baseten}
+                onChange={setBaseten}
+                visible={showBaseten}
+                onToggleVisible={() => setShowBaseten((v) => !v)}
+              />
+              <ApiKeyInput
+                label="Tavily API Key (optional web search)"
+                placeholder="tvly-..."
+                value={tavily}
+                onChange={setTavily}
+                visible={showTavily}
+                onToggleVisible={() => setShowTavily((v) => !v)}
+              />
+            </div>
+
+            {keysError && (
+              <p className="mt-3 text-xs text-red-400">{keysError}</p>
+            )}
+            {keysMessage && (
+              <p className="mt-3 text-xs text-gray-300">{keysMessage}</p>
+            )}
+
+            <div className="mt-4">
+              <button
+                type="button"
+                onClick={handleSaveApiKeys}
+                disabled={keysLoading}
+                className="px-4 py-2 bg-[#5a9bc7] hover:bg-[#6daad3] disabled:opacity-50 text-white rounded-md text-sm font-medium transition-colors"
+              >
+                {keysLoading ? 'Saving...' : 'Save API Keys'}
+              </button>
+            </div>
+          </section>
+        )}
 
         <div className="mt-6 flex justify-end">
           <button
@@ -203,4 +346,60 @@ function formatCursorStatus(status: CursorAuthStatus | null): string {
   if (status.authenticated && status.account) return `Authenticated as ${status.account}`;
   if (status.authenticated) return 'Authenticated';
   return 'Not authenticated';
+}
+
+function ApiKeyInput({
+  label,
+  placeholder,
+  value,
+  onChange,
+  visible,
+  onToggleVisible,
+}: {
+  label: string;
+  placeholder: string;
+  value: string;
+  onChange: (next: string) => void;
+  visible: boolean;
+  onToggleVisible: () => void;
+}) {
+  return (
+    <div>
+      <label className="block text-sm text-gray-400 mb-1.5">{label}</label>
+      <div className="relative">
+        <input
+          type={visible ? 'text' : 'password'}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={placeholder}
+          className="w-full px-3 py-2.5 bg-gray-800/50 border border-gray-700 rounded-lg text-gray-200 placeholder-gray-500 focus:outline-none focus:border-[#5a9bc7] pr-10"
+        />
+        <button
+          type="button"
+          onClick={onToggleVisible}
+          className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 text-gray-400 hover:text-gray-300"
+        >
+          {visible ? <EyeOffIcon /> : <EyeIcon />}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function EyeIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  );
+}
+
+function EyeOffIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
+      <line x1="1" y1="1" x2="23" y2="23" />
+    </svg>
+  );
 }

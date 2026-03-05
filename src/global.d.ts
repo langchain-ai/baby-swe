@@ -7,6 +7,7 @@ import type {
   Chunk,
   CursorAuthStatus,
   CursorLoginResult,
+  CursorLogoutResult,
 } from './types';
 
 interface AgentResponse {
@@ -37,6 +38,7 @@ interface Window {
     setMode: (sessionId: string, mode: Mode) => void;
     cursorAuthStatus: () => Promise<CursorAuthStatus>;
     cursorLogin: () => Promise<CursorLoginResult>;
+    cursorLogout: () => Promise<CursorLogoutResult>;
   };
   tile: {
     openProject: (tileId: string, folderPath?: string) => Promise<unknown>;
