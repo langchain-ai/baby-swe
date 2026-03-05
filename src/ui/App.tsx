@@ -88,6 +88,11 @@ export function App() {
 
   const workspace = workspaces[activeWorkspaceIndex];
   const { layout, tiles, focusedTileId } = workspace;
+  const isEmpty = !layout || Object.keys(tiles).length === 0;
+  const needsApiKeys = harness === 'deepagents' && (apiKeys === null || (!apiKeys.anthropic && !apiKeys.openai && !apiKeys.baseten));
+  const shouldShowHarnessOnboarding = needsApiKeys && isEmpty;
+  const shouldShowSettingsScreen = showSettingsScreen || shouldShowHarnessOnboarding;
+  const shouldShowApiKeysScreen = !shouldShowSettingsScreen && showApiKeysScreen;
 
   useEffect(() => {
     loadRecentProjects();
@@ -242,8 +247,8 @@ export function App() {
       return;
     }
 
-    if (showSettingsScreen) {
-      if (e.key === 'Escape') {
+    if (shouldShowSettingsScreen) {
+      if (e.key === 'Escape' && showSettingsScreen && !shouldShowHarnessOnboarding) {
         e.preventDefault();
         setShowSettingsScreen(false);
       }
@@ -376,6 +381,8 @@ export function App() {
     dismissQuickStartDialog,
     showQuickStartDialog,
     showShortcutDialog,
+    shouldShowSettingsScreen,
+    shouldShowHarnessOnboarding,
     showSettingsScreen,
     setShowSettingsScreen,
   ]);
@@ -385,13 +392,8 @@ export function App() {
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [handleKeyDown]);
 
-  const isEmpty = !layout || Object.keys(tiles).length === 0;
-
   const focusedTile = focusedTileId ? tiles[focusedTileId] : null;
   const project = focusedTile?.project;
-
-  const needsApiKeys = harness === 'deepagents' && (apiKeys === null || (!apiKeys.anthropic && !apiKeys.openai && !apiKeys.baseten));
-  const shouldShowApiKeysScreen = !showSettingsScreen && (showApiKeysScreen || (needsApiKeys && isEmpty));
 
   const handleSaveApiKeys = useCallback(async (keys: Parameters<typeof saveApiKeys>[0]) => {
     await saveApiKeys(keys);
@@ -498,7 +500,7 @@ export function App() {
     </div>
   ) : null;
 
-  if (showSettingsScreen) {
+  if (shouldShowSettingsScreen) {
     return (
       <div className="flex flex-col h-screen bg-[#1a2332] text-gray-100">
         <WorkspaceBar />
