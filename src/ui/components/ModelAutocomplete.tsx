@@ -31,14 +31,17 @@ export const DEEPAGENTS_MODELS: ModelOption[] = [
 ];
 
 export const CLAUDE_AGENT_MODELS: ModelOption[] = [
-  { id: 'claude-sonnet-4-20250514', name: 'Claude Sonnet 4' },
-  { id: 'claude-opus-4-20250514', name: 'Claude Opus 4' },
+  { id: 'claude-opus-4-6', name: 'Opus 4.6' },
+  { id: 'claude-sonnet-4-6', name: 'Sonnet 4.6' },
 ];
 
 export const CODEX_MODELS: ModelOption[] = [
-  { id: 'codex-mini', name: 'Codex Mini' },
-  { id: 'o3', name: 'o3' },
-  { id: 'o4-mini', name: 'o4-mini' },
+  { id: 'gpt-5.3-codex', name: 'GPT-5.3-Codex Medium', effort: 'medium' },
+  { id: 'gpt-5.3-codex', name: 'GPT-5.3-Codex High', effort: 'high' },
+  { id: 'gpt-5.3-codex', name: 'GPT-5.3-Codex Extra High', effort: 'extra-high' },
+  { id: 'gpt-5.4', name: 'GPT-5.4 Medium', effort: 'medium' },
+  { id: 'gpt-5.4', name: 'GPT-5.4 High', effort: 'high' },
+  { id: 'gpt-5.4', name: 'GPT-5.4 Extra High', effort: 'extra-high' },
 ];
 
 export function getModelsForHarness(harness: AgentHarness): ModelOption[] {

@@ -12,17 +12,9 @@ export const MODEL_CONTEXT_LIMITS: Record<string, number> = {
   'claude-sonnet-4-5': 200_000,
   'claude-sonnet-4': 200_000,
   'claude-haiku-3-5': 200_000,
-  'claude-sonnet-4-20250514': 200_000,
-  'claude-opus-4-20250514': 200_000,
-
   // OpenAI
   'gpt-5.3-codex': 400_000,
   'gpt-5.4': 512_000,
-
-  // OpenAI Codex CLI models
-  'codex-mini': 200_000,
-  'o3': 200_000,
-  'o4-mini': 200_000,
 
   // Kimi
   'kimi-k2.5': 128_000,

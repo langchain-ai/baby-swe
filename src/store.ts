@@ -19,9 +19,9 @@ function getDefaultModelForHarness(harness: AgentHarness): ModelConfig {
     case 'deepagents':
       return { name: 'claude-sonnet-4-6', provider: 'anthropic', effort: 'default' };
     case 'claude-agent':
-      return { name: 'claude-sonnet-4-20250514', provider: 'anthropic', effort: 'default' };
+      return { name: 'claude-sonnet-4-6', provider: 'anthropic', effort: 'default' };
     case 'codex':
-      return { name: 'codex-mini', provider: 'openai', effort: 'default' };
+      return { name: 'gpt-5.3-codex', provider: 'openai', effort: 'medium' };
     case 'cursor':
     default:
       return { name: 'claude-sonnet-4-6', provider: 'anthropic', effort: 'default' };
