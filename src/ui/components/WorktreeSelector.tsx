@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import type { WorktreeInfo, WorktreeType } from '../../types';
 
-type SelectorTab = 'local' | 'worktree' | 'cloud';
+type SelectorTab = 'local' | 'worktree';
 
 interface WorktreeSelectorProps {
   projectPath: string;
@@ -71,11 +71,6 @@ export function WorktreeSelector({
               onClick={() => setActiveTab('worktree')}
               activeIndicator={worktreeType === 'worktree'}
             />
-            <TabButton
-              label="Cloud"
-              active={activeTab === 'cloud'}
-              onClick={() => setActiveTab('cloud')}
-            />
           </div>
 
           {/* Tab content */}
@@ -98,9 +93,6 @@ export function WorktreeSelector({
               onClose={() => setIsOpen(false)}
               onWorktreeChanged={onWorktreeChanged}
             />
-          )}
-          {activeTab === 'cloud' && (
-            <CloudTab />
           )}
         </div>
       )}
@@ -572,27 +564,6 @@ function WorktreeTab({ projectPath, currentWorktreePath, currentBranch, tileId, 
           </div>
         </>
       )}
-    </div>
-  );
-}
-
-// ─── Cloud tab ───────────────────────────────────────────────────────────────
-
-function CloudTab() {
-  return (
-    <div className="p-3 flex flex-col gap-2">
-      <div className="min-w-0">
-        <div className="text-[11px] font-medium uppercase tracking-wide text-[#5a9bc7]">Cloud Environments</div>
-        <div className="mt-0.5 text-xs text-gray-400">Link your account to run threads in the cloud and re-attach anytime.</div>
-      </div>
-      <a
-        href="https://swe.langchain.com"
-        target="_blank"
-        rel="noreferrer noopener"
-        className="inline-flex items-center justify-center w-full rounded bg-[#5a9bc7] hover:bg-[#4a8ab6] text-white px-3 py-1.5 text-xs font-medium transition-colors"
-      >
-        Connect to OpenSWE
-      </a>
     </div>
   );
 }

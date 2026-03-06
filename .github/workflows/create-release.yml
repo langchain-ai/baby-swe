@@ -145,6 +145,6 @@ jobs:
           echo "npm: $(npm -v)"
           # Skip postinstall during publish (we don't want to rebuild in CI)
           npm pkg set scripts.postinstall="echo Skipping postinstall in CI"
-          npm publish --access public --provenance
+          npm publish --access public
           # Restore original postinstall
           git checkout package.json
