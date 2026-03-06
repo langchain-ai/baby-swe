@@ -44,10 +44,19 @@ type PendingRequest = {
 type RpcRequestHandler = (id: JsonRpcId, method: string, params: unknown) => Promise<unknown> | unknown;
 type RpcNotificationHandler = (method: string, params: unknown) => void;
 
+type AcpToolKind = 'read' | 'edit' | 'delete' | 'move' | 'search' | 'execute' | 'think' | 'fetch' | 'other';
+
+type AcpToolLocation = {
+  path: string;
+  line?: number;
+};
+
 type ToolState = {
   id: string;
-  name: string;
-  args: Record<string, unknown>;
+  title: string;
+  kind: AcpToolKind;
+  input: Record<string, unknown>;
+  locations: AcpToolLocation[];
   started: boolean;
   ended: boolean;
 };
@@ -55,8 +64,9 @@ type ToolState = {
 export type ApprovalRequestInput = {
   approvalRequestId: string;
   toolCallId: string;
-  toolName: string;
-  toolArgs: Record<string, unknown>;
+  title: string;
+  toolKind: AcpToolKind;
+  input: Record<string, unknown>;
 };
 
 export type RunAcpStreamOptions = {
@@ -636,14 +646,34 @@ function stringifyUnknown(value: unknown): string {
   }
 }
 
-function deriveToolName(update: Record<string, unknown>, currentName?: string): string {
+function deriveToolTitle(update: Record<string, unknown>, currentTitle?: string): string {
   const title = typeof update.title === "string" ? update.title.trim() : "";
   if (title) return title;
 
   const kind = typeof update.kind === "string" ? update.kind.trim() : "";
-  if (kind) return `tool:${kind}`;
+  if (kind) return kind.charAt(0).toUpperCase() + kind.slice(1);
 
-  return currentName || "tool_call";
+  return currentTitle || "Tool";
+}
+
+function deriveToolKind(update: Record<string, unknown>, currentKind?: AcpToolKind): AcpToolKind {
+  const kind = typeof update.kind === "string" ? update.kind.trim().toLowerCase() : "";
+  const validKinds: AcpToolKind[] = ['read', 'edit', 'delete', 'move', 'search', 'execute', 'think', 'fetch', 'other'];
+  if (validKinds.includes(kind as AcpToolKind)) {
+    return kind as AcpToolKind;
+  }
+  return currentKind || 'other';
+}
+
+function parseToolLocations(locations: unknown): AcpToolLocation[] {
+  if (!Array.isArray(locations)) return [];
+  return locations
+    .filter(isRecord)
+    .filter((loc) => typeof loc.path === "string")
+    .map((loc) => ({
+      path: loc.path as string,
+      line: typeof loc.line === "number" ? loc.line : undefined,
+    }));
 }
 
 function normalizeTokenCount(value: unknown): number {
@@ -779,10 +809,12 @@ export async function runAcpStream(options: RunAcpStreamOptions): Promise<void> 
       type: "tool-start",
       sessionId: options.sessionId,
       toolCallId: toolState.id,
-      toolName: toolState.name,
-      toolArgs: toolState.args,
+      title: toolState.title,
+      toolKind: toolState.kind,
+      input: toolState.input,
       approvalRequestId,
       diffData,
+      locations: toolState.locations.length > 0 ? toolState.locations : undefined,
     });
   };
 
@@ -813,8 +845,10 @@ export async function runAcpStream(options: RunAcpStreamOptions): Promise<void> 
     if (!toolState) {
       toolState = {
         id: toolCallId,
-        name: deriveToolName(update),
-        args: parseToolArgs(update.rawInput),
+        title: deriveToolTitle(update),
+        kind: deriveToolKind(update),
+        input: parseToolArgs(update.rawInput),
+        locations: parseToolLocations(update.locations),
         started: false,
         ended: false,
       };
@@ -822,10 +856,15 @@ export async function runAcpStream(options: RunAcpStreamOptions): Promise<void> 
       return toolState;
     }
 
-    toolState.name = deriveToolName(update, toolState.name);
-    const parsedArgs = parseToolArgs(update.rawInput);
-    if (Object.keys(parsedArgs).length > 0) {
-      toolState.args = parsedArgs;
+    toolState.title = deriveToolTitle(update, toolState.title);
+    toolState.kind = deriveToolKind(update, toolState.kind);
+    const parsedInput = parseToolArgs(update.rawInput);
+    if (Object.keys(parsedInput).length > 0) {
+      toolState.input = parsedInput;
+    }
+    const newLocations = parseToolLocations(update.locations);
+    if (newLocations.length > 0) {
+      toolState.locations = newLocations;
     }
     return toolState;
   };
@@ -848,7 +887,7 @@ export async function runAcpStream(options: RunAcpStreamOptions): Promise<void> 
         type: "tool-status-update",
         sessionId: options.sessionId,
         toolCallId: toolState.id,
-        status: "running",
+        status: "in_progress",
       });
       return;
     }
@@ -922,7 +961,7 @@ export async function runAcpStream(options: RunAcpStreamOptions): Promise<void> 
         type: "tool-status-update",
         sessionId: options.sessionId,
         toolCallId: toolState.id,
-        status: "pending-approval",
+        status: "pending",
       });
     }
 
@@ -935,8 +974,9 @@ export async function runAcpStream(options: RunAcpStreamOptions): Promise<void> 
       : await options.requestApproval({
           approvalRequestId,
           toolCallId: toolState.id,
-          toolName: toolState.name,
-          toolArgs: toolState.args,
+          title: toolState.title,
+          toolKind: toolState.kind,
+          input: toolState.input,
         });
 
     if (options.controller.signal.aborted) {
@@ -950,7 +990,7 @@ export async function runAcpStream(options: RunAcpStreamOptions): Promise<void> 
           type: "tool-status-update",
           sessionId: options.sessionId,
           toolCallId: toolState.id,
-          status: "running",
+          status: "in_progress",
         });
         return {
           outcome: {

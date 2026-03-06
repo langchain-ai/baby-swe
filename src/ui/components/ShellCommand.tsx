@@ -7,17 +7,17 @@ interface ShellCommandProps {
 }
 
 function getHeaderText(chunk: ToolExecutionChunk): string {
-  const cmd = (chunk.toolArgs?.command as string) || "";
+  const cmd = (chunk.input?.command as string) || "";
   const truncated = cmd.length > 80 ? cmd.slice(0, 80) + "..." : cmd;
-  if (chunk.status === "running") return `Running ${truncated}`;
-  if (chunk.status === "pending-approval") return `Run ${truncated}`;
+  if (chunk.status === "in_progress") return `Running ${truncated}`;
+  if (chunk.status === "pending") return `Run ${truncated}`;
   return `Background terminal finished with ${truncated}`;
 }
 
 export const ShellCommand = memo(function ShellCommand({
   chunk,
 }: ShellCommandProps) {
-  const isSettled = chunk.status === "success" || chunk.status === "error";
+  const isSettled = chunk.status === "completed" || chunk.status === "error";
   const [expanded, setExpanded] = useState(!isSettled);
   const [scrolledFromTop, setScrolledFromTop] = useState(false);
   const [scrolledFromBottom, setScrolledFromBottom] = useState(true);
@@ -30,7 +30,7 @@ export const ShellCommand = memo(function ShellCommand({
     setScrolledFromBottom(el.scrollTop < el.scrollHeight - el.clientHeight - 1);
   }, []);
 
-  const command = (chunk.toolArgs?.command as string) || "";
+  const command = (chunk.input?.command as string) || "";
   const output = chunk.output || "";
   const headerText = getHeaderText(chunk);
 
@@ -85,16 +85,16 @@ export const ShellCommand = memo(function ShellCommand({
             </div>
           )}
           <div className="px-3 py-1.5 flex justify-end shrink-0">
-            {chunk.status === "running" && (
+            {chunk.status === "in_progress" && (
               <span className="text-yellow-400 text-xs">Running...</span>
             )}
-            {chunk.status === "success" && (
+            {chunk.status === "completed" && (
               <span className="text-[color:var(--ui-text-muted)] text-xs">✓ Success</span>
             )}
             {chunk.status === "error" && (
               <span className="text-red-400 text-xs">✗ Failed</span>
             )}
-            {chunk.status === "pending-approval" && (
+            {chunk.status === "pending" && (
               <span className="text-yellow-400 text-xs">Waiting for approval...</span>
             )}
           </div>

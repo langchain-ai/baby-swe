@@ -13,7 +13,7 @@ import { ModelAutocomplete, getModelsForHarness, getModelCount, getModelAtIndex,
 import { ContextIndicator } from './ContextIndicator';
 import { WorktreeSelector } from './WorktreeSelector';
 import type { Command } from '../../commands';
-import type { AgentHarness, ApprovalDecision, DiffData, ImageChunk, ModelConfig, PermissionMode, WorktreeType } from '../../types';
+import type { AgentHarness, ApprovalDecision, DiffData, ImageChunk, ModelConfig, PermissionMode, WorktreeType, AcpToolKind } from '../../types';
 
 const MODELS: Record<string, string> = {
   'claude-opus-4-6': 'Opus 4.6',
@@ -32,8 +32,9 @@ const PROMPT_TEXTAREA_MAX_HEIGHT = 200;
 
 interface PromptApprovalRequest {
   requestId: string;
-  toolName: string;
-  toolArgs: Record<string, unknown>;
+  title: string;
+  toolKind: AcpToolKind;
+  input: Record<string, unknown>;
   diffData?: DiffData;
 }
 
@@ -55,15 +56,16 @@ function truncateText(text: string, max: number): string {
 
 function getFilePathFromApproval(request: PromptApprovalRequest): string | null {
   if (request.diffData?.filePath) return request.diffData.filePath;
-  if (typeof request.toolArgs.filePath === 'string') return request.toolArgs.filePath;
-  if (typeof request.toolArgs.path === 'string') return request.toolArgs.path;
+  if (typeof request.input.filePath === 'string') return request.input.filePath;
+  if (typeof request.input.path === 'string') return request.input.path;
   return null;
 }
 
 function buildApprovalPromptContent(request: PromptApprovalRequest): ApprovalPromptContent {
-  const command = typeof request.toolArgs.command === 'string' ? request.toolArgs.command.trim() : '';
+  const { toolKind, title, input, diffData } = request;
 
-  if (request.toolName === 'execute') {
+  if (toolKind === 'execute') {
+    const command = typeof input.command === 'string' ? input.command.trim() : '';
     const commandPreview = command || '(empty command)';
     return {
       question: 'Do you want to allow running this command?',
@@ -80,22 +82,28 @@ function buildApprovalPromptContent(request: PromptApprovalRequest): ApprovalPro
   }
 
   const targetPath = getFilePathFromApproval(request);
-  const isFileUpdate = request.toolName === 'edit_file' || request.toolName === 'write_file';
+  const isFileUpdate = toolKind === 'edit' || toolKind === 'delete' || toolKind === 'move' || diffData != null;
 
   let question = 'Do you want to allow this action?';
-  if (request.toolName === 'edit_file') {
-    question = targetPath
-      ? `Do you want to allow updating ${targetPath}?`
-      : 'Do you want to allow updating this file?';
-  } else if (request.toolName === 'write_file') {
-    question = targetPath
-      ? `Do you want to allow writing ${targetPath}?`
-      : 'Do you want to allow writing this file?';
+  if (isFileUpdate) {
+    if (toolKind === 'delete') {
+      question = targetPath
+        ? `Do you want to allow deleting ${targetPath}?`
+        : 'Do you want to allow deleting this file?';
+    } else if (toolKind === 'move') {
+      question = targetPath
+        ? `Do you want to allow moving ${targetPath}?`
+        : 'Do you want to allow moving this file?';
+    } else {
+      question = targetPath
+        ? `Do you want to allow updating ${targetPath}?`
+        : 'Do you want to allow updating this file?';
+    }
   }
 
   const preview = targetPath
-    ? `${request.toolName} ${targetPath}`
-    : `${request.toolName} ${truncateText(JSON.stringify(request.toolArgs), 180)}`;
+    ? `${title} ${targetPath}`
+    : `${title} ${truncateText(JSON.stringify(input), 180)}`;
 
   return {
     question,

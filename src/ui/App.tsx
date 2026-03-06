@@ -134,7 +134,7 @@ export function App() {
           appendStreamToken(event.sessionId, event.token);
           break;
         case 'tool-start': {
-          addToolStart(event.sessionId, event.toolCallId, event.toolName, event.toolArgs, event.approvalRequestId, event.diffData);
+          addToolStart(event.sessionId, event.toolCallId, event.title, event.toolKind, event.input, event.approvalRequestId, event.diffData, event.locations);
 
           if (event.approvalRequestId) {
             const currentSession = useStore.getState().sessions[event.sessionId];

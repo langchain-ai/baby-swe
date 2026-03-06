@@ -70,7 +70,7 @@ function findLatestPendingApproval(messages: Message[]): ToolExecutionChunk | nu
     for (let chunkIndex = message.chunks.length - 1; chunkIndex >= 0; chunkIndex -= 1) {
       const chunk = message.chunks[chunkIndex];
       if (chunk.kind !== "tool-execution") continue;
-      if (chunk.status !== "pending-approval") continue;
+      if (chunk.status !== "pending") continue;
       if (!chunk.approvalRequestId) continue;
       return chunk;
     }
@@ -519,8 +519,9 @@ export function TileContainer({
               worktreePath={tile.project.worktreePath}
               pendingApproval={pendingApproval ? {
                 requestId: pendingApproval.approvalRequestId!,
-                toolName: pendingApproval.toolName,
-                toolArgs: pendingApproval.toolArgs ?? {},
+                title: pendingApproval.title,
+                toolKind: pendingApproval.toolKind,
+                input: pendingApproval.input ?? {},
                 diffData: pendingApproval.diffData,
               } : null}
               onApproveApproval={handleApprove}
@@ -631,8 +632,9 @@ export function TileContainer({
                 connectedTop={hasConnectedStack}
                 pendingApproval={pendingApproval ? {
                   requestId: pendingApproval.approvalRequestId!,
-                  toolName: pendingApproval.toolName,
-                  toolArgs: pendingApproval.toolArgs ?? {},
+                  title: pendingApproval.title,
+                  toolKind: pendingApproval.toolKind,
+                  input: pendingApproval.input ?? {},
                   diffData: pendingApproval.diffData,
                 } : null}
                 onApproveApproval={handleApprove}

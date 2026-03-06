@@ -40,19 +40,21 @@ function getChunkRenderKey(chunk: Chunk, sourceIndex: number): string {
   }
 }
 
+function isEditTool(chunk: ToolExecutionChunk): boolean {
+  const kind = chunk.toolKind;
+  if (kind === "edit" || kind === "delete" || kind === "move") return true;
+  if (chunk.diffData) return true;
+  return false;
+}
+
 function isExplorationTool(chunk: ToolExecutionChunk): boolean {
   if (chunk.diffData) return false;
-  switch (chunk.toolName) {
-    case "read_file":
-    case "glob":
-    case "search":
-    case "grep":
-    case "list_dir":
-    case "ls":
-      return true;
-    default:
-      return false;
-  }
+  const kind = chunk.toolKind;
+  return kind === "read" || kind === "search";
+}
+
+function isShellTool(chunk: ToolExecutionChunk): boolean {
+  return chunk.toolKind === "execute";
 }
 
 function buildRenderItems(chunks: Chunk[]): RenderItem[] {
@@ -86,9 +88,9 @@ function buildRenderItems(chunks: Chunk[]): RenderItem[] {
 
       flushExplored();
 
-      if (chunk.toolName === "write_file" || chunk.toolName === "edit_file") {
+      if (isEditTool(chunk)) {
         items.push({ type: "edit-item", key: `tool-${chunk.toolCallId}`, chunk });
-      } else if (chunk.toolName === "execute") {
+      } else if (isShellTool(chunk)) {
         items.push({ type: "shell-item", key: `tool-${chunk.toolCallId}`, chunk });
       } else {
         items.push({ type: "tool-item", key: `tool-${chunk.toolCallId}`, chunk });
@@ -154,7 +156,7 @@ export function summarizeChangedFiles(chunks: Chunk[]): ChangedFileSummaryItem[]
   for (const chunk of chunks) {
     if (chunk.kind !== "tool-execution") continue;
     if (!chunk.diffData) continue;
-    if (chunk.status !== "success") continue;
+    if (chunk.status !== "completed") continue;
 
     const diffData = chunk.diffData as DiffData;
     const existing = byFile.get(diffData.filePath);

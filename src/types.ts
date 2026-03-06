@@ -208,7 +208,14 @@ export interface TodoItem {
   status: TodoStatus;
 }
 
-export type ToolStatus = 'pending-approval' | 'running' | 'success' | 'error';
+export type AcpToolKind = 'read' | 'edit' | 'delete' | 'move' | 'search' | 'execute' | 'think' | 'fetch' | 'other';
+
+export type AcpToolStatus = 'pending' | 'in_progress' | 'completed' | 'error';
+
+export interface AcpToolLocation {
+  path: string;
+  line?: number;
+}
 
 export interface DiffData {
   originalContent: string | null;
@@ -223,13 +230,15 @@ export interface DiffData {
 export interface ToolExecutionChunk {
   kind: 'tool-execution';
   toolCallId: string;
-  toolName: string;
-  toolArgs?: Record<string, unknown>;
-  status: ToolStatus;
+  title: string;
+  toolKind: AcpToolKind;
+  input?: Record<string, unknown>;
+  status: AcpToolStatus;
   output?: string;
   elapsedMs?: number;
   approvalRequestId?: string;
   diffData?: DiffData;
+  locations?: AcpToolLocation[];
 }
 
 export interface TextChunk {
@@ -327,10 +336,12 @@ export interface ToolStartEvent {
   type: 'tool-start';
   sessionId: string;
   toolCallId: string;
-  toolName: string;
-  toolArgs: Record<string, unknown>;
+  title: string;
+  toolKind: AcpToolKind;
+  input: Record<string, unknown>;
   approvalRequestId?: string;
   diffData?: DiffData;
+  locations?: AcpToolLocation[];
 }
 
 export interface ToolEndEvent {
@@ -346,7 +357,7 @@ export interface ToolStatusUpdateEvent {
   type: 'tool-status-update';
   sessionId: string;
   toolCallId: string;
-  status: ToolStatus;
+  status: AcpToolStatus;
 }
 
 export interface TokenUsageEvent {
@@ -360,8 +371,9 @@ export interface ApprovalRequest {
   id: string;
   sessionId: string;
   toolCallId: string;
-  toolName: string;
-  toolArgs: Record<string, unknown>;
+  title: string;
+  toolKind: AcpToolKind;
+  input: Record<string, unknown>;
 }
 
 export type ApprovalDecision = 'approve' | 'reject' | 'auto-approve';

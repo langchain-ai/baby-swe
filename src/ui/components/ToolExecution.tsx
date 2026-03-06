@@ -1,6 +1,6 @@
 import { memo } from "react";
 import { diffLines } from "diff";
-import type { ToolExecutionChunk } from "../../types";
+import type { ToolExecutionChunk, AcpToolKind } from "../../types";
 import { DiffView } from "./DiffView";
 
 interface ToolExecutionProps {
@@ -50,48 +50,57 @@ function countLineChanges(originalContent: string | null | undefined, newContent
   return { additions, deletions };
 }
 
-function getToolDisplayName(
-  toolName: string,
-  toolArgs: Record<string, unknown>,
+function formatToolDisplay(
+  title: string,
+  toolKind: AcpToolKind,
+  input: Record<string, unknown> | undefined,
   projectPath?: string,
 ): string {
-  switch (toolName) {
-    case "list_dir": {
-      const path = stripProjectPath(
-        (toolArgs?.path as string) || (toolArgs?.directory as string) || ".",
-        projectPath,
-      );
-      return `List(${path})`;
+  const path = input?.path as string | undefined;
+  const pattern = input?.pattern as string | undefined;
+  const query = input?.query as string | undefined;
+  const url = input?.url as string | undefined;
+  const command = input?.command as string | undefined;
+
+  switch (toolKind) {
+    case "read": {
+      if (path) {
+        const displayPath = stripProjectPath(path, projectPath);
+        return `Read(${displayPath})`;
+      }
+      return title;
     }
-    case "read_file": {
-      const path = stripProjectPath(
-        (toolArgs?.path as string) || (toolArgs?.file_path as string) || "file",
-        projectPath,
-      );
-      return `Read(${path})`;
-    }
-    case "glob":
     case "search": {
-      const pattern = (toolArgs?.pattern as string) || "";
-      return `Search(pattern: "${pattern}")`;
+      if (pattern) {
+        const truncated = pattern.length > 40 ? pattern.slice(0, 40) + "..." : pattern;
+        return `Search("${truncated}")`;
+      }
+      if (query) {
+        return `Search("${query.slice(0, 40)}${query.length > 40 ? "..." : ""}")`;
+      }
+      return title;
     }
-    case "grep": {
-      const pattern = (toolArgs?.pattern as string) || "";
-      const truncated = pattern.length > 40 ? pattern.slice(0, 40) + "..." : pattern;
-      return `Search(pattern: "${truncated}")`;
+    case "fetch": {
+      if (url) {
+        return `Fetch(${url.slice(0, 50)}${url.length > 50 ? "..." : ""})`;
+      }
+      return title;
     }
-    case "web_search": {
-      const query = (toolArgs?.query as string) || "";
-      return `WebSearch(${query.slice(0, 40)}${query.length > 40 ? "..." : ""})`;
+    case "execute": {
+      if (command) {
+        const truncated = command.length > 60 ? command.slice(0, 60) + "..." : command;
+        return `Shell(${truncated})`;
+      }
+      return title;
     }
-    case "fetch_url": {
-      const url = (toolArgs?.url as string) || "";
-      return `Fetch(${url.slice(0, 50)}${url.length > 50 ? "..." : ""})`;
-    }
-    case "write_todos":
-      return `TodoWrite(${((toolArgs?.todos as Array<unknown>) || []).length} items)`;
+    case "edit":
+    case "delete":
+    case "move":
+      return title;
+    case "think":
+      return "Thinking...";
     default:
-      return toolName;
+      return title;
   }
 }
 
@@ -101,11 +110,11 @@ export const ToolExecution = memo(function ToolExecution({
   onOpenDiff,
   resolvedDiffData,
 }: ToolExecutionProps) {
-  const { toolName, toolArgs, status, output, diffData } = chunk;
+  const { title, toolKind, input, status, output, diffData } = chunk;
 
-  const isFileOp = toolName === "write_file" || toolName === "edit_file";
-  const isCompletedFileOp = isFileOp && diffData && (status === "success" || status === "error");
-  const canOpenInEditor = isCompletedFileOp && onOpenDiff;
+  const isEditOp = toolKind === "edit" || toolKind === "delete" || toolKind === "move" || diffData != null;
+  const isCompletedEditOp = isEditOp && diffData && (status === "completed" || status === "error");
+  const canOpenInEditor = isCompletedEditOp && onOpenDiff;
   const editedFilePath = diffData ? stripProjectPath(diffData.filePath, projectPath) : "";
   const editedFileName = editedFilePath ? getFileName(editedFilePath) : "";
   const diffStats = diffData ? countLineChanges(diffData.originalContent, diffData.newContent) : null;
@@ -119,7 +128,7 @@ export const ToolExecution = memo(function ToolExecution({
     });
   };
 
-  if (isCompletedFileOp && diffStats && diffData) {
+  if (isCompletedEditOp && diffStats && diffData) {
     const row = (
       <>
         <span className={status === "error" ? "text-red-400 truncate" : "text-[color:var(--ui-accent)] truncate"}>
@@ -152,7 +161,7 @@ export const ToolExecution = memo(function ToolExecution({
     );
   }
 
-  if (isFileOp && status === "pending-approval" && diffData) {
+  if (isEditOp && status === "pending" && diffData) {
     return (
       <div className="my-1 text-[12px] leading-5">
         <DiffView diffData={diffData} />
@@ -161,10 +170,11 @@ export const ToolExecution = memo(function ToolExecution({
     );
   }
 
-  if (isFileOp && status === "running") {
+  if (isEditOp && status === "in_progress") {
     const path = stripProjectPath(
-      ((toolArgs as Record<string, unknown>)?.filePath as string) ||
-      ((toolArgs as Record<string, unknown>)?.path as string) || "file",
+      diffData?.filePath ||
+      (input?.filePath as string) ||
+      (input?.path as string) || "file",
       projectPath,
     );
     return (
@@ -174,11 +184,11 @@ export const ToolExecution = memo(function ToolExecution({
     );
   }
 
-  const displayName = getToolDisplayName(toolName, toolArgs || {}, projectPath);
+  const displayName = formatToolDisplay(title, toolKind, input, projectPath);
   const statusTextClass =
     status === "error"
       ? "text-red-400"
-      : status === "running" || status === "pending-approval"
+      : status === "in_progress" || status === "pending"
         ? "text-yellow-400"
         : "text-[color:var(--ui-text-muted)]";
 
