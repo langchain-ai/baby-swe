@@ -125,8 +125,8 @@ contextBridge.exposeInMainWorld('git', {
     ipcRenderer.invoke('git:syncStatus', projectPath),
   listWorktrees: (projectPath: string) =>
     ipcRenderer.invoke('git:listWorktrees', projectPath),
-  addWorktree: (projectPath: string, branch: string, newBranch?: boolean) =>
-    ipcRenderer.invoke('git:addWorktree', projectPath, branch, newBranch),
+  addWorktree: (projectPath: string, branch: string, newBranch?: boolean, startPoint?: string) =>
+    ipcRenderer.invoke('git:addWorktree', projectPath, branch, newBranch, startPoint),
   removeWorktree: (projectPath: string, worktreePath: string) =>
     ipcRenderer.invoke('git:removeWorktree', projectPath, worktreePath),
 });

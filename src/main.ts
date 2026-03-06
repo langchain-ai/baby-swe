@@ -625,7 +625,7 @@ function listGitWorktrees(projectPath: string): WorktreeInfo[] {
   }
 }
 
-function addGitWorktree(projectPath: string, branch: string, newBranch: boolean): { success: boolean; worktreePath?: string; error?: string } {
+function addGitWorktree(projectPath: string, branch: string, newBranch: boolean, startPoint?: string): { success: boolean; worktreePath?: string; error?: string } {
   try {
     const repoRoot = getGitRepoRoot(projectPath) || projectPath;
     const worktreeDir = getGlobalWorktreeDir(repoRoot, branch);
@@ -640,6 +640,8 @@ function addGitWorktree(projectPath: string, branch: string, newBranch: boolean)
     args.push(worktreeDir);
     if (!newBranch) {
       args.push(branch);
+    } else if (startPoint) {
+      args.push(startPoint);
     }
 
     execFileSync('git', args, {
@@ -1341,8 +1343,8 @@ function setupStorageIPC(): void {
     return listGitWorktrees(projectPath);
   });
 
-  ipcMain.handle('git:addWorktree', (_event, projectPath: string, branch: string, newBranch?: boolean) => {
-    const result = addGitWorktree(projectPath, branch, newBranch ?? false);
+  ipcMain.handle('git:addWorktree', (_event, projectPath: string, branch: string, newBranch?: boolean, startPoint?: string) => {
+    const result = addGitWorktree(projectPath, branch, newBranch ?? false, startPoint);
     return result;
   });
 
