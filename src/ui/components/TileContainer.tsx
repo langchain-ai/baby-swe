@@ -12,7 +12,7 @@ import { SourceControlTile } from "./SourceControlTile";
 import { ThreadPicker } from "./ThreadPicker";
 import { CompactingIndicator } from "./CompactingIndicator";
 import { executeCommand } from "../../commands";
-import type { Message, ChatMessage, ChatMessageContentBlock, Project, ImageChunk, Thread, ToolExecutionChunk } from "../../types";
+import type { Message, ChatMessage, ChatMessageContentBlock, Project, ImageChunk, Thread, ToolExecutionChunk, SelectedLinearIssue } from "../../types";
 
 const PROMPT_CONTENT_WIDTH = "max-w-[44rem]";
 const STACKED_STATUS_WIDTH = "w-[calc(100%-0.75rem)] max-w-[43rem]";
@@ -95,7 +95,7 @@ export function TileContainer({
   const containerRef = useRef<HTMLDivElement>(null);
   const dragDepthRef = useRef(0);
   const [pendingImages, setPendingImages] = useState<ImageChunk[]>([]);
-  const [queuedSubmissions, setQueuedSubmissions] = useState<Array<{ query: string; images: ImageChunk[] }>>([]);
+  const [queuedSubmissions, setQueuedSubmissions] = useState<Array<{ query: string; images: ImageChunk[]; linearIssues?: SelectedLinearIssue[] }>>([]);
   const [isDragOver, setIsDragOver] = useState(false);
   const [showThreadPicker, setShowThreadPicker] = useState(false);
 
@@ -294,13 +294,53 @@ export function TileContainer({
     onDrop: handleDrop,
   };
 
-  const startAgentRun = useCallback((sessionId: string, query: string, images: ImageChunk[]) => {
+  const formatLinearContext = useCallback((issues: SelectedLinearIssue[]): string => {
+    if (issues.length === 0) return "";
+
+    const parts = issues.map((issue) => {
+      let ctx = `\n---\n**Linear Issue: ${issue.identifier}**\n`;
+      ctx += `**Title:** ${issue.title}\n`;
+      ctx += `**Status:** ${issue.stateName}\n`;
+      ctx += `**URL:** ${issue.url}\n`;
+
+      if (issue.description) {
+        ctx += `\n**Description:**\n${issue.description}\n`;
+      }
+
+      if (issue.comments.length > 0) {
+        ctx += `\n**Comments:**\n`;
+        for (const comment of issue.comments.slice(0, 5)) {
+          ctx += `- ${comment.user.name}: ${comment.body.slice(0, 500)}${comment.body.length > 500 ? '...' : ''}\n`;
+        }
+      }
+
+      if (issue.attachments.length > 0) {
+        ctx += `\n**Attachments:**\n`;
+        for (const attachment of issue.attachments) {
+          ctx += `- ${attachment.title || attachment.url}\n`;
+        }
+      }
+
+      return ctx;
+    });
+
+    return parts.join("\n");
+  }, []);
+
+  const startAgentRun = useCallback((sessionId: string, query: string, images: ImageChunk[], linearIssues?: SelectedLinearIssue[]) => {
     const freshSession = useStore.getState().sessions[sessionId];
     if (!freshSession) return;
 
+    const linearContext = linearIssues ? formatLinearContext(linearIssues) : "";
+    const fullQuery = linearContext ? `${query}\n${linearContext}` : query;
+
+    const displayQuery = linearIssues && linearIssues.length > 0
+      ? `${query}\n\n*Attached Linear issues: ${linearIssues.map(i => `#${i.identifier}`).join(", ")}*`
+      : query;
+
     const chunks = [
       ...images,
-      { kind: "text" as const, text: query },
+      { kind: "text" as const, text: displayQuery },
     ];
 
     const chatHistory = messagesToChatMessages(freshSession.messages);
@@ -311,11 +351,11 @@ export function TileContainer({
           type: "image_url" as const,
           image_url: { url: `data:${img.mimeType};base64,${img.base64}` },
         })),
-        { type: "text" as const, text: query },
+        { type: "text" as const, text: fullQuery },
       ];
       chatHistory.push({ role: "user", content: blocks });
     } else {
-      chatHistory.push({ role: "user", content: query });
+      chatHistory.push({ role: "user", content: fullQuery });
     }
 
     addMessageToSession(sessionId, "user", chunks);
@@ -327,7 +367,7 @@ export function TileContainer({
       freshSession.modelConfig,
       freshSession.mode,
     );
-  }, [addMessageToSession, startStreaming, tileId]);
+  }, [addMessageToSession, startStreaming, tileId, formatLinearContext]);
 
   useEffect(() => {
     if (!session) return;
@@ -336,11 +376,11 @@ export function TileContainer({
 
     const next = queuedSubmissions[0];
     setQueuedSubmissions((prev) => prev.slice(1));
-    startAgentRun(session.id, next.query, next.images);
+    startAgentRun(session.id, next.query, next.images, next.linearIssues);
   }, [session, queuedSubmissions, startAgentRun]);
 
   const handleSubmit = useCallback(
-    async (query: string) => {
+    async (query: string, linearIssues?: SelectedLinearIssue[]) => {
       if (!tile) return;
 
       if (query.startsWith("/")) {
@@ -380,12 +420,12 @@ export function TileContainer({
       setPendingImages([]);
 
       if (session.isStreaming || session.busy) {
-        setQueuedSubmissions((prev) => [...prev, { query, images }]);
+        setQueuedSubmissions((prev) => [...prev, { query, images, linearIssues }]);
         window.agent.cancel(session.id);
         return;
       }
 
-      startAgentRun(session.id, query, images);
+      startAgentRun(session.id, query, images, linearIssues);
     },
     [
       tile,

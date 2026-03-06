@@ -8,6 +8,48 @@ export interface GithubPR {
   headRef: string;
 }
 
+export interface LinearIssue {
+  id: string;
+  identifier: string;
+  title: string;
+  description?: string;
+  url: string;
+  state: {
+    name: string;
+    color: string;
+  };
+  priority: number;
+  assignee?: {
+    name: string;
+    email: string;
+  };
+  labels: Array<{
+    name: string;
+    color: string;
+  }>;
+  comments: Array<{
+    body: string;
+    user: { name: string };
+    createdAt: string;
+  }>;
+  attachments: Array<{
+    url: string;
+    title?: string;
+  }>;
+}
+
+export interface LinearAuthStatus {
+  authenticated: boolean;
+  email?: string;
+  name?: string;
+  error?: string;
+}
+
+export interface LinearSearchResult {
+  issues: LinearIssue[];
+  error?: string;
+}
+
 export type WorktreeType = 'local' | 'worktree';
 
 export interface WorktreeInfo {
@@ -92,6 +134,25 @@ export type ChatMessageContentBlock =
   | { type: 'text'; text: string }
   | { type: 'image_url'; image_url: { url: string } };
 
+export interface SelectedLinearIssue {
+  id: string;
+  identifier: string;
+  title: string;
+  description?: string;
+  url: string;
+  stateName: string;
+  stateColor: string;
+  comments: Array<{
+    body: string;
+    user: { name: string };
+    createdAt: string;
+  }>;
+  attachments: Array<{
+    url: string;
+    title?: string;
+  }>;
+}
+
 export interface ChatMessage {
   role: 'user' | 'assistant';
   content: string | ChatMessageContentBlock[];
@@ -105,6 +166,7 @@ export interface ApiKeys {
   baseten?: string;
   tavily?: string;
   codexAuthMethod?: CodexAuthMethod;
+  linearApiKey?: string;
 }
 
 export type PermissionMode = 'default' | 'full';
@@ -222,6 +284,11 @@ declare global {
       listWorktrees: (projectPath: string) => Promise<WorktreeInfo[]>;
       addWorktree: (projectPath: string, branch: string, newBranch?: boolean) => Promise<{ success: boolean; worktreePath?: string; error?: string }>;
       removeWorktree: (projectPath: string, worktreePath: string) => Promise<{ success: boolean; error?: string }>;
+    };
+    linear: {
+      authStatus: () => Promise<LinearAuthStatus>;
+      search: (query: string) => Promise<LinearSearchResult>;
+      getIssue: (issueId: string) => Promise<LinearIssue | null>;
     };
   }
 }
