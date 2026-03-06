@@ -273,13 +273,27 @@ export function SettingsScreen({
               {cursorStatus?.error && (
                 <p className="mt-2 text-xs text-red-400">{cursorStatus.error}</p>
               )}
+              {cursorStatus && !cursorStatus.cliAvailable && (
+                <p className="mt-2 text-xs text-gray-400">
+                  To use the Cursor harness, you need to{' '}
+                  <a
+                    href="https://www.cursor.com/downloads"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-[#5a9bc7] hover:underline"
+                  >
+                    download and install Cursor
+                  </a>
+                  .
+                </p>
+              )}
             </div>
 
             <div className="mt-4 flex items-center gap-3">
               <button
                 type="button"
                 onClick={handleCursorLogin}
-                disabled={loginLoading}
+                disabled={loginLoading || !cursorStatus?.cliAvailable}
                 className="px-4 py-2 bg-[#5a9bc7] hover:bg-[#6daad3] disabled:opacity-50 text-white rounded-md text-sm font-medium transition-colors"
               >
                 {loginLoading ? 'Starting...' : 'Authenticate with Cursor CLI'}
@@ -287,7 +301,7 @@ export function SettingsScreen({
               <button
                 type="button"
                 onClick={handleCursorLogout}
-                disabled={logoutLoading}
+                disabled={logoutLoading || !cursorStatus?.cliAvailable}
                 className="px-4 py-2 bg-gray-700 hover:bg-gray-600 disabled:opacity-50 text-gray-100 rounded-md text-sm font-medium transition-colors"
               >
                 {logoutLoading ? 'Disconnecting...' : 'Disconnect Cursor Auth'}
@@ -539,7 +553,7 @@ function StatusDot({ status }: { status: CursorAuthStatus | null }) {
 
 function formatCursorStatus(status: CursorAuthStatus | null): string {
   if (!status) return 'Status unavailable';
-  if (!status.cliAvailable) return 'Cursor CLI not available';
+  if (!status.cliAvailable) return 'Cursor is not installed';
   if (status.authenticated && status.account) return `Authenticated as ${status.account}`;
   if (status.authenticated) return 'Authenticated';
   return 'Not authenticated';

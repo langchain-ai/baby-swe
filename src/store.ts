@@ -14,6 +14,20 @@ import {
   toggleSplitDirectionForTile,
 } from './layout-utils';
 
+function getDefaultModelForHarness(harness: AgentHarness): ModelConfig {
+  switch (harness) {
+    case 'deepagents':
+      return { name: 'claude-sonnet-4-6', provider: 'anthropic', effort: 'default' };
+    case 'claude-agent':
+      return { name: 'claude-sonnet-4-20250514', provider: 'anthropic', effort: 'default' };
+    case 'codex':
+      return { name: 'codex-mini', provider: 'openai', effort: 'default' };
+    case 'cursor':
+    default:
+      return { name: 'claude-sonnet-4-6', provider: 'anthropic', effort: 'default' };
+  }
+}
+
 function generateTitle(messages: Message[]): string {
   const firstUserMessage = messages.find((m) => m.author === 'user');
   if (!firstUserMessage) return 'New Chat';
@@ -1315,14 +1329,18 @@ export const useStore = create<AppState>((set, get) => ({
 
   loadHarness: async () => {
     const settings = await loadSettings();
-    const harness: AgentHarness = settings.harness === 'deepagents' ? 'deepagents' : 'cursor';
+    const validHarnesses: AgentHarness[] = ['cursor', 'deepagents', 'claude-agent', 'codex'];
+    const harness: AgentHarness = validHarnesses.includes(settings.harness as AgentHarness)
+      ? (settings.harness as AgentHarness)
+      : 'cursor';
     set({ harness });
   },
 
   setHarness: async (harness) => {
-    set({ harness });
+    const defaultModelForHarness = getDefaultModelForHarness(harness);
+    set({ harness, modelConfig: defaultModelForHarness });
     const settings = await loadSettings();
-    await saveSettings({ ...settings, harness });
+    await saveSettings({ ...settings, harness, modelConfig: defaultModelForHarness });
   },
 
   loadModelConfig: async () => {

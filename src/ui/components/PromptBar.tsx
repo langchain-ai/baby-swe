@@ -18,9 +18,14 @@ import type { AgentHarness, ApprovalDecision, DiffData, ImageChunk, ModelConfig,
 const MODELS: Record<string, string> = {
   'claude-opus-4-6': 'Opus 4.6',
   'claude-sonnet-4-6': 'Sonnet 4.6',
+  'claude-sonnet-4-20250514': 'Claude Sonnet 4',
+  'claude-opus-4-20250514': 'Claude Opus 4',
   'gpt-5.3-codex': 'GPT-5.3-Codex',
   'gpt-5.4': 'GPT-5.4',
   'kimi-k2.5': 'Kimi K2.5',
+  'codex-mini': 'Codex Mini',
+  'o3': 'o3',
+  'o4-mini': 'o4-mini',
 };
 
 const PERMISSION_OPTIONS: Array<{ value: PermissionMode; label: string }> = [
