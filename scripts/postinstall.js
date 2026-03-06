@@ -3,14 +3,33 @@
 const { execSync } = require("child_process");
 const path = require("path");
 
-const isGlobalInstall =
-  process.env.npm_config_global === "true" ||
-  (process.env.npm_lifecycle_event === "postinstall" &&
-    !process.cwd().includes("node_modules"));
+const isCI = process.env.CI === "true";
+const isElectronBuilder = process.env.npm_lifecycle_script?.includes("electron-builder");
 
-if (!isGlobalInstall && process.env.CI) {
-  console.log("Skipping postinstall rebuild in CI environment");
+if (isCI && !isElectronBuilder) {
+  console.log("Skipping postinstall in CI (electron-builder handles native modules)");
   process.exit(0);
+}
+
+let electronInstalled = false;
+try {
+  require.resolve("electron");
+  electronInstalled = true;
+} catch {
+  electronInstalled = false;
+}
+
+if (!electronInstalled) {
+  console.log("Installing electron for npm distribution...");
+  try {
+    execSync("npm install electron@^28.0.0 --no-save", {
+      stdio: "inherit",
+      cwd: path.join(__dirname, ".."),
+    });
+  } catch (error) {
+    console.error("Failed to install electron:", error.message);
+    process.exit(1);
+  }
 }
 
 console.log("Rebuilding native modules for Electron...");
