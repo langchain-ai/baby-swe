@@ -210,6 +210,7 @@ declare global {
       resize: (id: string, cols: number, rows: number) => void;
       destroy: (id: string) => void;
       onData: (callback: (id: string, data: string) => void) => () => void;
+      onError: (callback: (id: string, error: string) => void) => () => void;
     };
     git: {
       listBranches: (projectPath: string) => Promise<{ branches: string[]; current: string | null }>;
