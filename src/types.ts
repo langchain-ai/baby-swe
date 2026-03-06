@@ -135,6 +135,22 @@ export interface AcpAdapterStatus {
   error: string | null;
 }
 
+export interface CodexAuthStatus {
+  adapterInstalled: boolean;
+  authenticated: boolean;
+  error?: string;
+}
+
+export interface CodexLoginResult {
+  started: boolean;
+  error?: string;
+}
+
+export interface CodexLogoutResult {
+  success: boolean;
+  error?: string;
+}
+
 export interface GlobalSettings {
   version: number;
   modelConfig: ModelConfig;
@@ -163,6 +179,9 @@ declare global {
       cursorAuthStatus: () => Promise<CursorAuthStatus>;
       cursorLogin: () => Promise<CursorLoginResult>;
       cursorLogout: () => Promise<CursorLogoutResult>;
+      codexAuthStatus: () => Promise<CodexAuthStatus>;
+      codexLogin: () => Promise<CodexLoginResult>;
+      codexLogout: () => Promise<CodexLogoutResult>;
       acpAdapterStatus: (packageName: string) => Promise<AcpAdapterStatus>;
     };
     storage: {

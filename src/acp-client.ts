@@ -9,6 +9,9 @@ import type {
   AgentHarness,
   ApprovalDecision,
   ChatMessage,
+  CodexAuthStatus,
+  CodexLoginResult,
+  CodexLogoutResult,
   CursorAuthStatus,
   CursorLoginResult,
   CursorLogoutResult,
@@ -34,6 +37,8 @@ const CURSOR_CLI_LOGOUT_TIMEOUT_MS = 10_000;
 const ACP_INSTALL_TIMEOUT_MS = 120_000;
 
 const ACP_ADAPTERS_DIR = path.join(os.homedir(), ".baby-swe", "acp-adapters");
+const CODEX_CONFIG_DIR = path.join(os.homedir(), ".codex");
+const CODEX_AUTH_TIMEOUT_MS = 120_000;
 
 type AcpProcessTarget = {
   command: string;
@@ -449,6 +454,128 @@ export async function runCursorLogout(): Promise<CursorLogoutResult> {
       detail: null,
       error: `Failed to run Cursor logout: ${message}`,
     };
+  }
+}
+
+function isCodexAuthenticated(): boolean {
+  const authFile = path.join(CODEX_CONFIG_DIR, "auth.json");
+  if (!fs.existsSync(authFile)) return false;
+  try {
+    const content = fs.readFileSync(authFile, "utf-8");
+    const auth = JSON.parse(content);
+    return Boolean(auth && (auth.accessToken || auth.refreshToken || auth.token));
+  } catch {
+    return false;
+  }
+}
+
+export async function getCodexAuthStatus(): Promise<CodexAuthStatus> {
+  const adapterInstalled = isPackageInstalled(CODEX_ACP_PACKAGE);
+  const authenticated = isCodexAuthenticated();
+  return { adapterInstalled, authenticated };
+}
+
+export async function startCodexLogin(): Promise<CodexLoginResult> {
+  try {
+    const packagePath = await ensureAcpPackageInstalled(CODEX_ACP_PACKAGE);
+    const packageJsonPath = path.join(packagePath, "package.json");
+    const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf-8"));
+    const binName = typeof packageJson.bin === "string"
+      ? packageJson.bin
+      : packageJson.bin?.["codex-acp"] || "dist/cli.mjs";
+    const cliPath = path.join(packagePath, binName);
+
+    return new Promise<CodexLoginResult>((resolve) => {
+      const proc = spawn(cliPath, [], {
+        cwd: process.cwd(),
+        stdio: ["pipe", "pipe", "pipe"],
+        env: process.env,
+      });
+
+      let stdout = "";
+      let stderr = "";
+      let settled = false;
+      let timeoutHandle: NodeJS.Timeout | null = null;
+
+      const settle = (result: CodexLoginResult) => {
+        if (settled) return;
+        settled = true;
+        if (timeoutHandle) clearTimeout(timeoutHandle);
+        try { proc.kill(); } catch { /* ignore */ }
+        resolve(result);
+      };
+
+      proc.stdout.on("data", (chunk: Buffer) => {
+        stdout += chunk.toString("utf8");
+      });
+      proc.stderr.on("data", (chunk: Buffer) => {
+        stderr += chunk.toString("utf8");
+      });
+
+      proc.on("error", (error) => {
+        settle({ started: false, error: error.message });
+      });
+
+      proc.on("exit", () => {
+        if (!settled) {
+          const authenticated = isCodexAuthenticated();
+          if (authenticated) {
+            settle({ started: true });
+          } else {
+            settle({ started: false, error: "Authentication was not completed" });
+          }
+        }
+      });
+
+      setTimeout(() => {
+        const initRequest = JSON.stringify({
+          jsonrpc: "2.0",
+          id: 1,
+          method: "initialize",
+          params: {
+            protocolVersion: ACP_PROTOCOL_VERSION,
+            clientCapabilities: {},
+            clientInfo: { name: "baby-swe-auth", version: "1.0.0" },
+          },
+        });
+        proc.stdin.write(initRequest + "\n");
+
+        setTimeout(() => {
+          const authRequest = JSON.stringify({
+            jsonrpc: "2.0",
+            id: 2,
+            method: "authenticate",
+            params: { methodId: "chatgpt_subscription" },
+          });
+          proc.stdin.write(authRequest + "\n");
+        }, 500);
+      }, 100);
+
+      timeoutHandle = setTimeout(() => {
+        const authenticated = isCodexAuthenticated();
+        if (authenticated) {
+          settle({ started: true });
+        } else {
+          settle({ started: false, error: "Login timed out. Please try again." });
+        }
+      }, CODEX_AUTH_TIMEOUT_MS);
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return { started: false, error: message };
+  }
+}
+
+export async function runCodexLogout(): Promise<CodexLogoutResult> {
+  const authFile = path.join(CODEX_CONFIG_DIR, "auth.json");
+  try {
+    if (fs.existsSync(authFile)) {
+      fs.unlinkSync(authFile);
+    }
+    return { success: true };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return { success: false, error: message };
   }
 }
 

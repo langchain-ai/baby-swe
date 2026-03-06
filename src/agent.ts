@@ -4,7 +4,7 @@ import { setMaxListeners } from "events";
 import "dotenv/config";
 import type { AgentHarness, ApprovalDecision, ApprovalResponse, ChatMessage, GlobalSettings, ModelConfig, Mode, Project, StreamEvent } from "./types";
 import { loadSettings } from "./storage";
-import { getCursorAuthStatus, getAcpPackageStatus, runAcpStream, runCursorLogout, startCursorLogin } from "./acp-client";
+import { getCursorAuthStatus, getCodexAuthStatus, getAcpPackageStatus, runAcpStream, runCodexLogout, runCursorLogout, startCodexLogin, startCursorLogin } from "./acp-client";
 import { isAppFocused, showAgentCompletionNotification } from "./main";
 
 const sessionControllers = new Map<string, AbortController>();
@@ -169,6 +169,18 @@ export function setupAgentIPC(_mainWindow: BrowserWindow, getTileProject: (tileI
 
   ipcMain.handle("agent:cursorLogout", async () => {
     return runCursorLogout();
+  });
+
+  ipcMain.handle("agent:codexAuthStatus", async () => {
+    return getCodexAuthStatus();
+  });
+
+  ipcMain.handle("agent:codexLogin", async () => {
+    return startCodexLogin();
+  });
+
+  ipcMain.handle("agent:codexLogout", async () => {
+    return runCodexLogout();
   });
 
   ipcMain.handle("agent:invoke", async (_event, userMessage: string): Promise<AgentResponse> => {

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Logo } from './Logo';
-import type { AgentHarness, ApiKeys, CursorAuthStatus, AcpAdapterStatus, CodexAuthMethod } from '../../types';
+import type { AgentHarness, ApiKeys, CursorAuthStatus, CodexAuthStatus, AcpAdapterStatus, CodexAuthMethod } from '../../types';
 
 const DEEPAGENTS_PACKAGE = 'deepagents-acp';
 const CLAUDE_AGENT_PACKAGE = '@zed-industries/claude-agent-acp';
@@ -30,6 +30,12 @@ export function SettingsScreen({
   const [deepagentsAdapterStatus, setDeepagentsAdapterStatus] = useState<AcpAdapterStatus | null>(null);
   const [claudeAdapterStatus, setClaudeAdapterStatus] = useState<AcpAdapterStatus | null>(null);
   const [codexAdapterStatus, setCodexAdapterStatus] = useState<AcpAdapterStatus | null>(null);
+
+  const [codexAuthStatus, setCodexAuthStatus] = useState<CodexAuthStatus | null>(null);
+  const [codexAuthLoading, setCodexAuthLoading] = useState(false);
+  const [codexLoginLoading, setCodexLoginLoading] = useState(false);
+  const [codexLogoutLoading, setCodexLogoutLoading] = useState(false);
+  const [codexMessage, setCodexMessage] = useState<string | null>(null);
 
   const [anthropic, setAnthropic] = useState(initialKeys?.anthropic || '');
   const [openai, setOpenai] = useState(initialKeys?.openai || '');
@@ -112,12 +118,69 @@ export function SettingsScreen({
     return () => clearInterval(interval);
   }, [harness, refreshAdapterStatus]);
 
+  const refreshCodexAuthStatus = useCallback(async () => {
+    setCodexAuthLoading(true);
+    try {
+      const status = await window.agent.codexAuthStatus();
+      setCodexAuthStatus(status);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setCodexAuthStatus({ adapterInstalled: false, authenticated: false, error: message });
+    } finally {
+      setCodexAuthLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (harness !== 'codex' || codexAuthMethod !== 'chatgpt-subscription') return;
+    refreshCodexAuthStatus();
+  }, [harness, codexAuthMethod, refreshCodexAuthStatus]);
+
   const handleHarnessChange = useCallback(async (nextHarness: AgentHarness) => {
     setCursorMessage(null);
+    setCodexMessage(null);
     setKeysError(null);
     setKeysMessage(null);
     await onHarnessChange(nextHarness);
   }, [onHarnessChange]);
+
+  const handleCodexLogin = useCallback(async () => {
+    setCodexMessage(null);
+    setCodexLoginLoading(true);
+    try {
+      const result = await window.agent.codexLogin();
+      if (!result.started) {
+        setCodexMessage(result.error || 'Could not complete login.');
+        return;
+      }
+      setCodexMessage('Login successful!');
+      await refreshCodexAuthStatus();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setCodexMessage(message);
+    } finally {
+      setCodexLoginLoading(false);
+    }
+  }, [refreshCodexAuthStatus]);
+
+  const handleCodexLogout = useCallback(async () => {
+    setCodexMessage(null);
+    setCodexLogoutLoading(true);
+    try {
+      const result = await window.agent.codexLogout();
+      if (!result.success) {
+        setCodexMessage(result.error || 'Could not disconnect.');
+      } else {
+        setCodexMessage('Successfully disconnected from ChatGPT.');
+      }
+      await refreshCodexAuthStatus();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setCodexMessage(message);
+    } finally {
+      setCodexLogoutLoading(false);
+    }
+  }, [refreshCodexAuthStatus]);
 
   const handleCursorLogin = useCallback(async () => {
     setCursorMessage(null);
@@ -507,11 +570,58 @@ export function SettingsScreen({
             )}
 
             {codexAuthMethod === 'chatgpt-subscription' && (
-              <div className="mt-4 rounded-md border border-[#2a3142] bg-[#111827] p-3">
-                <p className="text-sm text-gray-300">
-                  Codex will prompt you to log in via your browser on first use.
-                </p>
-                <p className="mt-2 text-xs text-gray-500">
+              <div className="mt-4 space-y-4">
+                <div className="rounded-md border border-[#2a3142] bg-[#111827] p-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2 text-sm">
+                      <CodexAuthStatusDot status={codexAuthStatus} loading={codexAuthLoading} />
+                      <span className="text-gray-200">
+                        {codexAuthLoading
+                          ? 'Checking authentication...'
+                          : formatCodexAuthStatus(codexAuthStatus)}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => refreshCodexAuthStatus()}
+                      disabled={codexAuthLoading}
+                      className="px-2 py-1 text-xs bg-gray-700 hover:bg-gray-600 disabled:opacity-50 text-gray-100 rounded-md transition-colors"
+                    >
+                      Refresh
+                    </button>
+                  </div>
+                  {codexAuthStatus?.error && (
+                    <p className="mt-2 text-xs text-red-400">{codexAuthStatus.error}</p>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-3">
+                  {!codexAuthStatus?.authenticated ? (
+                    <button
+                      type="button"
+                      onClick={handleCodexLogin}
+                      disabled={codexLoginLoading || !codexAdapterStatus?.installed}
+                      className="px-4 py-2 bg-[#5a9bc7] hover:bg-[#6daad3] disabled:opacity-50 text-white rounded-md text-sm font-medium transition-colors"
+                    >
+                      {codexLoginLoading ? 'Logging in...' : 'Login with ChatGPT'}
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={handleCodexLogout}
+                      disabled={codexLogoutLoading}
+                      className="px-4 py-2 bg-gray-700 hover:bg-gray-600 disabled:opacity-50 text-gray-100 rounded-md text-sm font-medium transition-colors"
+                    >
+                      {codexLogoutLoading ? 'Disconnecting...' : 'Disconnect'}
+                    </button>
+                  )}
+                </div>
+
+                {codexMessage && (
+                  <p className="text-xs text-gray-300">{codexMessage}</p>
+                )}
+
+                <p className="text-xs text-gray-500">
                   Requires a paid ChatGPT subscription (Plus, Pro, or Team).
                 </p>
               </div>
@@ -632,6 +742,24 @@ function formatAdapterStatus(status: AcpAdapterStatus | null, name: string): str
   if (status.installing) return `Installing ${name}...`;
   if (status.installed) return `${name} ready`;
   return `${name} will be installed on first use`;
+}
+
+function CodexAuthStatusDot({ status, loading }: { status: CodexAuthStatus | null; loading: boolean }) {
+  const className = loading
+    ? 'bg-gray-500 animate-pulse'
+    : !status
+      ? 'bg-gray-500'
+      : status.authenticated
+        ? 'bg-green-400'
+        : 'bg-yellow-400';
+
+  return <span className={`w-2 h-2 rounded-full ${className}`} />;
+}
+
+function formatCodexAuthStatus(status: CodexAuthStatus | null): string {
+  if (!status) return 'Status unavailable';
+  if (status.authenticated) return 'Authenticated with ChatGPT';
+  return 'Not authenticated';
 }
 
 function ApiKeyInput({
