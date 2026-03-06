@@ -137,6 +137,7 @@ export interface AcpAdapterStatus {
 
 export interface CodexAuthStatus {
   adapterInstalled: boolean;
+  cliInstalled: boolean;
   authenticated: boolean;
   error?: string;
 }

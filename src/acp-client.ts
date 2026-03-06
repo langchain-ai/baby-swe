@@ -29,6 +29,7 @@ const CURSOR_CLI_LOGOUT_ARGS = ["logout"];
 const DEEPAGENTS_ACP_PACKAGE = "deepagents-acp";
 const CLAUDE_AGENT_ACP_PACKAGE = "@zed-industries/claude-agent-acp";
 const CODEX_ACP_PACKAGE = "@zed-industries/codex-acp";
+const CODEX_CLI_PACKAGE = "@openai/codex";
 const ACP_DEFAULT_AUTH_METHOD = "cursor_login";
 const ACP_DEFAULT_CLIENT_NAME = "baby-swe";
 const ACP_PROTOCOL_VERSION = 1;
@@ -471,94 +472,58 @@ function isCodexAuthenticated(): boolean {
 
 export async function getCodexAuthStatus(): Promise<CodexAuthStatus> {
   const adapterInstalled = isPackageInstalled(CODEX_ACP_PACKAGE);
+  const cliInstalled = isPackageInstalled(CODEX_CLI_PACKAGE);
   const authenticated = isCodexAuthenticated();
-  return { adapterInstalled, authenticated };
+  return { adapterInstalled, cliInstalled, authenticated };
+}
+
+function resolveCodexCliBin(): string | null {
+  const adapterPath = path.join(ACP_ADAPTERS_DIR, "node_modules", CODEX_CLI_PACKAGE);
+  const packageJsonPath = path.join(adapterPath, "package.json");
+  if (!fs.existsSync(packageJsonPath)) return null;
+
+  try {
+    const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf-8"));
+    const binName = typeof packageJson.bin === "string"
+      ? packageJson.bin
+      : packageJson.bin?.["codex"] || "bin/codex.mjs";
+    return path.join(adapterPath, binName);
+  } catch {
+    return null;
+  }
 }
 
 export async function startCodexLogin(): Promise<CodexLoginResult> {
   try {
-    const packagePath = await ensureAcpPackageInstalled(CODEX_ACP_PACKAGE);
-    const packageJsonPath = path.join(packagePath, "package.json");
-    const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf-8"));
-    const binName = typeof packageJson.bin === "string"
-      ? packageJson.bin
-      : packageJson.bin?.["codex-acp"] || "dist/cli.mjs";
-    const cliPath = path.join(packagePath, binName);
+    await ensureAcpPackageInstalled(CODEX_CLI_PACKAGE);
+    const cliPath = resolveCodexCliBin();
+    if (!cliPath) {
+      return { started: false, error: "Codex CLI not found after installation" };
+    }
 
     return new Promise<CodexLoginResult>((resolve) => {
-      const proc = spawn(cliPath, [], {
+      const proc = spawn(process.execPath, [cliPath, "auth", "login"], {
         cwd: process.cwd(),
-        stdio: ["pipe", "pipe", "pipe"],
+        detached: true,
+        stdio: "ignore",
         env: process.env,
       });
 
-      let stdout = "";
-      let stderr = "";
       let settled = false;
-      let timeoutHandle: NodeJS.Timeout | null = null;
-
       const settle = (result: CodexLoginResult) => {
         if (settled) return;
         settled = true;
-        if (timeoutHandle) clearTimeout(timeoutHandle);
-        try { proc.kill(); } catch { /* ignore */ }
         resolve(result);
       };
 
-      proc.stdout.on("data", (chunk: Buffer) => {
-        stdout += chunk.toString("utf8");
-      });
-      proc.stderr.on("data", (chunk: Buffer) => {
-        stderr += chunk.toString("utf8");
-      });
-
-      proc.on("error", (error) => {
+      proc.once("error", (error) => {
         settle({ started: false, error: error.message });
       });
 
-      proc.on("exit", () => {
-        if (!settled) {
-          const authenticated = isCodexAuthenticated();
-          if (authenticated) {
-            settle({ started: true });
-          } else {
-            settle({ started: false, error: "Authentication was not completed" });
-          }
-        }
+      proc.once("spawn", () => {
+        proc.unref();
+        settle({ started: true });
       });
-
-      setTimeout(() => {
-        const initRequest = JSON.stringify({
-          jsonrpc: "2.0",
-          id: 1,
-          method: "initialize",
-          params: {
-            protocolVersion: ACP_PROTOCOL_VERSION,
-            clientCapabilities: {},
-            clientInfo: { name: "baby-swe-auth", version: "1.0.0" },
-          },
-        });
-        proc.stdin.write(initRequest + "\n");
-
-        setTimeout(() => {
-          const authRequest = JSON.stringify({
-            jsonrpc: "2.0",
-            id: 2,
-            method: "authenticate",
-            params: { methodId: "chatgpt_subscription" },
-          });
-          proc.stdin.write(authRequest + "\n");
-        }, 500);
-      }, 100);
-
-      timeoutHandle = setTimeout(() => {
-        const authenticated = isCodexAuthenticated();
-        if (authenticated) {
-          settle({ started: true });
-        } else {
-          settle({ started: false, error: "Login timed out. Please try again." });
-        }
-      }, CODEX_AUTH_TIMEOUT_MS);
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

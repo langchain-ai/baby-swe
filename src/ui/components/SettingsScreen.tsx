@@ -125,7 +125,7 @@ export function SettingsScreen({
       setCodexAuthStatus(status);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      setCodexAuthStatus({ adapterInstalled: false, authenticated: false, error: message });
+      setCodexAuthStatus({ adapterInstalled: false, cliInstalled: false, authenticated: false, error: message });
     } finally {
       setCodexAuthLoading(false);
     }
@@ -148,13 +148,14 @@ export function SettingsScreen({
     setCodexMessage(null);
     setCodexLoginLoading(true);
     try {
+      setCodexMessage('Installing Codex CLI...');
       const result = await window.agent.codexLogin();
       if (!result.started) {
         setCodexMessage(result.error || 'Could not complete login.');
         return;
       }
-      setCodexMessage('Login successful!');
-      await refreshCodexAuthStatus();
+      setCodexMessage('Browser opened for login. Complete authentication in your browser, then click Refresh.');
+      setTimeout(() => refreshCodexAuthStatus(), 3000);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       setCodexMessage(message);
@@ -749,15 +750,18 @@ function CodexAuthStatusDot({ status, loading }: { status: CodexAuthStatus | nul
     ? 'bg-gray-500 animate-pulse'
     : !status
       ? 'bg-gray-500'
-      : status.authenticated
-        ? 'bg-green-400'
-        : 'bg-yellow-400';
+      : !status.cliInstalled
+        ? 'bg-gray-500'
+        : status.authenticated
+          ? 'bg-green-400'
+          : 'bg-yellow-400';
 
   return <span className={`w-2 h-2 rounded-full ${className}`} />;
 }
 
 function formatCodexAuthStatus(status: CodexAuthStatus | null): string {
   if (!status) return 'Status unavailable';
+  if (!status.cliInstalled) return 'Codex CLI not installed';
   if (status.authenticated) return 'Authenticated with ChatGPT';
   return 'Not authenticated';
 }
