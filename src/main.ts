@@ -1399,14 +1399,6 @@ app.whenReady().then(() => {
   setupAppIPC();
   setupStorageIPC();
   setupTerminalIPC();
-
-  if (process.platform === 'darwin' && app.dock) {
-    const iconPath = path.join(__dirname, 'assets', 'AppIcon.iconset', 'icon_512x512.png');
-    if (fs.existsSync(iconPath)) {
-      app.dock.setIcon(iconPath);
-    }
-  }
-
   createWindow();
   setupAgentIPC(
     mainWindow!,
