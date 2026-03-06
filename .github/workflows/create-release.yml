@@ -137,6 +137,8 @@ jobs:
           registry-url: "https://registry.npmjs.org"
 
       - name: Publish to npm
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           # Skip postinstall during publish (we don't want to rebuild in CI)
           npm pkg set scripts.postinstall="echo Skipping postinstall in CI"
