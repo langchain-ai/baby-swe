@@ -26,8 +26,12 @@ function extractAcpEnvOverrides(settings: GlobalSettings): Record<string, string
 
 function resolveAcpRuntimeConfig(): { harness: AgentHarness; envOverrides?: Record<string, string> } {
   const settings = loadSettings();
+  const validHarnesses: AgentHarness[] = ["cursor", "deepagents", "claude-agent", "codex"];
+  const harness = validHarnesses.includes(settings.harness as AgentHarness)
+    ? (settings.harness as AgentHarness)
+    : "cursor";
   return {
-    harness: settings.harness === "deepagents" ? "deepagents" : "cursor",
+    harness,
     envOverrides: extractAcpEnvOverrides(settings),
   };
 }
@@ -165,15 +169,14 @@ export function setupAgentIPC(_mainWindow: BrowserWindow, getTileProject: (tileI
   ipcMain.handle("agent:invoke", async (_event, userMessage: string): Promise<AgentResponse> => {
     const controller = new AbortController();
     const invokeSessionId = `invoke-${uuidv4()}`;
+    const runtimeConfig = resolveAcpRuntimeConfig();
     const settings = loadSettings();
-    const harness = settings.harness === "deepagents" ? "deepagents" : "cursor";
-    const envOverrides = extractAcpEnvOverrides(settings);
     const modelConfig = settings.modelConfig || { name: "acp-default", provider: "acp-cursor", effort: "default" };
     let content = "";
 
     try {
       await runAcpStream({
-        harness,
+        harness: runtimeConfig.harness,
         sessionId: invokeSessionId,
         messages: [{ role: "user", content: userMessage }],
         mode: "yolo",
@@ -181,7 +184,7 @@ export function setupAgentIPC(_mainWindow: BrowserWindow, getTileProject: (tileI
         folder: process.cwd(),
         controller,
         clientVersion: app.getVersion(),
-        envOverrides,
+        envOverrides: runtimeConfig.envOverrides,
         send: (streamEvent) => {
           if (streamEvent.type === "token" && typeof streamEvent.token === "string") {
             content += streamEvent.token;

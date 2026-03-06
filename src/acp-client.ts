@@ -22,6 +22,8 @@ const CURSOR_CLI_STATUS_ARGS = ["status"];
 const CURSOR_CLI_LOGIN_ARGS = ["login"];
 const CURSOR_CLI_LOGOUT_ARGS = ["logout"];
 const DEEPAGENTS_ACP_PACKAGE = "deepagents-acp";
+const CLAUDE_AGENT_ACP_PACKAGE = "@zed-industries/claude-agent-acp";
+const CODEX_ACP_PACKAGE = "@zed-industries/codex-acp";
 const ACP_DEFAULT_AUTH_METHOD = "cursor_login";
 const ACP_DEFAULT_CLIENT_NAME = "baby-swe";
 const ACP_PROTOCOL_VERSION = 1;
@@ -152,9 +154,69 @@ function resolveDeepagentsAcpTarget(): AcpProcessTarget {
   }
 }
 
+function resolveClaudeAgentAcpTarget(): AcpProcessTarget {
+  const overrideCommand = parseAcpCommand(process.env.BABY_SWE_CLAUDE_AGENT_ACP_COMMAND, "");
+  if (overrideCommand) {
+    return {
+      command: overrideCommand,
+      args: parseAcpArgs(process.env.BABY_SWE_CLAUDE_AGENT_ACP_ARGS, []),
+    };
+  }
+
+  try {
+    const packageJsonPath = require.resolve(`${CLAUDE_AGENT_ACP_PACKAGE}/package.json`);
+    const packageJson = require(packageJsonPath);
+    const binName = typeof packageJson.bin === "string"
+      ? packageJson.bin
+      : packageJson.bin?.["claude-agent-acp"] || "dist/cli.mjs";
+    const cliPath = path.join(path.dirname(packageJsonPath), binName);
+    return {
+      command: cliPath,
+      args: parseAcpArgs(process.env.BABY_SWE_CLAUDE_AGENT_ACP_ARGS, []),
+    };
+  } catch {
+    throw new Error(
+      `[acp] ${CLAUDE_AGENT_ACP_PACKAGE} is not installed. Run "bun add ${CLAUDE_AGENT_ACP_PACKAGE}" or configure BABY_SWE_CLAUDE_AGENT_ACP_COMMAND.`,
+    );
+  }
+}
+
+function resolveCodexAcpTarget(): AcpProcessTarget {
+  const overrideCommand = parseAcpCommand(process.env.BABY_SWE_CODEX_ACP_COMMAND, "");
+  if (overrideCommand) {
+    return {
+      command: overrideCommand,
+      args: parseAcpArgs(process.env.BABY_SWE_CODEX_ACP_ARGS, []),
+    };
+  }
+
+  try {
+    const packageJsonPath = require.resolve(`${CODEX_ACP_PACKAGE}/package.json`);
+    const packageJson = require(packageJsonPath);
+    const binName = typeof packageJson.bin === "string"
+      ? packageJson.bin
+      : packageJson.bin?.["codex-acp"] || "dist/cli.mjs";
+    const cliPath = path.join(path.dirname(packageJsonPath), binName);
+    return {
+      command: cliPath,
+      args: parseAcpArgs(process.env.BABY_SWE_CODEX_ACP_ARGS, []),
+    };
+  } catch {
+    throw new Error(
+      `[acp] ${CODEX_ACP_PACKAGE} is not installed. Run "bun add ${CODEX_ACP_PACKAGE}" or configure BABY_SWE_CODEX_ACP_COMMAND.`,
+    );
+  }
+}
+
 function resolveAcpTarget(harness: AgentHarness): AcpProcessTarget {
   if (harness === "deepagents") {
     return resolveDeepagentsAcpTarget();
+  }
+  if (harness === "claude-agent") {
+    return resolveClaudeAgentAcpTarget();
+  }
+  if (harness === "codex") {
+    return resolveCodexAcpTarget();
   }
   return resolveCursorAcpTarget();
 }

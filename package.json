@@ -76,6 +76,10 @@
     },
     "npmRebuild": true
   },
+  "optionalDependencies": {
+    "@zed-industries/claude-agent-acp": "*",
+    "@zed-industries/codex-acp": "*"
+  },
   "devDependencies": {
     "@types/diff": "^8.0.0",
     "@types/node": "^20.10.0",

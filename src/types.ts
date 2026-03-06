@@ -105,7 +105,7 @@ export interface ApiKeys {
 }
 
 export type PermissionMode = 'default' | 'full';
-export type AgentHarness = 'cursor' | 'deepagents';
+export type AgentHarness = 'cursor' | 'deepagents' | 'claude-agent' | 'codex';
 
 export interface CursorAuthStatus {
   cliAvailable: boolean;

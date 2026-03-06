@@ -121,8 +121,20 @@ export function SettingsScreen({
     if (baseten.trim()) keys.baseten = baseten.trim();
     if (tavily.trim()) keys.tavily = tavily.trim();
 
-    if (!keys.anthropic && !keys.openai && !keys.baseten) {
+    if (harness === 'deepagents' && !keys.anthropic && !keys.openai && !keys.baseten) {
       setKeysError('At least one LLM API key is required for deepagents.');
+      setKeysMessage(null);
+      return;
+    }
+
+    if (harness === 'claude-agent' && !keys.anthropic) {
+      setKeysError('Anthropic API key is required for Claude Agent.');
+      setKeysMessage(null);
+      return;
+    }
+
+    if (harness === 'codex' && !keys.openai) {
+      setKeysError('OpenAI API key is required for Codex.');
       setKeysMessage(null);
       return;
     }
@@ -139,7 +151,7 @@ export function SettingsScreen({
     } finally {
       setKeysLoading(false);
     }
-  }, [anthropic, baseten, onSaveApiKeys, openai, tavily]);
+  }, [anthropic, baseten, harness, onSaveApiKeys, openai, tavily]);
 
   return (
     <div className="h-full bg-[#1a2332] text-gray-100 overflow-auto">
@@ -168,10 +180,22 @@ export function SettingsScreen({
               selected={harness === 'deepagents'}
               onClick={() => handleHarnessChange('deepagents')}
             />
+            <HarnessOption
+              title="Claude Agent"
+              subtitle="Use Claude Agent SDK via Zed's ACP adapter."
+              selected={harness === 'claude-agent'}
+              onClick={() => handleHarnessChange('claude-agent')}
+            />
+            <HarnessOption
+              title="Codex"
+              subtitle="Use OpenAI Codex CLI via Zed's ACP adapter."
+              selected={harness === 'codex'}
+              onClick={() => handleHarnessChange('codex')}
+            />
           </div>
         </section>
 
-        {harness === 'cursor' ? (
+        {harness === 'cursor' && (
           <section className="mt-5 rounded-xl border border-[#2a3142] bg-[#151b26] p-5">
             <div className="flex items-center justify-between gap-3">
               <div>
@@ -230,7 +254,9 @@ export function SettingsScreen({
               <p className="mt-3 text-xs text-gray-300">{cursorMessage}</p>
             )}
           </section>
-        ) : (
+        )}
+
+        {harness === 'deepagents' && (
           <section className="mt-5 rounded-xl border border-[#2a3142] bg-[#151b26] p-5">
             <h3 className="text-sm font-semibold text-gray-200">Deepagents API Keys</h3>
             <p className="mt-1 text-xs text-gray-400">
@@ -287,6 +313,82 @@ export function SettingsScreen({
                 className="px-4 py-2 bg-[#5a9bc7] hover:bg-[#6daad3] disabled:opacity-50 text-white rounded-md text-sm font-medium transition-colors"
               >
                 {keysLoading ? 'Saving...' : 'Save API Keys'}
+              </button>
+            </div>
+          </section>
+        )}
+
+        {harness === 'claude-agent' && (
+          <section className="mt-5 rounded-xl border border-[#2a3142] bg-[#151b26] p-5">
+            <h3 className="text-sm font-semibold text-gray-200">Claude Agent API Key</h3>
+            <p className="mt-1 text-xs text-gray-400">
+              Your Anthropic API key is used by the Claude Agent SDK adapter.
+            </p>
+
+            <div className="mt-4 space-y-4">
+              <ApiKeyInput
+                label="Anthropic API Key"
+                placeholder="sk-ant-..."
+                value={anthropic}
+                onChange={setAnthropic}
+                visible={showAnthropic}
+                onToggleVisible={() => setShowAnthropic((v) => !v)}
+              />
+            </div>
+
+            {keysError && (
+              <p className="mt-3 text-xs text-red-400">{keysError}</p>
+            )}
+            {keysMessage && (
+              <p className="mt-3 text-xs text-gray-300">{keysMessage}</p>
+            )}
+
+            <div className="mt-4">
+              <button
+                type="button"
+                onClick={handleSaveApiKeys}
+                disabled={keysLoading}
+                className="px-4 py-2 bg-[#5a9bc7] hover:bg-[#6daad3] disabled:opacity-50 text-white rounded-md text-sm font-medium transition-colors"
+              >
+                {keysLoading ? 'Saving...' : 'Save API Key'}
+              </button>
+            </div>
+          </section>
+        )}
+
+        {harness === 'codex' && (
+          <section className="mt-5 rounded-xl border border-[#2a3142] bg-[#151b26] p-5">
+            <h3 className="text-sm font-semibold text-gray-200">Codex API Key</h3>
+            <p className="mt-1 text-xs text-gray-400">
+              Your OpenAI API key is used by the Codex CLI adapter.
+            </p>
+
+            <div className="mt-4 space-y-4">
+              <ApiKeyInput
+                label="OpenAI API Key"
+                placeholder="sk-..."
+                value={openai}
+                onChange={setOpenai}
+                visible={showOpenai}
+                onToggleVisible={() => setShowOpenai((v) => !v)}
+              />
+            </div>
+
+            {keysError && (
+              <p className="mt-3 text-xs text-red-400">{keysError}</p>
+            )}
+            {keysMessage && (
+              <p className="mt-3 text-xs text-gray-300">{keysMessage}</p>
+            )}
+
+            <div className="mt-4">
+              <button
+                type="button"
+                onClick={handleSaveApiKeys}
+                disabled={keysLoading}
+                className="px-4 py-2 bg-[#5a9bc7] hover:bg-[#6daad3] disabled:opacity-50 text-white rounded-md text-sm font-medium transition-colors"
+              >
+                {keysLoading ? 'Saving...' : 'Save API Key'}
               </button>
             </div>
           </section>
