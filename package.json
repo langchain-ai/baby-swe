@@ -16,7 +16,7 @@
     "start": "electron .",
     "pack": "bun run build && electron-builder --dir",
     "dist": "bun run build && electron-builder",
-    "dist:mac": "bun run build && electron-builder --mac",
+    "dist:mac": "bun run build && electron-builder --mac zip",
     "dist:win": "bun run build && electron-builder --win",
     "dist:linux": "bun run build && electron-builder --linux"
   },
@@ -56,7 +56,6 @@
     ],
     "mac": {
       "target": [
-        "dmg",
         "zip"
       ],
       "category": "public.app-category.developer-tools",
