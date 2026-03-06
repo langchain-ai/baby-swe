@@ -4,7 +4,7 @@ if (!globalThis.crypto) {
   globalThis.crypto = webcrypto as any;
 }
 
-import { app, BrowserWindow, Menu, dialog, ipcMain, shell } from 'electron';
+import { app, BrowserWindow, Menu, dialog, ipcMain, shell, Notification } from 'electron';
 import * as path from 'path';
 import * as os from 'os';
 
@@ -724,7 +724,31 @@ function listFilesWithGlob(projectPath: string): string[] {
 }
 
 let mainWindow: BrowserWindow | null = null;
+let isWindowFocused = true;
 const tileProjects = new Map<string, Project | null>();
+
+export function isAppFocused(): boolean {
+  return isWindowFocused;
+}
+
+export function showAgentCompletionNotification(projectName?: string): void {
+  if (isWindowFocused || !Notification.isSupported()) return;
+
+  const notification = new Notification({
+    title: 'Baby SWE',
+    body: projectName ? `Agent completed in ${projectName}` : 'Agent run completed',
+    silent: false,
+  });
+
+  notification.on('click', () => {
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.focus();
+    }
+  });
+
+  notification.show();
+}
 
 function updateWindowTitle(): void {
   if (!mainWindow) return;
@@ -1314,6 +1338,14 @@ function createWindow(): void {
       event.preventDefault();
       shell.openExternal(url);
     }
+  });
+
+  mainWindow.on('focus', () => {
+    isWindowFocused = true;
+  });
+
+  mainWindow.on('blur', () => {
+    isWindowFocused = false;
   });
 }
 

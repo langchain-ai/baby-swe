@@ -5,6 +5,7 @@ import "dotenv/config";
 import type { AgentHarness, ApprovalDecision, ApprovalResponse, ChatMessage, GlobalSettings, ModelConfig, Mode, Project, StreamEvent } from "./types";
 import { loadSettings } from "./storage";
 import { getCursorAuthStatus, runAcpStream, runCursorLogout, startCursorLogin } from "./acp-client";
+import { isAppFocused, showAgentCompletionNotification } from "./main";
 
 const sessionControllers = new Map<string, AbortController>();
 const sessionModes = new Map<string, Mode>();
@@ -148,7 +149,7 @@ function safeSend(webContents: Electron.WebContents, channel: string, ...args: u
   }
 }
 
-export function setupAgentIPC(_mainWindow: BrowserWindow, getTileProject: (tileId: string) => string | null, _getTileProjectData?: (tileId: string) => Project | null) {
+export function setupAgentIPC(_mainWindow: BrowserWindow, getTileProject: (tileId: string) => string | null, getTileProjectData?: (tileId: string) => Project | null) {
   ipcMain.handle("agent:cursorAuthStatus", async () => {
     return getCursorAuthStatus();
   });
@@ -254,6 +255,11 @@ export function setupAgentIPC(_mainWindow: BrowserWindow, getTileProject: (tileI
       if (!controller.signal.aborted) {
         console.log(`[agent:stream] ACP stream completed for session ${sessionId}`);
         sendFinal({ type: 'done', sessionId });
+
+        if (!isAppFocused()) {
+          const project = getTileProjectData?.(tileId);
+          showAgentCompletionNotification(project?.name);
+        }
       }
     } catch (error) {
       if (controller.signal.aborted || isAbortError(error)) {
