@@ -1,6 +1,6 @@
 # Baby SWE
 
-Terminal-style desktop AI coding assistant built with Electron + React + Zustand, now running as an ACP client with swappable harnesses.
+Agent Development Environment built with Electron + React + Zustand, running as an ACP client with swappable harnesses.
 
 ## Installation
 
