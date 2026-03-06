@@ -1,7 +1,7 @@
 {
   "name": "baby-swe",
   "productName": "Baby SWE",
-  "version": "0.2.2",
+  "version": "0.3.0",
   "description": "A terminal-style AI coding assistant",
   "main": "dist/main.js",
   "scripts": {
