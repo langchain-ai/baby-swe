@@ -866,23 +866,37 @@ function setupTerminalIPC(): void {
     if (terminals.has(id)) return;
 
     const shell = process.platform === 'win32' ? 'powershell.exe' : process.env.SHELL || '/bin/zsh';
-    const term = pty.spawn(shell, [], {
-      name: 'xterm-256color',
-      cols: 80,
-      rows: 24,
-      cwd: cwd || process.env.HOME || '/',
-      env: userShellEnv,
-    });
+    
+    try {
+      const term = pty.spawn(shell, [], {
+        name: 'xterm-256color',
+        cols: 80,
+        rows: 24,
+        cwd: cwd || process.env.HOME || '/',
+        env: userShellEnv,
+      });
 
-    terminals.set(id, term);
+      terminals.set(id, term);
 
-    term.onData((data) => {
-      mainWindow?.webContents.send('terminal:data', id, data);
-    });
+      term.onData((data) => {
+        mainWindow?.webContents.send('terminal:data', id, data);
+      });
 
-    term.onExit(() => {
-      terminals.delete(id);
-    });
+      term.onExit(() => {
+        terminals.delete(id);
+      });
+    } catch (error: any) {
+      const errorMessage = error?.message || String(error);
+      
+      let helpMessage = `\x1b[31mError: Terminal failed to start\x1b[0m\r\n\r\n`;
+      helpMessage += `${errorMessage}\r\n\r\n`;
+      helpMessage += `\x1b[33mPlease report this issue at:\x1b[0m\r\n`;
+      helpMessage += `\x1b[36mhttps://github.com/langchain-ai/baby-swe/issues\x1b[0m\r\n\r\n`;
+      helpMessage += `Platform: ${process.platform}, Arch: ${process.arch}\r\n`;
+      
+      mainWindow?.webContents.send('terminal:data', id, helpMessage);
+      mainWindow?.webContents.send('terminal:error', id, errorMessage);
+    }
   });
 
   ipcMain.on('terminal:write', (_event, id: string, data: string) => {

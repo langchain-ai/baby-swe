@@ -81,6 +81,11 @@ contextBridge.exposeInMainWorld('terminal', {
     ipcRenderer.on('terminal:data', handler);
     return () => ipcRenderer.removeListener('terminal:data', handler);
   },
+  onError: (callback: (id: string, error: string) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, id: string, error: string) => callback(id, error);
+    ipcRenderer.on('terminal:error', handler);
+    return () => ipcRenderer.removeListener('terminal:error', handler);
+  },
 });
 
 contextBridge.exposeInMainWorld('git', {
