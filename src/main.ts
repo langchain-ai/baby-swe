@@ -1094,6 +1094,36 @@ function setupStorageIPC(): void {
     return result;
   });
 
+  ipcMain.handle('git:syncLocalBranch', (_event, projectPath: string) => {
+    const currentBranch = getGitBranch(projectPath);
+    if (!currentBranch) return { synced: false };
+
+    let synced = false;
+    for (const [tileId, project] of tileProjects.entries()) {
+      if (project?.path === projectPath && !project.worktreePath && project.gitBranch !== currentBranch) {
+        const updatedProject = { ...project, gitBranch: currentBranch };
+        tileProjects.set(tileId, updatedProject);
+        mainWindow?.webContents.send('tile:projectChanged', tileId, updatedProject);
+        synced = true;
+      }
+    }
+
+    if (synced) {
+      setTimeout(() => {
+        const githubPR = getGithubPR(projectPath);
+        for (const [tileId, project] of tileProjects.entries()) {
+          if (project?.path === projectPath && !project.worktreePath && project.gitBranch === currentBranch) {
+            const refreshedProject = { ...project, githubPR };
+            tileProjects.set(tileId, refreshedProject);
+            mainWindow?.webContents.send('tile:projectChanged', tileId, refreshedProject);
+          }
+        }
+      }, 0);
+    }
+
+    return { synced, branch: currentBranch };
+  });
+
   ipcMain.handle('git:diffFile', (_event, projectPath: string, filePath: string, staged: boolean) => {
     return getGitFileDiff(projectPath, filePath, staged);
   });

@@ -216,6 +216,7 @@ declare global {
       switchBranch: (projectPath: string, branchName: string) => Promise<{ success: boolean; error?: string }>;
       handoffToWorktree: (projectPath: string, branchName: string) => Promise<{ success: boolean; worktreePath?: string; localBranch?: string; error?: string }>;
       createBranch: (projectPath: string, branchName: string) => Promise<{ success: boolean; error?: string }>;
+      syncLocalBranch: (projectPath: string) => Promise<{ synced: boolean; branch?: string }>;
       getPR: (projectPath: string) => Promise<GithubPR | null>;
       diffFile: (projectPath: string, filePath: string) => Promise<{ original: string; modified: string } | null>;
       status: (projectPath: string) => Promise<GitStatusEntry[]>;
