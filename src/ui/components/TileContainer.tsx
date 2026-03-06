@@ -148,6 +148,21 @@ export function TileContainer({
     setQueuedSubmissions([]);
   }, [session?.id]);
 
+  useEffect(() => {
+    const project = tile?.project;
+    if (!project?.path) return;
+    if (project.worktreeType === 'worktree') return;
+    if (tile.type !== 'agent' && tile.type !== 'terminal' && tile.type !== 'source-control') return;
+
+    const sync = () => {
+      window.git.syncLocalBranch(project.path);
+    };
+
+    sync();
+    const interval = setInterval(sync, 3000);
+    return () => clearInterval(interval);
+  }, [tile?.project?.path, tile?.project?.worktreeType, tile?.type]);
+
   const handleOpenFolder = useCallback(async () => {
     const project = await window.tile.openProject(tileId);
     if (project) {

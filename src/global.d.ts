@@ -65,6 +65,7 @@ interface Window {
     listBranches: (projectPath: string) => Promise<{ branches: string[]; current: string | null }>;
     switchBranch: (projectPath: string, branchName: string) => Promise<{ success: boolean; error?: string }>;
     createBranch: (projectPath: string, branchName: string) => Promise<{ success: boolean; error?: string }>;
+    syncLocalBranch: (projectPath: string) => Promise<{ synced: boolean; branch?: string }>;
     getPR: (projectPath: string) => Promise<import('./types').GithubPR | null>;
     diffFile: (projectPath: string, filePath: string, staged: boolean) => Promise<{ original: string; modified: string } | null>;
     status: (projectPath: string) => Promise<import('./types').GitStatusEntry[]>;

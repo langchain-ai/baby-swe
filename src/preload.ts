@@ -91,6 +91,8 @@ contextBridge.exposeInMainWorld('git', {
     ipcRenderer.invoke('git:handoffToWorktree', projectPath, branchName),
   createBranch: (projectPath: string, branchName: string) =>
     ipcRenderer.invoke('git:createBranch', projectPath, branchName),
+  syncLocalBranch: (projectPath: string) =>
+    ipcRenderer.invoke('git:syncLocalBranch', projectPath),
   getPR: (projectPath: string) => ipcRenderer.invoke('git:getPR', projectPath),
   diffFile: (projectPath: string, filePath: string, staged: boolean) =>
     ipcRenderer.invoke('git:diffFile', projectPath, filePath, staged),
