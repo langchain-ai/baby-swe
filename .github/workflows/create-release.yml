@@ -128,3 +128,19 @@ jobs:
           files: |
             ${{ steps.package_app.outputs.mac_zip }}
             ${{ steps.package_app.outputs.app_zip }}
+
+      - name: Setup Node.js for npm publish
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Publish to npm
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          # Skip postinstall during publish (we don't want to rebuild in CI)
+          npm pkg set scripts.postinstall="echo Skipping postinstall in CI"
+          npm publish --access public
+          # Restore original postinstall
+          git checkout package.json
