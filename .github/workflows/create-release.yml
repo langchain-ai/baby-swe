@@ -133,15 +133,16 @@ jobs:
       - name: Setup Node.js for npm publish
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
           registry-url: "https://registry.npmjs.org"
 
+      - name: Upgrade npm for trusted publishing
+        run: npm install -g npm@latest
+
       - name: Publish to npm
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           # Skip postinstall during publish (we don't want to rebuild in CI)
           npm pkg set scripts.postinstall="echo Skipping postinstall in CI"
-          npm publish --access public --provenance
+          npm publish --access public
           # Restore original postinstall
           git checkout package.json
