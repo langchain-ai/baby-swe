@@ -9,6 +9,11 @@ import { ApiKeysScreen } from './components/ApiKeysScreen';
 import { SettingsScreen } from './components/SettingsScreen';
 import { getAllCommands } from '../commands';
 
+interface PendingCloseConfirmation {
+  tileId: string;
+  sessionId: string;
+}
+
 const KEYBOARD_SHORTCUTS = [
   { combo: 'Cmd/Ctrl+H', description: 'Toggle shortcuts & commands dialog' },
   { combo: 'Cmd/Ctrl+1-5', description: 'Switch workspace' },
@@ -43,6 +48,7 @@ export function App() {
   const harness = useStore(state => state.harness);
   const [showShortcutDialog, setShowShortcutDialog] = useState(false);
   const [showQuickStartDialog, setShowQuickStartDialog] = useState(false);
+  const [pendingCloseConfirm, setPendingCloseConfirm] = useState<PendingCloseConfirmation | null>(null);
   const commandList = useMemo(
     () => getAllCommands().slice().sort((a, b) => a.name.localeCompare(b.name)),
     [],
@@ -252,6 +258,25 @@ export function App() {
       return;
     }
 
+    if (pendingCloseConfirm) {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setPendingCloseConfirm(null);
+        return;
+      }
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        const { tileId, sessionId } = pendingCloseConfirm;
+        window.agent.cancel(sessionId);
+        window.tile.closeProject(tileId);
+        closeTile(tileId);
+        abortStream(sessionId);
+        setPendingCloseConfirm(null);
+        return;
+      }
+      return;
+    }
+
     if (shouldShowSettingsScreen) {
       if (e.key === 'Escape' && showSettingsScreen && !shouldShowHarnessOnboarding) {
         e.preventDefault();
@@ -324,6 +349,13 @@ export function App() {
       const fTileId = ws?.focusedTileId;
       if (fTileId) {
         const tile = ws.tiles[fTileId];
+        if (tile && tile.type === 'agent') {
+          const session = state.sessions[tile.sessionId];
+          if (session && (session.isStreaming || session.busy)) {
+            setPendingCloseConfirm({ tileId: fTileId, sessionId: tile.sessionId });
+            return;
+          }
+        }
         if (tile) {
           window.agent.cancel(tile.sessionId);
         }
@@ -390,6 +422,7 @@ export function App() {
     shouldShowHarnessOnboarding,
     showSettingsScreen,
     setShowSettingsScreen,
+    pendingCloseConfirm,
   ]);
 
   useEffect(() => {
@@ -505,6 +538,51 @@ export function App() {
     </div>
   ) : null;
 
+  const handleConfirmClose = useCallback(() => {
+    if (!pendingCloseConfirm) return;
+    const { tileId, sessionId } = pendingCloseConfirm;
+    window.agent.cancel(sessionId);
+    window.tile.closeProject(tileId);
+    closeTile(tileId);
+    abortStream(sessionId);
+    setPendingCloseConfirm(null);
+  }, [pendingCloseConfirm, closeTile, abortStream]);
+
+  const closeConfirmDialog = pendingCloseConfirm ? (
+    <div
+      className="fixed inset-0 z-50 bg-black/55 flex items-center justify-center p-4"
+      onClick={() => setPendingCloseConfirm(null)}
+    >
+      <div
+        className="w-full max-w-sm rounded-xl bg-[var(--ui-accent-bubble)] overflow-hidden shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="px-4 pt-4 pb-2">
+          <div className="text-[13px] font-medium text-[color:var(--ui-text)] mb-2">Agent Running</div>
+          <p className="text-xs text-[color:var(--ui-text-muted)] leading-relaxed">
+            The agent is currently running. Are you sure you want to close this tile?
+          </p>
+        </div>
+        <div className="px-4 py-3 flex items-center justify-end gap-2">
+          <button
+            type="button"
+            className="text-xs text-[color:var(--ui-text-muted)] hover:text-[color:var(--ui-text)] transition-colors px-3 py-1.5"
+            onClick={() => setPendingCloseConfirm(null)}
+          >
+            Cancel <span className="text-[color:var(--ui-text-dim)]">Esc</span>
+          </button>
+          <button
+            type="button"
+            className="text-xs font-medium text-red-400 hover:text-red-300 transition-colors px-3 py-1.5"
+            onClick={handleConfirmClose}
+          >
+            Close Tile <span className="text-red-400/60">↵</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  ) : null;
+
   if (shouldShowSettingsScreen) {
     return (
       <div className="flex flex-col h-screen bg-[#1a2332] text-gray-100">
@@ -521,6 +599,7 @@ export function App() {
         <StatusBar />
         {quickStartDialog}
         {shortcutDialog}
+        {closeConfirmDialog}
       </div>
     );
   }
@@ -540,6 +619,7 @@ export function App() {
         <StatusBar />
         {quickStartDialog}
         {shortcutDialog}
+        {closeConfirmDialog}
       </div>
     );
   }
@@ -569,6 +649,7 @@ export function App() {
       <StatusBar />
       {quickStartDialog}
       {shortcutDialog}
+      {closeConfirmDialog}
     </div>
   );
 }
