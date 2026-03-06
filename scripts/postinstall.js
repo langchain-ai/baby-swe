@@ -65,27 +65,7 @@ if (installPrebuilds()) {
   process.exit(0);
 }
 
-console.log("Prebuilds not available, attempting to rebuild native modules...");
-
-let electronPath = null;
-try {
-  electronPath = require.resolve("electron");
-} catch {
-  electronPath = null;
-}
-
-if (!electronPath) {
-  console.log("Installing electron for npm/cli distribution...");
-  try {
-    execSync("npm install electron@^28.0.0 --no-save", {
-      stdio: "inherit",
-      cwd: packageDir,
-    });
-  } catch (error) {
-    console.error("Failed to install electron:", error.message);
-    process.exit(1);
-  }
-}
+console.log("Prebuilds not available, attempting to rebuild native modules...")
 
 console.log("Rebuilding native modules for Electron...");
 
