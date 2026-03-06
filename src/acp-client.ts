@@ -1,6 +1,8 @@
-import { spawn } from "child_process";
+import { spawn, execSync } from "child_process";
 import * as path from "path";
 import * as readline from "readline";
+import * as fs from "fs";
+import * as os from "os";
 import { v4 as uuidv4 } from "uuid";
 import { loadAgentMemory } from "./memory/agents";
 import type {
@@ -29,11 +31,124 @@ const ACP_DEFAULT_CLIENT_NAME = "baby-swe";
 const ACP_PROTOCOL_VERSION = 1;
 const CURSOR_CLI_STATUS_TIMEOUT_MS = 10_000;
 const CURSOR_CLI_LOGOUT_TIMEOUT_MS = 10_000;
+const ACP_INSTALL_TIMEOUT_MS = 120_000;
+
+const ACP_ADAPTERS_DIR = path.join(os.homedir(), ".baby-swe", "acp-adapters");
 
 type AcpProcessTarget = {
   command: string;
   args: string[];
 };
+
+type AcpInstallStatus = {
+  installed: boolean;
+  installing: boolean;
+  error: string | null;
+};
+
+const installStatus = new Map<string, AcpInstallStatus>();
+const installPromises = new Map<string, Promise<void>>();
+
+function ensureAcpAdaptersDir(): void {
+  if (!fs.existsSync(ACP_ADAPTERS_DIR)) {
+    fs.mkdirSync(ACP_ADAPTERS_DIR, { recursive: true });
+  }
+  const packageJsonPath = path.join(ACP_ADAPTERS_DIR, "package.json");
+  if (!fs.existsSync(packageJsonPath)) {
+    fs.writeFileSync(packageJsonPath, JSON.stringify({ name: "baby-swe-acp-adapters", private: true }, null, 2));
+  }
+}
+
+function isPackageInstalled(packageName: string): boolean {
+  try {
+    require.resolve(`${packageName}/package.json`);
+    return true;
+  } catch {
+    // Check in our dedicated adapters directory
+    const adapterPackageJson = path.join(ACP_ADAPTERS_DIR, "node_modules", packageName, "package.json");
+    return fs.existsSync(adapterPackageJson);
+  }
+}
+
+function resolvePackagePath(packageName: string): string | null {
+  try {
+    return path.dirname(require.resolve(`${packageName}/package.json`));
+  } catch {
+    const adapterPath = path.join(ACP_ADAPTERS_DIR, "node_modules", packageName);
+    const packageJsonPath = path.join(adapterPath, "package.json");
+    if (fs.existsSync(packageJsonPath)) {
+      return adapterPath;
+    }
+    return null;
+  }
+}
+
+async function installAcpPackage(packageName: string): Promise<void> {
+  const existing = installPromises.get(packageName);
+  if (existing) return existing;
+
+  const promise = (async () => {
+    installStatus.set(packageName, { installed: false, installing: true, error: null });
+    console.log(`[acp] Installing ${packageName}...`);
+
+    ensureAcpAdaptersDir();
+
+    try {
+      const packageManagers = ["bun", "npm"];
+      let lastError: Error | null = null;
+
+      for (const pm of packageManagers) {
+        try {
+          const installCmd = pm === "bun" ? `${pm} add ${packageName}` : `${pm} install ${packageName}`;
+          execSync(installCmd, {
+            cwd: ACP_ADAPTERS_DIR,
+            timeout: ACP_INSTALL_TIMEOUT_MS,
+            stdio: ["ignore", "pipe", "pipe"],
+            env: { ...process.env, npm_config_yes: "true" },
+          });
+          console.log(`[acp] Successfully installed ${packageName} using ${pm}`);
+          installStatus.set(packageName, { installed: true, installing: false, error: null });
+          return;
+        } catch (err) {
+          lastError = err instanceof Error ? err : new Error(String(err));
+          continue;
+        }
+      }
+
+      const errorMsg = lastError?.message || "Installation failed";
+      installStatus.set(packageName, { installed: false, installing: false, error: errorMsg });
+      throw new Error(`[acp] Failed to install ${packageName}: ${errorMsg}`);
+    } finally {
+      installPromises.delete(packageName);
+    }
+  })();
+
+  installPromises.set(packageName, promise);
+  return promise;
+}
+
+async function ensureAcpPackageInstalled(packageName: string): Promise<string> {
+  if (isPackageInstalled(packageName)) {
+    const pkgPath = resolvePackagePath(packageName);
+    if (pkgPath) return pkgPath;
+  }
+
+  await installAcpPackage(packageName);
+
+  const pkgPath = resolvePackagePath(packageName);
+  if (!pkgPath) {
+    throw new Error(`[acp] ${packageName} installation succeeded but package not found`);
+  }
+  return pkgPath;
+}
+
+export function getAcpPackageStatus(packageName: string): AcpInstallStatus {
+  const status = installStatus.get(packageName);
+  if (status) return status;
+
+  const installed = isPackageInstalled(packageName);
+  return { installed, installing: false, error: null };
+}
 
 type JsonRpcId = number | string;
 
@@ -154,7 +269,7 @@ function resolveDeepagentsAcpTarget(): AcpProcessTarget {
   }
 }
 
-function resolveClaudeAgentAcpTarget(): AcpProcessTarget {
+async function resolveClaudeAgentAcpTarget(): Promise<AcpProcessTarget> {
   const overrideCommand = parseAcpCommand(process.env.BABY_SWE_CLAUDE_AGENT_ACP_COMMAND, "");
   if (overrideCommand) {
     return {
@@ -163,25 +278,20 @@ function resolveClaudeAgentAcpTarget(): AcpProcessTarget {
     };
   }
 
-  try {
-    const packageJsonPath = require.resolve(`${CLAUDE_AGENT_ACP_PACKAGE}/package.json`);
-    const packageJson = require(packageJsonPath);
-    const binName = typeof packageJson.bin === "string"
-      ? packageJson.bin
-      : packageJson.bin?.["claude-agent-acp"] || "dist/cli.mjs";
-    const cliPath = path.join(path.dirname(packageJsonPath), binName);
-    return {
-      command: cliPath,
-      args: parseAcpArgs(process.env.BABY_SWE_CLAUDE_AGENT_ACP_ARGS, []),
-    };
-  } catch {
-    throw new Error(
-      `[acp] ${CLAUDE_AGENT_ACP_PACKAGE} is not installed. Run "bun add ${CLAUDE_AGENT_ACP_PACKAGE}" or configure BABY_SWE_CLAUDE_AGENT_ACP_COMMAND.`,
-    );
-  }
+  const packagePath = await ensureAcpPackageInstalled(CLAUDE_AGENT_ACP_PACKAGE);
+  const packageJsonPath = path.join(packagePath, "package.json");
+  const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf-8"));
+  const binName = typeof packageJson.bin === "string"
+    ? packageJson.bin
+    : packageJson.bin?.["claude-agent-acp"] || "dist/cli.mjs";
+  const cliPath = path.join(packagePath, binName);
+  return {
+    command: cliPath,
+    args: parseAcpArgs(process.env.BABY_SWE_CLAUDE_AGENT_ACP_ARGS, []),
+  };
 }
 
-function resolveCodexAcpTarget(): AcpProcessTarget {
+async function resolveCodexAcpTarget(): Promise<AcpProcessTarget> {
   const overrideCommand = parseAcpCommand(process.env.BABY_SWE_CODEX_ACP_COMMAND, "");
   if (overrideCommand) {
     return {
@@ -190,25 +300,20 @@ function resolveCodexAcpTarget(): AcpProcessTarget {
     };
   }
 
-  try {
-    const packageJsonPath = require.resolve(`${CODEX_ACP_PACKAGE}/package.json`);
-    const packageJson = require(packageJsonPath);
-    const binName = typeof packageJson.bin === "string"
-      ? packageJson.bin
-      : packageJson.bin?.["codex-acp"] || "dist/cli.mjs";
-    const cliPath = path.join(path.dirname(packageJsonPath), binName);
-    return {
-      command: cliPath,
-      args: parseAcpArgs(process.env.BABY_SWE_CODEX_ACP_ARGS, []),
-    };
-  } catch {
-    throw new Error(
-      `[acp] ${CODEX_ACP_PACKAGE} is not installed. Run "bun add ${CODEX_ACP_PACKAGE}" or configure BABY_SWE_CODEX_ACP_COMMAND.`,
-    );
-  }
+  const packagePath = await ensureAcpPackageInstalled(CODEX_ACP_PACKAGE);
+  const packageJsonPath = path.join(packagePath, "package.json");
+  const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf-8"));
+  const binName = typeof packageJson.bin === "string"
+    ? packageJson.bin
+    : packageJson.bin?.["codex-acp"] || "dist/cli.mjs";
+  const cliPath = path.join(packagePath, binName);
+  return {
+    command: cliPath,
+    args: parseAcpArgs(process.env.BABY_SWE_CODEX_ACP_ARGS, []),
+  };
 }
 
-function resolveAcpTarget(harness: AgentHarness): AcpProcessTarget {
+async function resolveAcpTarget(harness: AgentHarness): Promise<AcpProcessTarget> {
   if (harness === "deepagents") {
     return resolveDeepagentsAcpTarget();
   }
@@ -850,7 +955,28 @@ function pickAuthMethod(initResult: unknown): string | null {
 
 export async function runAcpStream(options: RunAcpStreamOptions): Promise<void> {
   const cwd = options.folder || process.cwd();
-  const { command, args } = resolveAcpTarget(options.harness);
+
+  const packageName = options.harness === 'claude-agent' ? CLAUDE_AGENT_ACP_PACKAGE
+    : options.harness === 'codex' ? CODEX_ACP_PACKAGE
+    : null;
+
+  if (packageName && !isPackageInstalled(packageName)) {
+    options.send({
+      type: "adapter-installing",
+      sessionId: options.sessionId,
+      packageName,
+    });
+  }
+
+  const { command, args } = await resolveAcpTarget(options.harness);
+
+  if (packageName) {
+    options.send({
+      type: "adapter-installed",
+      sessionId: options.sessionId,
+      packageName,
+    });
+  }
 
   const childEnv: NodeJS.ProcessEnv = {
     ...process.env,

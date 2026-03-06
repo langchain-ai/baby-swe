@@ -126,6 +126,12 @@ export interface CursorLogoutResult {
   error?: string;
 }
 
+export interface AcpAdapterStatus {
+  installed: boolean;
+  installing: boolean;
+  error: string | null;
+}
+
 export interface GlobalSettings {
   version: number;
   modelConfig: ModelConfig;
@@ -154,6 +160,7 @@ declare global {
       cursorAuthStatus: () => Promise<CursorAuthStatus>;
       cursorLogin: () => Promise<CursorLoginResult>;
       cursorLogout: () => Promise<CursorLogoutResult>;
+      acpAdapterStatus: (packageName: string) => Promise<AcpAdapterStatus>;
     };
     storage: {
       getSettings: () => Promise<GlobalSettings>;
@@ -407,4 +414,6 @@ export type StreamEvent =
   | TodoUpdateEvent
   | { type: 'compact-start'; sessionId: string }
   | { type: 'compact'; sessionId: string; summary: string; keptMessages: ChatMessage[] }
-  | { type: 'compact-end'; sessionId: string };
+  | { type: 'compact-end'; sessionId: string }
+  | { type: 'adapter-installing'; sessionId: string; packageName: string }
+  | { type: 'adapter-installed'; sessionId: string; packageName: string };

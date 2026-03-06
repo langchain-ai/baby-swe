@@ -168,6 +168,11 @@ export function App() {
         case 'compact-end':
           setCompacting(event.sessionId, false);
           break;
+        case 'adapter-installing':
+          appendStreamToken(event.sessionId, `Installing ${event.packageName}... This may take a moment on first run.\n\n`);
+          break;
+        case 'adapter-installed':
+          break;
         case 'done': {
           finalizeStream(event.sessionId);
           break;

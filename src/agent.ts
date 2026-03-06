@@ -4,7 +4,7 @@ import { setMaxListeners } from "events";
 import "dotenv/config";
 import type { AgentHarness, ApprovalDecision, ApprovalResponse, ChatMessage, GlobalSettings, ModelConfig, Mode, Project, StreamEvent } from "./types";
 import { loadSettings } from "./storage";
-import { getCursorAuthStatus, runAcpStream, runCursorLogout, startCursorLogin } from "./acp-client";
+import { getCursorAuthStatus, getAcpPackageStatus, runAcpStream, runCursorLogout, startCursorLogin } from "./acp-client";
 import { isAppFocused, showAgentCompletionNotification } from "./main";
 
 const sessionControllers = new Map<string, AbortController>();
@@ -321,5 +321,9 @@ export function setupAgentIPC(_mainWindow: BrowserWindow, getTileProject: (tileI
       console.log(`[agent:compact] Manual compact failed or skipped for session ${sessionId}`);
       send({ type: 'compact-end', sessionId });
     }
+  });
+
+  ipcMain.handle("agent:acp-adapter-status", (_event, packageName: string) => {
+    return getAcpPackageStatus(packageName);
   });
 }
