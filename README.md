@@ -4,18 +4,7 @@ Agent Development Environment built with Electron + React + Zustand, running as 
 
 ## Installation
 
-### Quick Install (npm)
-
-```bash
-npx baby-swe
-```
-
-Or install globally:
-
-```bash
-npm install -g baby-swe
-baby-swe
-```
+Download the latest `.app` or `.dmg` from [Releases](https://github.com/langchain-ai/baby-swe/releases).
 
 ### From Source
 
@@ -74,7 +63,7 @@ bun run build  # production build to ./dist
 ```bash
 bun run pack       # unpacked app
 bun run dist       # current platform
-bun run dist:mac   # macOS (zip target)
+bun run dist:mac   # macOS (dmg + zip)
 bun run dist:win   # Windows (nsis + portable)
 bun run dist:linux # Linux (AppImage + deb)
 ```
