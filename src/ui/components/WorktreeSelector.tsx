@@ -326,10 +326,14 @@ function WorktreeTab({ projectPath, currentWorktreePath, currentBranch, tileId, 
 }) {
   const [worktrees, setWorktrees] = useState<WorktreeInfo[]>([]);
   const [branches, setBranches] = useState<string[]>([]);
+  const [allBranches, setAllBranches] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [action, setAction] = useState<'new-branch' | 'existing-branch' | null>(null);
   const [newBranchName, setNewBranchName] = useState('');
+  const [sourceBranch, setSourceBranch] = useState<string>('');
+  const [showSourceBranchPicker, setShowSourceBranchPicker] = useState(false);
+  const [sourceSearch, setSourceSearch] = useState('');
   const [branchSearch, setBranchSearch] = useState('');
   const isLocalMode = !currentWorktreePath;
 
@@ -340,9 +344,16 @@ function WorktreeTab({ projectPath, currentWorktreePath, currentBranch, tileId, 
       window.git.listBranches(projectPath),
     ]);
     setWorktrees(wts);
+    setAllBranches(branchResult.branches);
     // Filter out branches that already have a worktree, and hide current local branch (use handoff for that)
     const wtBranches = new Set(wts.map(w => w.branch));
     setBranches(branchResult.branches.filter(b => !wtBranches.has(b) && (!isLocalMode || b !== currentBranch)));
+    // Default source branch to main or master
+    const defaultSource = branchResult.branches.find(b => b === 'main') 
+      || branchResult.branches.find(b => b === 'master')
+      || branchResult.branches[0]
+      || '';
+    setSourceBranch(defaultSource);
     setLoading(false);
   }, [projectPath, currentBranch, isLocalMode]);
 
@@ -377,7 +388,7 @@ function WorktreeTab({ projectPath, currentWorktreePath, currentBranch, tileId, 
     const name = newBranchName.trim();
     if (!name) return;
     setError(null);
-    const result = await window.git.addWorktree(projectPath, name, true);
+    const result = await window.git.addWorktree(projectPath, name, true, sourceBranch || undefined);
     if (result.success && result.worktreePath) {
       await window.tile.openWorktree(tileId, projectPath, result.worktreePath);
       onWorktreeChanged?.();
@@ -385,7 +396,7 @@ function WorktreeTab({ projectPath, currentWorktreePath, currentBranch, tileId, 
     } else {
       setError(result.error || 'Failed to create worktree');
     }
-  }, [projectPath, newBranchName, tileId, onClose, onWorktreeChanged]);
+  }, [projectPath, newBranchName, sourceBranch, tileId, onClose, onWorktreeChanged]);
 
   const handleCreateWorktreeExistingBranch = useCallback(async (branch: string) => {
     setError(null);
@@ -419,6 +430,57 @@ function WorktreeTab({ projectPath, currentWorktreePath, currentBranch, tileId, 
     return q ? branches.filter(b => b.toLowerCase().includes(q)) : branches;
   }, [branches, branchSearch]);
 
+  const filteredSourceBranches = useMemo(() => {
+    const q = sourceSearch.trim().toLowerCase();
+    return q ? allBranches.filter(b => b.toLowerCase().includes(q)) : allBranches;
+  }, [allBranches, sourceSearch]);
+
+  if (action === 'new-branch' && showSourceBranchPicker) {
+    return (
+      <div className="flex flex-col">
+        <div className="px-3 py-1.5 text-xs text-gray-400 border-b border-gray-700">
+          Select source branch
+        </div>
+        <div className="px-2 py-1">
+          <input
+            autoFocus
+            type="text"
+            value={sourceSearch}
+            onChange={e => setSourceSearch(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Escape') { setShowSourceBranchPicker(false); setSourceSearch(''); } }}
+            className="w-full bg-gray-900 border border-gray-700 rounded px-2 py-1 text-gray-300 outline-none focus:border-gray-500 text-xs placeholder-gray-600"
+            placeholder="Search branches..."
+          />
+        </div>
+        <div className="max-h-48 overflow-y-auto">
+          {filteredSourceBranches.length === 0 ? (
+            <div className="px-3 py-1.5 text-xs text-gray-600">No branches match</div>
+          ) : (
+            filteredSourceBranches.slice(0, 20).map(branch => (
+              <button
+                key={branch}
+                type="button"
+                onClick={() => { setSourceBranch(branch); setShowSourceBranchPicker(false); setSourceSearch(''); }}
+                className={`block w-full text-left px-3 py-1.5 hover:bg-gray-700 transition-colors whitespace-nowrap text-xs flex items-center gap-2 ${
+                  branch === sourceBranch ? 'text-orange-400' : 'text-gray-400'
+                }`}
+              >
+                <BranchIcon />
+                <span className="font-sans truncate">{branch}</span>
+                {branch === sourceBranch && <span className="ml-auto text-gray-500">selected</span>}
+              </button>
+            ))
+          )}
+        </div>
+        <div className="border-t border-gray-700 p-2">
+          <button type="button" onClick={() => { setShowSourceBranchPicker(false); setSourceSearch(''); }} className="w-full hover:bg-gray-700 text-gray-400 rounded px-2 py-1 text-xs transition-colors">
+            Back
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   if (action === 'new-branch') {
     return (
       <div className="p-3 flex flex-col gap-1.5">
@@ -435,6 +497,16 @@ function WorktreeTab({ projectPath, currentWorktreePath, currentBranch, tileId, 
           className="bg-gray-900 border border-gray-600 rounded px-2 py-1 text-gray-200 outline-none focus:border-gray-400 text-xs w-full"
           placeholder="new-branch-name"
         />
+        <div className="flex items-center gap-1.5">
+          <span className="text-gray-500 text-xs">from</span>
+          <button
+            type="button"
+            onClick={() => setShowSourceBranchPicker(true)}
+            className="flex-1 bg-gray-800 hover:bg-gray-700 border border-gray-600 rounded px-2 py-1 text-gray-300 text-xs text-left truncate transition-colors"
+          >
+            {sourceBranch || 'select branch...'}
+          </button>
+        </div>
         {error && <span className="text-red-400 text-xs">{error}</span>}
         <div className="flex gap-1.5">
           <button type="button" onClick={handleCreateWorktreeNewBranch} className="flex-1 bg-orange-600 hover:bg-orange-500 text-white rounded px-2 py-1 text-xs transition-colors">Create</button>

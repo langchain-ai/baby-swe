@@ -222,7 +222,7 @@ declare global {
       diffFile: (projectPath: string, filePath: string) => Promise<{ original: string; modified: string } | null>;
       status: (projectPath: string) => Promise<GitStatusEntry[]>;
       listWorktrees: (projectPath: string) => Promise<WorktreeInfo[]>;
-      addWorktree: (projectPath: string, branch: string, newBranch?: boolean) => Promise<{ success: boolean; worktreePath?: string; error?: string }>;
+      addWorktree: (projectPath: string, branch: string, newBranch?: boolean, startPoint?: string) => Promise<{ success: boolean; worktreePath?: string; error?: string }>;
       removeWorktree: (projectPath: string, worktreePath: string) => Promise<{ success: boolean; error?: string }>;
     };
   }
