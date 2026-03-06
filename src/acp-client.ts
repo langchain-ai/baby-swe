@@ -244,7 +244,7 @@ function resolveCursorAcpTarget(): AcpProcessTarget {
   };
 }
 
-function resolveDeepagentsAcpTarget(): AcpProcessTarget {
+async function resolveDeepagentsAcpTarget(): Promise<AcpProcessTarget> {
   const overrideCommand = parseAcpCommand(process.env.BABY_SWE_DEEPAGENTS_ACP_COMMAND, "");
   if (overrideCommand) {
     return {
@@ -253,20 +253,12 @@ function resolveDeepagentsAcpTarget(): AcpProcessTarget {
     };
   }
 
-  try {
-    const packageJsonPath = require.resolve(`${DEEPAGENTS_ACP_PACKAGE}/package.json`);
-    const cliPath = path.join(path.dirname(packageJsonPath), "dist", "cli.js");
-    return {
-      // Launch the CLI script directly so it uses the Node runtime from the
-      // shebang, instead of Electron's process.execPath.
-      command: cliPath,
-      args: parseAcpArgs(process.env.BABY_SWE_DEEPAGENTS_ACP_ARGS, []),
-    };
-  } catch {
-    throw new Error(
-      `[acp] ${DEEPAGENTS_ACP_PACKAGE} is not installed. Run "bun add ${DEEPAGENTS_ACP_PACKAGE}" or configure BABY_SWE_DEEPAGENTS_ACP_COMMAND.`,
-    );
-  }
+  const packagePath = await ensureAcpPackageInstalled(DEEPAGENTS_ACP_PACKAGE);
+  const cliPath = path.join(packagePath, "dist", "cli.js");
+  return {
+    command: cliPath,
+    args: parseAcpArgs(process.env.BABY_SWE_DEEPAGENTS_ACP_ARGS, []),
+  };
 }
 
 async function resolveClaudeAgentAcpTarget(): Promise<AcpProcessTarget> {
@@ -315,13 +307,13 @@ async function resolveCodexAcpTarget(): Promise<AcpProcessTarget> {
 
 async function resolveAcpTarget(harness: AgentHarness): Promise<AcpProcessTarget> {
   if (harness === "deepagents") {
-    return resolveDeepagentsAcpTarget();
+    return await resolveDeepagentsAcpTarget();
   }
   if (harness === "claude-agent") {
-    return resolveClaudeAgentAcpTarget();
+    return await resolveClaudeAgentAcpTarget();
   }
   if (harness === "codex") {
-    return resolveCodexAcpTarget();
+    return await resolveCodexAcpTarget();
   }
   return resolveCursorAcpTarget();
 }
@@ -958,6 +950,7 @@ export async function runAcpStream(options: RunAcpStreamOptions): Promise<void> 
 
   const packageName = options.harness === 'claude-agent' ? CLAUDE_AGENT_ACP_PACKAGE
     : options.harness === 'codex' ? CODEX_ACP_PACKAGE
+    : options.harness === 'deepagents' ? DEEPAGENTS_ACP_PACKAGE
     : null;
 
   if (packageName && !isPackageInstalled(packageName)) {

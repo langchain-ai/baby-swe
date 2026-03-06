@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Logo } from './Logo';
 import type { AgentHarness, ApiKeys, CursorAuthStatus, AcpAdapterStatus } from '../../types';
 
+const DEEPAGENTS_PACKAGE = 'deepagents-acp';
 const CLAUDE_AGENT_PACKAGE = '@zed-industries/claude-agent-acp';
 const CODEX_PACKAGE = '@zed-industries/codex-acp';
 
@@ -26,6 +27,7 @@ export function SettingsScreen({
   const [logoutLoading, setLogoutLoading] = useState(false);
   const [cursorMessage, setCursorMessage] = useState<string | null>(null);
 
+  const [deepagentsAdapterStatus, setDeepagentsAdapterStatus] = useState<AcpAdapterStatus | null>(null);
   const [claudeAdapterStatus, setClaudeAdapterStatus] = useState<AcpAdapterStatus | null>(null);
   const [codexAdapterStatus, setCodexAdapterStatus] = useState<AcpAdapterStatus | null>(null);
 
@@ -80,6 +82,15 @@ export function SettingsScreen({
       setter({ installed: false, installing: false, error: String(error) });
     }
   }, []);
+
+  useEffect(() => {
+    if (harness !== 'deepagents') return;
+    refreshAdapterStatus(DEEPAGENTS_PACKAGE, setDeepagentsAdapterStatus);
+    const interval = setInterval(() => {
+      refreshAdapterStatus(DEEPAGENTS_PACKAGE, setDeepagentsAdapterStatus);
+    }, 2000);
+    return () => clearInterval(interval);
+  }, [harness, refreshAdapterStatus]);
 
   useEffect(() => {
     if (harness !== 'claude-agent') return;
@@ -291,10 +302,27 @@ export function SettingsScreen({
 
         {harness === 'deepagents' && (
           <section className="mt-5 rounded-xl border border-[#2a3142] bg-[#151b26] p-5">
-            <h3 className="text-sm font-semibold text-gray-200">Deepagents API Keys</h3>
+            <h3 className="text-sm font-semibold text-gray-200">Deepagents Setup</h3>
             <p className="mt-1 text-xs text-gray-400">
               Configure model keys used by the deepagents harness.
             </p>
+
+            <div className="mt-4 rounded-md border border-[#2a3142] bg-[#111827] p-3">
+              <div className="flex items-center gap-2 text-sm">
+                <AdapterStatusDot status={deepagentsAdapterStatus} />
+                <span className="text-gray-200">
+                  {formatAdapterStatus(deepagentsAdapterStatus, 'Deepagents adapter')}
+                </span>
+              </div>
+              {deepagentsAdapterStatus?.installing && (
+                <p className="mt-2 text-xs text-gray-400">
+                  Installing adapter... This may take a moment on first run.
+                </p>
+              )}
+              {deepagentsAdapterStatus?.error && (
+                <p className="mt-2 text-xs text-red-400">{deepagentsAdapterStatus.error}</p>
+              )}
+            </div>
 
             <div className="mt-4 space-y-4">
               <ApiKeyInput
