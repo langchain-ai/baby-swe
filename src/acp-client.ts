@@ -464,9 +464,34 @@ function isCodexAuthenticated(): boolean {
   try {
     const content = fs.readFileSync(authFile, "utf-8");
     const auth = JSON.parse(content);
-    return Boolean(auth && (auth.accessToken || auth.refreshToken || auth.token));
+    if (auth.auth_mode === "chatgpt" && auth.tokens) {
+      return Boolean(auth.tokens.id_token || auth.tokens.access_token);
+    }
+    if (auth.OPENAI_API_KEY) {
+      return true;
+    }
+    return Boolean(auth.accessToken || auth.refreshToken || auth.token);
   } catch {
     return false;
+  }
+}
+
+function getCodexAccount(): string | null {
+  const authFile = path.join(CODEX_CONFIG_DIR, "auth.json");
+  if (!fs.existsSync(authFile)) return null;
+  try {
+    const content = fs.readFileSync(authFile, "utf-8");
+    const auth = JSON.parse(content);
+    if (auth.auth_mode === "chatgpt" && auth.tokens?.id_token) {
+      const parts = auth.tokens.id_token.split(".");
+      if (parts.length >= 2) {
+        const payload = JSON.parse(Buffer.from(parts[1], "base64").toString("utf-8"));
+        return payload.email || null;
+      }
+    }
+    return null;
+  } catch {
+    return null;
   }
 }
 
@@ -474,7 +499,8 @@ export async function getCodexAuthStatus(): Promise<CodexAuthStatus> {
   const adapterInstalled = isPackageInstalled(CODEX_ACP_PACKAGE);
   const cliInstalled = isPackageInstalled(CODEX_CLI_PACKAGE);
   const authenticated = isCodexAuthenticated();
-  return { adapterInstalled, cliInstalled, authenticated };
+  const account = authenticated ? getCodexAccount() : null;
+  return { adapterInstalled, cliInstalled, authenticated, account };
 }
 
 function resolveCodexCliBin(): string | null {

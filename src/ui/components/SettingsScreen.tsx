@@ -762,7 +762,9 @@ function CodexAuthStatusDot({ status, loading }: { status: CodexAuthStatus | nul
 function formatCodexAuthStatus(status: CodexAuthStatus | null): string {
   if (!status) return 'Status unavailable';
   if (!status.cliInstalled) return 'Codex CLI not installed';
-  if (status.authenticated) return 'Authenticated with ChatGPT';
+  if (status.authenticated) {
+    return status.account ? `Logged in as ${status.account}` : 'Authenticated with ChatGPT';
+  }
   return 'Not authenticated';
 }
 

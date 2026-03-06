@@ -139,6 +139,7 @@ export interface CodexAuthStatus {
   adapterInstalled: boolean;
   cliInstalled: boolean;
   authenticated: boolean;
+  account?: string | null;
   error?: string;
 }
 
