@@ -97,11 +97,14 @@ export interface ChatMessage {
   content: string | ChatMessageContentBlock[];
 }
 
+export type CodexAuthMethod = 'api-key' | 'chatgpt-subscription';
+
 export interface ApiKeys {
   anthropic?: string;
   openai?: string;
   baseten?: string;
   tavily?: string;
+  codexAuthMethod?: CodexAuthMethod;
 }
 
 export type PermissionMode = 'default' | 'full';

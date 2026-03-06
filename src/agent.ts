@@ -17,7 +17,12 @@ function extractAcpEnvOverrides(settings: GlobalSettings): Record<string, string
 
   const overrides: Record<string, string> = {};
   if (apiKeys.anthropic) overrides.ANTHROPIC_API_KEY = apiKeys.anthropic;
-  if (apiKeys.openai) overrides.OPENAI_API_KEY = apiKeys.openai;
+  
+  const useCodexChatGptSubscription = settings.harness === 'codex' && apiKeys.codexAuthMethod === 'chatgpt-subscription';
+  if (apiKeys.openai && !useCodexChatGptSubscription) {
+    overrides.OPENAI_API_KEY = apiKeys.openai;
+  }
+  
   if (apiKeys.baseten) overrides.BASETEN_API_KEY = apiKeys.baseten;
   if (apiKeys.tavily) overrides.TAVILY_API_KEY = apiKeys.tavily;
 

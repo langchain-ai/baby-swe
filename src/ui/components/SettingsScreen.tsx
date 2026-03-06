@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Logo } from './Logo';
-import type { AgentHarness, ApiKeys, CursorAuthStatus, AcpAdapterStatus } from '../../types';
+import type { AgentHarness, ApiKeys, CursorAuthStatus, AcpAdapterStatus, CodexAuthMethod } from '../../types';
 
 const DEEPAGENTS_PACKAGE = 'deepagents-acp';
 const CLAUDE_AGENT_PACKAGE = '@zed-industries/claude-agent-acp';
@@ -35,6 +35,7 @@ export function SettingsScreen({
   const [openai, setOpenai] = useState(initialKeys?.openai || '');
   const [baseten, setBaseten] = useState(initialKeys?.baseten || '');
   const [tavily, setTavily] = useState(initialKeys?.tavily || '');
+  const [codexAuthMethod, setCodexAuthMethod] = useState<CodexAuthMethod>(initialKeys?.codexAuthMethod || 'api-key');
   const [showAnthropic, setShowAnthropic] = useState(false);
   const [showOpenai, setShowOpenai] = useState(false);
   const [showBaseten, setShowBaseten] = useState(false);
@@ -48,6 +49,7 @@ export function SettingsScreen({
     setOpenai(initialKeys?.openai || '');
     setBaseten(initialKeys?.baseten || '');
     setTavily(initialKeys?.tavily || '');
+    setCodexAuthMethod(initialKeys?.codexAuthMethod || 'api-key');
   }, [initialKeys]);
 
   const refreshCursorStatus = useCallback(async () => {
@@ -164,6 +166,7 @@ export function SettingsScreen({
     if (openai.trim()) keys.openai = openai.trim();
     if (baseten.trim()) keys.baseten = baseten.trim();
     if (tavily.trim()) keys.tavily = tavily.trim();
+    keys.codexAuthMethod = codexAuthMethod;
 
     if (harness === 'deepagents' && !keys.anthropic && !keys.openai && !keys.baseten) {
       setKeysError('At least one LLM API key is required for deepagents.');
@@ -177,8 +180,8 @@ export function SettingsScreen({
       return;
     }
 
-    if (harness === 'codex' && !keys.openai) {
-      setKeysError('OpenAI API key is required for Codex.');
+    if (harness === 'codex' && codexAuthMethod === 'api-key' && !keys.openai) {
+      setKeysError('OpenAI API key is required when using API key authentication.');
       setKeysMessage(null);
       return;
     }
@@ -188,14 +191,14 @@ export function SettingsScreen({
     setKeysLoading(true);
     try {
       await onSaveApiKeys(keys);
-      setKeysMessage('API keys saved.');
+      setKeysMessage('Settings saved.');
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       setKeysError(message);
     } finally {
       setKeysLoading(false);
     }
-  }, [anthropic, baseten, harness, onSaveApiKeys, openai, tavily]);
+  }, [anthropic, baseten, codexAuthMethod, harness, onSaveApiKeys, openai, tavily]);
 
   return (
     <div className="h-full bg-[#1a2332] text-gray-100 overflow-auto">
@@ -472,16 +475,47 @@ export function SettingsScreen({
               )}
             </div>
 
-            <div className="mt-4 space-y-4">
-              <ApiKeyInput
-                label="OpenAI API Key"
-                placeholder="sk-..."
-                value={openai}
-                onChange={setOpenai}
-                visible={showOpenai}
-                onToggleVisible={() => setShowOpenai((v) => !v)}
-              />
+            <div className="mt-4">
+              <label className="block text-sm text-gray-400 mb-2">Authentication Method</label>
+              <div className="grid grid-cols-2 gap-3">
+                <AuthMethodOption
+                  title="API Key"
+                  subtitle="Use OpenAI API key"
+                  selected={codexAuthMethod === 'api-key'}
+                  onClick={() => setCodexAuthMethod('api-key')}
+                />
+                <AuthMethodOption
+                  title="ChatGPT Plus"
+                  subtitle="Login with subscription"
+                  selected={codexAuthMethod === 'chatgpt-subscription'}
+                  onClick={() => setCodexAuthMethod('chatgpt-subscription')}
+                />
+              </div>
             </div>
+
+            {codexAuthMethod === 'api-key' && (
+              <div className="mt-4 space-y-4">
+                <ApiKeyInput
+                  label="OpenAI API Key"
+                  placeholder="sk-..."
+                  value={openai}
+                  onChange={setOpenai}
+                  visible={showOpenai}
+                  onToggleVisible={() => setShowOpenai((v) => !v)}
+                />
+              </div>
+            )}
+
+            {codexAuthMethod === 'chatgpt-subscription' && (
+              <div className="mt-4 rounded-md border border-[#2a3142] bg-[#111827] p-3">
+                <p className="text-sm text-gray-300">
+                  Codex will prompt you to log in via your browser on first use.
+                </p>
+                <p className="mt-2 text-xs text-gray-500">
+                  Requires a paid ChatGPT subscription (Plus, Pro, or Team).
+                </p>
+              </div>
+            )}
 
             {keysError && (
               <p className="mt-3 text-xs text-red-400">{keysError}</p>
@@ -497,7 +531,7 @@ export function SettingsScreen({
                 disabled={keysLoading}
                 className="px-4 py-2 bg-[#5a9bc7] hover:bg-[#6daad3] disabled:opacity-50 text-white rounded-md text-sm font-medium transition-colors"
               >
-                {keysLoading ? 'Saving...' : 'Save API Key'}
+                {keysLoading ? 'Saving...' : 'Save Settings'}
               </button>
             </div>
           </section>
@@ -535,6 +569,28 @@ function HarnessOption({ title, subtitle, selected, onClick }: {
     >
       <div className="text-sm font-medium text-gray-100">{title}</div>
       <div className="mt-1 text-xs text-gray-400">{subtitle}</div>
+    </button>
+  );
+}
+
+function AuthMethodOption({ title, subtitle, selected, onClick }: {
+  title: string;
+  subtitle: string;
+  selected: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`text-left rounded-lg border px-3 py-2.5 transition-colors ${
+        selected
+          ? 'border-[#5a9bc7] bg-[#1e2f44]'
+          : 'border-[#2a3142] bg-[#111827] hover:border-gray-500'
+      }`}
+    >
+      <div className="text-sm font-medium text-gray-100">{title}</div>
+      <div className="text-xs text-gray-400">{subtitle}</div>
     </button>
   );
 }
