@@ -1,12 +1,17 @@
-import { spawn } from "child_process";
+import { spawn, execSync } from "child_process";
 import * as path from "path";
 import * as readline from "readline";
+import * as fs from "fs";
+import * as os from "os";
 import { v4 as uuidv4 } from "uuid";
 import { loadAgentMemory } from "./memory/agents";
 import type {
   AgentHarness,
   ApprovalDecision,
   ChatMessage,
+  CodexAuthStatus,
+  CodexLoginResult,
+  CodexLogoutResult,
   CursorAuthStatus,
   CursorLoginResult,
   CursorLogoutResult,
@@ -22,16 +27,134 @@ const CURSOR_CLI_STATUS_ARGS = ["status"];
 const CURSOR_CLI_LOGIN_ARGS = ["login"];
 const CURSOR_CLI_LOGOUT_ARGS = ["logout"];
 const DEEPAGENTS_ACP_PACKAGE = "deepagents-acp";
+const CLAUDE_AGENT_ACP_PACKAGE = "@zed-industries/claude-agent-acp";
+const CODEX_ACP_PACKAGE = "@zed-industries/codex-acp";
+const CODEX_CLI_PACKAGE = "@openai/codex";
 const ACP_DEFAULT_AUTH_METHOD = "cursor_login";
 const ACP_DEFAULT_CLIENT_NAME = "baby-swe";
 const ACP_PROTOCOL_VERSION = 1;
 const CURSOR_CLI_STATUS_TIMEOUT_MS = 10_000;
 const CURSOR_CLI_LOGOUT_TIMEOUT_MS = 10_000;
+const ACP_INSTALL_TIMEOUT_MS = 120_000;
+
+const ACP_ADAPTERS_DIR = path.join(os.homedir(), ".baby-swe", "acp-adapters");
+const CODEX_CONFIG_DIR = path.join(os.homedir(), ".codex");
+const CODEX_AUTH_TIMEOUT_MS = 120_000;
 
 type AcpProcessTarget = {
   command: string;
   args: string[];
 };
+
+type AcpInstallStatus = {
+  installed: boolean;
+  installing: boolean;
+  error: string | null;
+};
+
+const installStatus = new Map<string, AcpInstallStatus>();
+const installPromises = new Map<string, Promise<void>>();
+
+function ensureAcpAdaptersDir(): void {
+  if (!fs.existsSync(ACP_ADAPTERS_DIR)) {
+    fs.mkdirSync(ACP_ADAPTERS_DIR, { recursive: true });
+  }
+  const packageJsonPath = path.join(ACP_ADAPTERS_DIR, "package.json");
+  if (!fs.existsSync(packageJsonPath)) {
+    fs.writeFileSync(packageJsonPath, JSON.stringify({ name: "baby-swe-acp-adapters", private: true }, null, 2));
+  }
+}
+
+function isPackageInstalled(packageName: string): boolean {
+  try {
+    require.resolve(`${packageName}/package.json`);
+    return true;
+  } catch {
+    // Check in our dedicated adapters directory
+    const adapterPackageJson = path.join(ACP_ADAPTERS_DIR, "node_modules", packageName, "package.json");
+    return fs.existsSync(adapterPackageJson);
+  }
+}
+
+function resolvePackagePath(packageName: string): string | null {
+  try {
+    return path.dirname(require.resolve(`${packageName}/package.json`));
+  } catch {
+    const adapterPath = path.join(ACP_ADAPTERS_DIR, "node_modules", packageName);
+    const packageJsonPath = path.join(adapterPath, "package.json");
+    if (fs.existsSync(packageJsonPath)) {
+      return adapterPath;
+    }
+    return null;
+  }
+}
+
+async function installAcpPackage(packageName: string): Promise<void> {
+  const existing = installPromises.get(packageName);
+  if (existing) return existing;
+
+  const promise = (async () => {
+    installStatus.set(packageName, { installed: false, installing: true, error: null });
+    console.log(`[acp] Installing ${packageName}...`);
+
+    ensureAcpAdaptersDir();
+
+    try {
+      const packageManagers = ["bun", "npm"];
+      let lastError: Error | null = null;
+
+      for (const pm of packageManagers) {
+        try {
+          const installCmd = pm === "bun" ? `${pm} add ${packageName}` : `${pm} install ${packageName}`;
+          execSync(installCmd, {
+            cwd: ACP_ADAPTERS_DIR,
+            timeout: ACP_INSTALL_TIMEOUT_MS,
+            stdio: ["ignore", "pipe", "pipe"],
+            env: { ...process.env, npm_config_yes: "true" },
+          });
+          console.log(`[acp] Successfully installed ${packageName} using ${pm}`);
+          installStatus.set(packageName, { installed: true, installing: false, error: null });
+          return;
+        } catch (err) {
+          lastError = err instanceof Error ? err : new Error(String(err));
+          continue;
+        }
+      }
+
+      const errorMsg = lastError?.message || "Installation failed";
+      installStatus.set(packageName, { installed: false, installing: false, error: errorMsg });
+      throw new Error(`[acp] Failed to install ${packageName}: ${errorMsg}`);
+    } finally {
+      installPromises.delete(packageName);
+    }
+  })();
+
+  installPromises.set(packageName, promise);
+  return promise;
+}
+
+async function ensureAcpPackageInstalled(packageName: string): Promise<string> {
+  if (isPackageInstalled(packageName)) {
+    const pkgPath = resolvePackagePath(packageName);
+    if (pkgPath) return pkgPath;
+  }
+
+  await installAcpPackage(packageName);
+
+  const pkgPath = resolvePackagePath(packageName);
+  if (!pkgPath) {
+    throw new Error(`[acp] ${packageName} installation succeeded but package not found`);
+  }
+  return pkgPath;
+}
+
+export function getAcpPackageStatus(packageName: string): AcpInstallStatus {
+  const status = installStatus.get(packageName);
+  if (status) return status;
+
+  const installed = isPackageInstalled(packageName);
+  return { installed, installing: false, error: null };
+}
 
 type JsonRpcId = number | string;
 
@@ -127,7 +250,7 @@ function resolveCursorAcpTarget(): AcpProcessTarget {
   };
 }
 
-function resolveDeepagentsAcpTarget(): AcpProcessTarget {
+async function resolveDeepagentsAcpTarget(): Promise<AcpProcessTarget> {
   const overrideCommand = parseAcpCommand(process.env.BABY_SWE_DEEPAGENTS_ACP_COMMAND, "");
   if (overrideCommand) {
     return {
@@ -136,25 +259,67 @@ function resolveDeepagentsAcpTarget(): AcpProcessTarget {
     };
   }
 
-  try {
-    const packageJsonPath = require.resolve(`${DEEPAGENTS_ACP_PACKAGE}/package.json`);
-    const cliPath = path.join(path.dirname(packageJsonPath), "dist", "cli.js");
-    return {
-      // Launch the CLI script directly so it uses the Node runtime from the
-      // shebang, instead of Electron's process.execPath.
-      command: cliPath,
-      args: parseAcpArgs(process.env.BABY_SWE_DEEPAGENTS_ACP_ARGS, []),
-    };
-  } catch {
-    throw new Error(
-      `[acp] ${DEEPAGENTS_ACP_PACKAGE} is not installed. Run "bun add ${DEEPAGENTS_ACP_PACKAGE}" or configure BABY_SWE_DEEPAGENTS_ACP_COMMAND.`,
-    );
-  }
+  const packagePath = await ensureAcpPackageInstalled(DEEPAGENTS_ACP_PACKAGE);
+  const cliPath = path.join(packagePath, "dist", "cli.js");
+  return {
+    command: cliPath,
+    args: parseAcpArgs(process.env.BABY_SWE_DEEPAGENTS_ACP_ARGS, []),
+  };
 }
 
-function resolveAcpTarget(harness: AgentHarness): AcpProcessTarget {
+async function resolveClaudeAgentAcpTarget(): Promise<AcpProcessTarget> {
+  const overrideCommand = parseAcpCommand(process.env.BABY_SWE_CLAUDE_AGENT_ACP_COMMAND, "");
+  if (overrideCommand) {
+    return {
+      command: overrideCommand,
+      args: parseAcpArgs(process.env.BABY_SWE_CLAUDE_AGENT_ACP_ARGS, []),
+    };
+  }
+
+  const packagePath = await ensureAcpPackageInstalled(CLAUDE_AGENT_ACP_PACKAGE);
+  const packageJsonPath = path.join(packagePath, "package.json");
+  const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf-8"));
+  const binName = typeof packageJson.bin === "string"
+    ? packageJson.bin
+    : packageJson.bin?.["claude-agent-acp"] || "dist/cli.mjs";
+  const cliPath = path.join(packagePath, binName);
+  return {
+    command: cliPath,
+    args: parseAcpArgs(process.env.BABY_SWE_CLAUDE_AGENT_ACP_ARGS, []),
+  };
+}
+
+async function resolveCodexAcpTarget(): Promise<AcpProcessTarget> {
+  const overrideCommand = parseAcpCommand(process.env.BABY_SWE_CODEX_ACP_COMMAND, "");
+  if (overrideCommand) {
+    return {
+      command: overrideCommand,
+      args: parseAcpArgs(process.env.BABY_SWE_CODEX_ACP_ARGS, []),
+    };
+  }
+
+  const packagePath = await ensureAcpPackageInstalled(CODEX_ACP_PACKAGE);
+  const packageJsonPath = path.join(packagePath, "package.json");
+  const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf-8"));
+  const binName = typeof packageJson.bin === "string"
+    ? packageJson.bin
+    : packageJson.bin?.["codex-acp"] || "dist/cli.mjs";
+  const cliPath = path.join(packagePath, binName);
+  return {
+    command: cliPath,
+    args: parseAcpArgs(process.env.BABY_SWE_CODEX_ACP_ARGS, []),
+  };
+}
+
+async function resolveAcpTarget(harness: AgentHarness): Promise<AcpProcessTarget> {
   if (harness === "deepagents") {
-    return resolveDeepagentsAcpTarget();
+    return await resolveDeepagentsAcpTarget();
+  }
+  if (harness === "claude-agent") {
+    return await resolveClaudeAgentAcpTarget();
+  }
+  if (harness === "codex") {
+    return await resolveCodexAcpTarget();
   }
   return resolveCursorAcpTarget();
 }
@@ -290,6 +455,118 @@ export async function runCursorLogout(): Promise<CursorLogoutResult> {
       detail: null,
       error: `Failed to run Cursor logout: ${message}`,
     };
+  }
+}
+
+function isCodexAuthenticated(): boolean {
+  const authFile = path.join(CODEX_CONFIG_DIR, "auth.json");
+  if (!fs.existsSync(authFile)) return false;
+  try {
+    const content = fs.readFileSync(authFile, "utf-8");
+    const auth = JSON.parse(content);
+    if (auth.auth_mode === "chatgpt" && auth.tokens) {
+      return Boolean(auth.tokens.id_token || auth.tokens.access_token);
+    }
+    if (auth.OPENAI_API_KEY) {
+      return true;
+    }
+    return Boolean(auth.accessToken || auth.refreshToken || auth.token);
+  } catch {
+    return false;
+  }
+}
+
+function getCodexAccount(): string | null {
+  const authFile = path.join(CODEX_CONFIG_DIR, "auth.json");
+  if (!fs.existsSync(authFile)) return null;
+  try {
+    const content = fs.readFileSync(authFile, "utf-8");
+    const auth = JSON.parse(content);
+    if (auth.auth_mode === "chatgpt" && auth.tokens?.id_token) {
+      const parts = auth.tokens.id_token.split(".");
+      if (parts.length >= 2) {
+        const payload = JSON.parse(Buffer.from(parts[1], "base64").toString("utf-8"));
+        return payload.email || null;
+      }
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+export async function getCodexAuthStatus(): Promise<CodexAuthStatus> {
+  const adapterInstalled = isPackageInstalled(CODEX_ACP_PACKAGE);
+  const cliInstalled = isPackageInstalled(CODEX_CLI_PACKAGE);
+  const authenticated = isCodexAuthenticated();
+  const account = authenticated ? getCodexAccount() : null;
+  return { adapterInstalled, cliInstalled, authenticated, account };
+}
+
+function resolveCodexCliBin(): string | null {
+  const adapterPath = path.join(ACP_ADAPTERS_DIR, "node_modules", CODEX_CLI_PACKAGE);
+  const packageJsonPath = path.join(adapterPath, "package.json");
+  if (!fs.existsSync(packageJsonPath)) return null;
+
+  try {
+    const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf-8"));
+    const binName = typeof packageJson.bin === "string"
+      ? packageJson.bin
+      : packageJson.bin?.["codex"] || "bin/codex.mjs";
+    return path.join(adapterPath, binName);
+  } catch {
+    return null;
+  }
+}
+
+export async function startCodexLogin(): Promise<CodexLoginResult> {
+  try {
+    await ensureAcpPackageInstalled(CODEX_CLI_PACKAGE);
+    const cliPath = resolveCodexCliBin();
+    if (!cliPath) {
+      return { started: false, error: "Codex CLI not found after installation" };
+    }
+
+    return new Promise<CodexLoginResult>((resolve) => {
+      const proc = spawn(process.execPath, [cliPath, "auth", "login"], {
+        cwd: process.cwd(),
+        detached: true,
+        stdio: "ignore",
+        env: process.env,
+      });
+
+      let settled = false;
+      const settle = (result: CodexLoginResult) => {
+        if (settled) return;
+        settled = true;
+        resolve(result);
+      };
+
+      proc.once("error", (error) => {
+        settle({ started: false, error: error.message });
+      });
+
+      proc.once("spawn", () => {
+        proc.unref();
+        settle({ started: true });
+      });
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return { started: false, error: message };
+  }
+}
+
+export async function runCodexLogout(): Promise<CodexLogoutResult> {
+  const authFile = path.join(CODEX_CONFIG_DIR, "auth.json");
+  try {
+    if (fs.existsSync(authFile)) {
+      fs.unlinkSync(authFile);
+    }
+    return { success: true };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return { success: false, error: message };
   }
 }
 
@@ -788,7 +1065,29 @@ function pickAuthMethod(initResult: unknown): string | null {
 
 export async function runAcpStream(options: RunAcpStreamOptions): Promise<void> {
   const cwd = options.folder || process.cwd();
-  const { command, args } = resolveAcpTarget(options.harness);
+
+  const packageName = options.harness === 'claude-agent' ? CLAUDE_AGENT_ACP_PACKAGE
+    : options.harness === 'codex' ? CODEX_ACP_PACKAGE
+    : options.harness === 'deepagents' ? DEEPAGENTS_ACP_PACKAGE
+    : null;
+
+  if (packageName && !isPackageInstalled(packageName)) {
+    options.send({
+      type: "adapter-installing",
+      sessionId: options.sessionId,
+      packageName,
+    });
+  }
+
+  const { command, args } = await resolveAcpTarget(options.harness);
+
+  if (packageName) {
+    options.send({
+      type: "adapter-installed",
+      sessionId: options.sessionId,
+      packageName,
+    });
+  }
 
   const childEnv: NodeJS.ProcessEnv = {
     ...process.env,

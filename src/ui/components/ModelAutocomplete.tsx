@@ -30,8 +30,32 @@ export const DEEPAGENTS_MODELS: ModelOption[] = [
   { id: 'kimi-k2.5', name: 'Kimi K2.5' },
 ];
 
+export const CLAUDE_AGENT_MODELS: ModelOption[] = [
+  { id: 'claude-opus-4-6', name: 'Opus 4.6' },
+  { id: 'claude-sonnet-4-6', name: 'Sonnet 4.6' },
+];
+
+export const CODEX_MODELS: ModelOption[] = [
+  { id: 'gpt-5.3-codex', name: 'GPT-5.3-Codex Medium', effort: 'medium' },
+  { id: 'gpt-5.3-codex', name: 'GPT-5.3-Codex High', effort: 'high' },
+  { id: 'gpt-5.3-codex', name: 'GPT-5.3-Codex Extra High', effort: 'extra-high' },
+  { id: 'gpt-5.4', name: 'GPT-5.4 Medium', effort: 'medium' },
+  { id: 'gpt-5.4', name: 'GPT-5.4 High', effort: 'high' },
+  { id: 'gpt-5.4', name: 'GPT-5.4 Extra High', effort: 'extra-high' },
+];
+
 export function getModelsForHarness(harness: AgentHarness): ModelOption[] {
-  return harness === 'deepagents' ? DEEPAGENTS_MODELS : CURSOR_MODELS;
+  switch (harness) {
+    case 'deepagents':
+      return DEEPAGENTS_MODELS;
+    case 'claude-agent':
+      return CLAUDE_AGENT_MODELS;
+    case 'codex':
+      return CODEX_MODELS;
+    case 'cursor':
+    default:
+      return CURSOR_MODELS;
+  }
 }
 
 export const AVAILABLE_MODELS: ModelOption[] = CURSOR_MODELS;

@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Logo } from './Logo';
-import type { AgentHarness, ApiKeys, CursorAuthStatus } from '../../types';
+import type { AgentHarness, ApiKeys, CursorAuthStatus, CodexAuthStatus, AcpAdapterStatus, CodexAuthMethod } from '../../types';
+
+const DEEPAGENTS_PACKAGE = 'deepagents-acp';
+const CLAUDE_AGENT_PACKAGE = '@zed-industries/claude-agent-acp';
+const CODEX_PACKAGE = '@zed-industries/codex-acp';
 
 interface SettingsScreenProps {
   harness: AgentHarness;
@@ -23,10 +27,21 @@ export function SettingsScreen({
   const [logoutLoading, setLogoutLoading] = useState(false);
   const [cursorMessage, setCursorMessage] = useState<string | null>(null);
 
+  const [deepagentsAdapterStatus, setDeepagentsAdapterStatus] = useState<AcpAdapterStatus | null>(null);
+  const [claudeAdapterStatus, setClaudeAdapterStatus] = useState<AcpAdapterStatus | null>(null);
+  const [codexAdapterStatus, setCodexAdapterStatus] = useState<AcpAdapterStatus | null>(null);
+
+  const [codexAuthStatus, setCodexAuthStatus] = useState<CodexAuthStatus | null>(null);
+  const [codexAuthLoading, setCodexAuthLoading] = useState(false);
+  const [codexLoginLoading, setCodexLoginLoading] = useState(false);
+  const [codexLogoutLoading, setCodexLogoutLoading] = useState(false);
+  const [codexMessage, setCodexMessage] = useState<string | null>(null);
+
   const [anthropic, setAnthropic] = useState(initialKeys?.anthropic || '');
   const [openai, setOpenai] = useState(initialKeys?.openai || '');
   const [baseten, setBaseten] = useState(initialKeys?.baseten || '');
   const [tavily, setTavily] = useState(initialKeys?.tavily || '');
+  const [codexAuthMethod, setCodexAuthMethod] = useState<CodexAuthMethod>(initialKeys?.codexAuthMethod || 'api-key');
   const [showAnthropic, setShowAnthropic] = useState(false);
   const [showOpenai, setShowOpenai] = useState(false);
   const [showBaseten, setShowBaseten] = useState(false);
@@ -40,6 +55,7 @@ export function SettingsScreen({
     setOpenai(initialKeys?.openai || '');
     setBaseten(initialKeys?.baseten || '');
     setTavily(initialKeys?.tavily || '');
+    setCodexAuthMethod(initialKeys?.codexAuthMethod || 'api-key');
   }, [initialKeys]);
 
   const refreshCursorStatus = useCallback(async () => {
@@ -66,12 +82,106 @@ export function SettingsScreen({
     refreshCursorStatus();
   }, [harness, refreshCursorStatus]);
 
+  const refreshAdapterStatus = useCallback(async (packageName: string, setter: (status: AcpAdapterStatus) => void) => {
+    try {
+      const status = await window.agent.acpAdapterStatus(packageName);
+      setter(status);
+    } catch (error) {
+      setter({ installed: false, installing: false, error: String(error) });
+    }
+  }, []);
+
+  useEffect(() => {
+    if (harness !== 'deepagents') return;
+    refreshAdapterStatus(DEEPAGENTS_PACKAGE, setDeepagentsAdapterStatus);
+    const interval = setInterval(() => {
+      refreshAdapterStatus(DEEPAGENTS_PACKAGE, setDeepagentsAdapterStatus);
+    }, 2000);
+    return () => clearInterval(interval);
+  }, [harness, refreshAdapterStatus]);
+
+  useEffect(() => {
+    if (harness !== 'claude-agent') return;
+    refreshAdapterStatus(CLAUDE_AGENT_PACKAGE, setClaudeAdapterStatus);
+    const interval = setInterval(() => {
+      refreshAdapterStatus(CLAUDE_AGENT_PACKAGE, setClaudeAdapterStatus);
+    }, 2000);
+    return () => clearInterval(interval);
+  }, [harness, refreshAdapterStatus]);
+
+  useEffect(() => {
+    if (harness !== 'codex') return;
+    refreshAdapterStatus(CODEX_PACKAGE, setCodexAdapterStatus);
+    const interval = setInterval(() => {
+      refreshAdapterStatus(CODEX_PACKAGE, setCodexAdapterStatus);
+    }, 2000);
+    return () => clearInterval(interval);
+  }, [harness, refreshAdapterStatus]);
+
+  const refreshCodexAuthStatus = useCallback(async () => {
+    setCodexAuthLoading(true);
+    try {
+      const status = await window.agent.codexAuthStatus();
+      setCodexAuthStatus(status);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setCodexAuthStatus({ adapterInstalled: false, cliInstalled: false, authenticated: false, error: message });
+    } finally {
+      setCodexAuthLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (harness !== 'codex' || codexAuthMethod !== 'chatgpt-subscription') return;
+    refreshCodexAuthStatus();
+  }, [harness, codexAuthMethod, refreshCodexAuthStatus]);
+
   const handleHarnessChange = useCallback(async (nextHarness: AgentHarness) => {
     setCursorMessage(null);
+    setCodexMessage(null);
     setKeysError(null);
     setKeysMessage(null);
     await onHarnessChange(nextHarness);
   }, [onHarnessChange]);
+
+  const handleCodexLogin = useCallback(async () => {
+    setCodexMessage(null);
+    setCodexLoginLoading(true);
+    try {
+      setCodexMessage('Installing Codex CLI...');
+      const result = await window.agent.codexLogin();
+      if (!result.started) {
+        setCodexMessage(result.error || 'Could not complete login.');
+        return;
+      }
+      setCodexMessage('Browser opened for login. Complete authentication in your browser, then click Refresh.');
+      setTimeout(() => refreshCodexAuthStatus(), 3000);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setCodexMessage(message);
+    } finally {
+      setCodexLoginLoading(false);
+    }
+  }, [refreshCodexAuthStatus]);
+
+  const handleCodexLogout = useCallback(async () => {
+    setCodexMessage(null);
+    setCodexLogoutLoading(true);
+    try {
+      const result = await window.agent.codexLogout();
+      if (!result.success) {
+        setCodexMessage(result.error || 'Could not disconnect.');
+      } else {
+        setCodexMessage('Successfully disconnected from ChatGPT.');
+      }
+      await refreshCodexAuthStatus();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setCodexMessage(message);
+    } finally {
+      setCodexLogoutLoading(false);
+    }
+  }, [refreshCodexAuthStatus]);
 
   const handleCursorLogin = useCallback(async () => {
     setCursorMessage(null);
@@ -120,9 +230,22 @@ export function SettingsScreen({
     if (openai.trim()) keys.openai = openai.trim();
     if (baseten.trim()) keys.baseten = baseten.trim();
     if (tavily.trim()) keys.tavily = tavily.trim();
+    keys.codexAuthMethod = codexAuthMethod;
 
-    if (!keys.anthropic && !keys.openai && !keys.baseten) {
+    if (harness === 'deepagents' && !keys.anthropic && !keys.openai && !keys.baseten) {
       setKeysError('At least one LLM API key is required for deepagents.');
+      setKeysMessage(null);
+      return;
+    }
+
+    if (harness === 'claude-agent' && !keys.anthropic) {
+      setKeysError('Anthropic API key is required for Claude Agent.');
+      setKeysMessage(null);
+      return;
+    }
+
+    if (harness === 'codex' && codexAuthMethod === 'api-key' && !keys.openai) {
+      setKeysError('OpenAI API key is required when using API key authentication.');
       setKeysMessage(null);
       return;
     }
@@ -132,14 +255,14 @@ export function SettingsScreen({
     setKeysLoading(true);
     try {
       await onSaveApiKeys(keys);
-      setKeysMessage('API keys saved.');
+      setKeysMessage('Settings saved.');
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       setKeysError(message);
     } finally {
       setKeysLoading(false);
     }
-  }, [anthropic, baseten, onSaveApiKeys, openai, tavily]);
+  }, [anthropic, baseten, codexAuthMethod, harness, onSaveApiKeys, openai, tavily]);
 
   return (
     <div className="h-full bg-[#1a2332] text-gray-100 overflow-auto">
@@ -168,10 +291,22 @@ export function SettingsScreen({
               selected={harness === 'deepagents'}
               onClick={() => handleHarnessChange('deepagents')}
             />
+            <HarnessOption
+              title="Claude Agent"
+              subtitle="Use Claude Agent SDK via Zed's ACP adapter."
+              selected={harness === 'claude-agent'}
+              onClick={() => handleHarnessChange('claude-agent')}
+            />
+            <HarnessOption
+              title="Codex"
+              subtitle="Use OpenAI Codex CLI via Zed's ACP adapter."
+              selected={harness === 'codex'}
+              onClick={() => handleHarnessChange('codex')}
+            />
           </div>
         </section>
 
-        {harness === 'cursor' ? (
+        {harness === 'cursor' && (
           <section className="mt-5 rounded-xl border border-[#2a3142] bg-[#151b26] p-5">
             <div className="flex items-center justify-between gap-3">
               <div>
@@ -205,13 +340,27 @@ export function SettingsScreen({
               {cursorStatus?.error && (
                 <p className="mt-2 text-xs text-red-400">{cursorStatus.error}</p>
               )}
+              {cursorStatus && !cursorStatus.cliAvailable && (
+                <p className="mt-2 text-xs text-gray-400">
+                  To use the Cursor harness, you need to{' '}
+                  <a
+                    href="https://www.cursor.com/downloads"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-[#5a9bc7] hover:underline"
+                  >
+                    download and install Cursor
+                  </a>
+                  .
+                </p>
+              )}
             </div>
 
             <div className="mt-4 flex items-center gap-3">
               <button
                 type="button"
                 onClick={handleCursorLogin}
-                disabled={loginLoading}
+                disabled={loginLoading || !cursorStatus?.cliAvailable}
                 className="px-4 py-2 bg-[#5a9bc7] hover:bg-[#6daad3] disabled:opacity-50 text-white rounded-md text-sm font-medium transition-colors"
               >
                 {loginLoading ? 'Starting...' : 'Authenticate with Cursor CLI'}
@@ -219,7 +368,7 @@ export function SettingsScreen({
               <button
                 type="button"
                 onClick={handleCursorLogout}
-                disabled={logoutLoading}
+                disabled={logoutLoading || !cursorStatus?.cliAvailable}
                 className="px-4 py-2 bg-gray-700 hover:bg-gray-600 disabled:opacity-50 text-gray-100 rounded-md text-sm font-medium transition-colors"
               >
                 {logoutLoading ? 'Disconnecting...' : 'Disconnect Cursor Auth'}
@@ -230,12 +379,31 @@ export function SettingsScreen({
               <p className="mt-3 text-xs text-gray-300">{cursorMessage}</p>
             )}
           </section>
-        ) : (
+        )}
+
+        {harness === 'deepagents' && (
           <section className="mt-5 rounded-xl border border-[#2a3142] bg-[#151b26] p-5">
-            <h3 className="text-sm font-semibold text-gray-200">Deepagents API Keys</h3>
+            <h3 className="text-sm font-semibold text-gray-200">Deepagents Setup</h3>
             <p className="mt-1 text-xs text-gray-400">
               Configure model keys used by the deepagents harness.
             </p>
+
+            <div className="mt-4 rounded-md border border-[#2a3142] bg-[#111827] p-3">
+              <div className="flex items-center gap-2 text-sm">
+                <AdapterStatusDot status={deepagentsAdapterStatus} />
+                <span className="text-gray-200">
+                  {formatAdapterStatus(deepagentsAdapterStatus, 'Deepagents adapter')}
+                </span>
+              </div>
+              {deepagentsAdapterStatus?.installing && (
+                <p className="mt-2 text-xs text-gray-400">
+                  Installing adapter... This may take a moment on first run.
+                </p>
+              )}
+              {deepagentsAdapterStatus?.error && (
+                <p className="mt-2 text-xs text-red-400">{deepagentsAdapterStatus.error}</p>
+              )}
+            </div>
 
             <div className="mt-4 space-y-4">
               <ApiKeyInput
@@ -292,6 +460,194 @@ export function SettingsScreen({
           </section>
         )}
 
+        {harness === 'claude-agent' && (
+          <section className="mt-5 rounded-xl border border-[#2a3142] bg-[#151b26] p-5">
+            <h3 className="text-sm font-semibold text-gray-200">Claude Agent Setup</h3>
+            <p className="mt-1 text-xs text-gray-400">
+              Uses the Claude Agent SDK via the Zed ACP adapter.
+            </p>
+
+            <div className="mt-4 rounded-md border border-[#2a3142] bg-[#111827] p-3">
+              <div className="flex items-center gap-2 text-sm">
+                <AdapterStatusDot status={claudeAdapterStatus} />
+                <span className="text-gray-200">
+                  {formatAdapterStatus(claudeAdapterStatus, 'Claude Agent adapter')}
+                </span>
+              </div>
+              {claudeAdapterStatus?.installing && (
+                <p className="mt-2 text-xs text-gray-400">
+                  Installing adapter... This may take a moment on first run.
+                </p>
+              )}
+              {claudeAdapterStatus?.error && (
+                <p className="mt-2 text-xs text-red-400">{claudeAdapterStatus.error}</p>
+              )}
+            </div>
+
+            <div className="mt-4 space-y-4">
+              <ApiKeyInput
+                label="Anthropic API Key"
+                placeholder="sk-ant-..."
+                value={anthropic}
+                onChange={setAnthropic}
+                visible={showAnthropic}
+                onToggleVisible={() => setShowAnthropic((v) => !v)}
+              />
+            </div>
+
+            {keysError && (
+              <p className="mt-3 text-xs text-red-400">{keysError}</p>
+            )}
+            {keysMessage && (
+              <p className="mt-3 text-xs text-gray-300">{keysMessage}</p>
+            )}
+
+            <div className="mt-4">
+              <button
+                type="button"
+                onClick={handleSaveApiKeys}
+                disabled={keysLoading}
+                className="px-4 py-2 bg-[#5a9bc7] hover:bg-[#6daad3] disabled:opacity-50 text-white rounded-md text-sm font-medium transition-colors"
+              >
+                {keysLoading ? 'Saving...' : 'Save API Key'}
+              </button>
+            </div>
+          </section>
+        )}
+
+        {harness === 'codex' && (
+          <section className="mt-5 rounded-xl border border-[#2a3142] bg-[#151b26] p-5">
+            <h3 className="text-sm font-semibold text-gray-200">Codex Setup</h3>
+            <p className="mt-1 text-xs text-gray-400">
+              Uses the OpenAI Codex CLI via the Zed ACP adapter.
+            </p>
+
+            <div className="mt-4 rounded-md border border-[#2a3142] bg-[#111827] p-3">
+              <div className="flex items-center gap-2 text-sm">
+                <AdapterStatusDot status={codexAdapterStatus} />
+                <span className="text-gray-200">
+                  {formatAdapterStatus(codexAdapterStatus, 'Codex adapter')}
+                </span>
+              </div>
+              {codexAdapterStatus?.installing && (
+                <p className="mt-2 text-xs text-gray-400">
+                  Installing adapter... This may take a moment on first run.
+                </p>
+              )}
+              {codexAdapterStatus?.error && (
+                <p className="mt-2 text-xs text-red-400">{codexAdapterStatus.error}</p>
+              )}
+            </div>
+
+            <div className="mt-4">
+              <label className="block text-sm text-gray-400 mb-2">Authentication Method</label>
+              <div className="grid grid-cols-2 gap-3">
+                <AuthMethodOption
+                  title="API Key"
+                  subtitle="Use OpenAI API key"
+                  selected={codexAuthMethod === 'api-key'}
+                  onClick={() => setCodexAuthMethod('api-key')}
+                />
+                <AuthMethodOption
+                  title="ChatGPT Plus"
+                  subtitle="Login with subscription"
+                  selected={codexAuthMethod === 'chatgpt-subscription'}
+                  onClick={() => setCodexAuthMethod('chatgpt-subscription')}
+                />
+              </div>
+            </div>
+
+            {codexAuthMethod === 'api-key' && (
+              <div className="mt-4 space-y-4">
+                <ApiKeyInput
+                  label="OpenAI API Key"
+                  placeholder="sk-..."
+                  value={openai}
+                  onChange={setOpenai}
+                  visible={showOpenai}
+                  onToggleVisible={() => setShowOpenai((v) => !v)}
+                />
+              </div>
+            )}
+
+            {codexAuthMethod === 'chatgpt-subscription' && (
+              <div className="mt-4 space-y-4">
+                <div className="rounded-md border border-[#2a3142] bg-[#111827] p-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2 text-sm">
+                      <CodexAuthStatusDot status={codexAuthStatus} loading={codexAuthLoading} />
+                      <span className="text-gray-200">
+                        {codexAuthLoading
+                          ? 'Checking authentication...'
+                          : formatCodexAuthStatus(codexAuthStatus)}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => refreshCodexAuthStatus()}
+                      disabled={codexAuthLoading}
+                      className="px-2 py-1 text-xs bg-gray-700 hover:bg-gray-600 disabled:opacity-50 text-gray-100 rounded-md transition-colors"
+                    >
+                      Refresh
+                    </button>
+                  </div>
+                  {codexAuthStatus?.error && (
+                    <p className="mt-2 text-xs text-red-400">{codexAuthStatus.error}</p>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-3">
+                  {!codexAuthStatus?.authenticated ? (
+                    <button
+                      type="button"
+                      onClick={handleCodexLogin}
+                      disabled={codexLoginLoading || !codexAdapterStatus?.installed}
+                      className="px-4 py-2 bg-[#5a9bc7] hover:bg-[#6daad3] disabled:opacity-50 text-white rounded-md text-sm font-medium transition-colors"
+                    >
+                      {codexLoginLoading ? 'Logging in...' : 'Login with ChatGPT'}
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={handleCodexLogout}
+                      disabled={codexLogoutLoading}
+                      className="px-4 py-2 bg-gray-700 hover:bg-gray-600 disabled:opacity-50 text-gray-100 rounded-md text-sm font-medium transition-colors"
+                    >
+                      {codexLogoutLoading ? 'Disconnecting...' : 'Disconnect'}
+                    </button>
+                  )}
+                </div>
+
+                {codexMessage && (
+                  <p className="text-xs text-gray-300">{codexMessage}</p>
+                )}
+
+                <p className="text-xs text-gray-500">
+                  Requires a paid ChatGPT subscription (Plus, Pro, or Team).
+                </p>
+              </div>
+            )}
+
+            {keysError && (
+              <p className="mt-3 text-xs text-red-400">{keysError}</p>
+            )}
+            {keysMessage && (
+              <p className="mt-3 text-xs text-gray-300">{keysMessage}</p>
+            )}
+
+            <div className="mt-4">
+              <button
+                type="button"
+                onClick={handleSaveApiKeys}
+                disabled={keysLoading}
+                className="px-4 py-2 bg-[#5a9bc7] hover:bg-[#6daad3] disabled:opacity-50 text-white rounded-md text-sm font-medium transition-colors"
+              >
+                {keysLoading ? 'Saving...' : 'Save Settings'}
+              </button>
+            </div>
+          </section>
+        )}
+
         <div className="mt-6 flex justify-end">
           <button
             type="button"
@@ -328,6 +684,28 @@ function HarnessOption({ title, subtitle, selected, onClick }: {
   );
 }
 
+function AuthMethodOption({ title, subtitle, selected, onClick }: {
+  title: string;
+  subtitle: string;
+  selected: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`text-left rounded-lg border px-3 py-2.5 transition-colors ${
+        selected
+          ? 'border-[#5a9bc7] bg-[#1e2f44]'
+          : 'border-[#2a3142] bg-[#111827] hover:border-gray-500'
+      }`}
+    >
+      <div className="text-sm font-medium text-gray-100">{title}</div>
+      <div className="text-xs text-gray-400">{subtitle}</div>
+    </button>
+  );
+}
+
 function StatusDot({ status }: { status: CursorAuthStatus | null }) {
   const className = !status
     ? 'bg-gray-500'
@@ -342,9 +720,51 @@ function StatusDot({ status }: { status: CursorAuthStatus | null }) {
 
 function formatCursorStatus(status: CursorAuthStatus | null): string {
   if (!status) return 'Status unavailable';
-  if (!status.cliAvailable) return 'Cursor CLI not available';
+  if (!status.cliAvailable) return 'Cursor is not installed';
   if (status.authenticated && status.account) return `Authenticated as ${status.account}`;
   if (status.authenticated) return 'Authenticated';
+  return 'Not authenticated';
+}
+
+function AdapterStatusDot({ status }: { status: AcpAdapterStatus | null }) {
+  const className = !status
+    ? 'bg-gray-500'
+    : status.installing
+      ? 'bg-yellow-400 animate-pulse'
+      : status.installed
+        ? 'bg-green-400'
+        : 'bg-gray-500';
+
+  return <span className={`w-2 h-2 rounded-full ${className}`} />;
+}
+
+function formatAdapterStatus(status: AcpAdapterStatus | null, name: string): string {
+  if (!status) return 'Checking status...';
+  if (status.installing) return `Installing ${name}...`;
+  if (status.installed) return `${name} ready`;
+  return `${name} will be installed on first use`;
+}
+
+function CodexAuthStatusDot({ status, loading }: { status: CodexAuthStatus | null; loading: boolean }) {
+  const className = loading
+    ? 'bg-gray-500 animate-pulse'
+    : !status
+      ? 'bg-gray-500'
+      : !status.cliInstalled
+        ? 'bg-gray-500'
+        : status.authenticated
+          ? 'bg-green-400'
+          : 'bg-yellow-400';
+
+  return <span className={`w-2 h-2 rounded-full ${className}`} />;
+}
+
+function formatCodexAuthStatus(status: CodexAuthStatus | null): string {
+  if (!status) return 'Status unavailable';
+  if (!status.cliInstalled) return 'Codex CLI not installed';
+  if (status.authenticated) {
+    return status.account ? `Logged in as ${status.account}` : 'Authenticated with ChatGPT';
+  }
   return 'Not authenticated';
 }
 

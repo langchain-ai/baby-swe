@@ -12,7 +12,6 @@ export const MODEL_CONTEXT_LIMITS: Record<string, number> = {
   'claude-sonnet-4-5': 200_000,
   'claude-sonnet-4': 200_000,
   'claude-haiku-3-5': 200_000,
-
   // OpenAI
   'gpt-5.3-codex': 400_000,
   'gpt-5.4': 512_000,

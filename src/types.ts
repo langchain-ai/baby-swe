@@ -97,15 +97,18 @@ export interface ChatMessage {
   content: string | ChatMessageContentBlock[];
 }
 
+export type CodexAuthMethod = 'api-key' | 'chatgpt-subscription';
+
 export interface ApiKeys {
   anthropic?: string;
   openai?: string;
   baseten?: string;
   tavily?: string;
+  codexAuthMethod?: CodexAuthMethod;
 }
 
 export type PermissionMode = 'default' | 'full';
-export type AgentHarness = 'cursor' | 'deepagents';
+export type AgentHarness = 'cursor' | 'deepagents' | 'claude-agent' | 'codex';
 
 export interface CursorAuthStatus {
   cliAvailable: boolean;
@@ -123,6 +126,30 @@ export interface CursorLoginResult {
 export interface CursorLogoutResult {
   success: boolean;
   detail?: string | null;
+  error?: string;
+}
+
+export interface AcpAdapterStatus {
+  installed: boolean;
+  installing: boolean;
+  error: string | null;
+}
+
+export interface CodexAuthStatus {
+  adapterInstalled: boolean;
+  cliInstalled: boolean;
+  authenticated: boolean;
+  account?: string | null;
+  error?: string;
+}
+
+export interface CodexLoginResult {
+  started: boolean;
+  error?: string;
+}
+
+export interface CodexLogoutResult {
+  success: boolean;
   error?: string;
 }
 
@@ -154,6 +181,10 @@ declare global {
       cursorAuthStatus: () => Promise<CursorAuthStatus>;
       cursorLogin: () => Promise<CursorLoginResult>;
       cursorLogout: () => Promise<CursorLogoutResult>;
+      codexAuthStatus: () => Promise<CodexAuthStatus>;
+      codexLogin: () => Promise<CodexLoginResult>;
+      codexLogout: () => Promise<CodexLogoutResult>;
+      acpAdapterStatus: (packageName: string) => Promise<AcpAdapterStatus>;
     };
     storage: {
       getSettings: () => Promise<GlobalSettings>;
@@ -407,4 +438,6 @@ export type StreamEvent =
   | TodoUpdateEvent
   | { type: 'compact-start'; sessionId: string }
   | { type: 'compact'; sessionId: string; summary: string; keptMessages: ChatMessage[] }
-  | { type: 'compact-end'; sessionId: string };
+  | { type: 'compact-end'; sessionId: string }
+  | { type: 'adapter-installing'; sessionId: string; packageName: string }
+  | { type: 'adapter-installed'; sessionId: string; packageName: string };

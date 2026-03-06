@@ -4,7 +4,7 @@ import { setMaxListeners } from "events";
 import "dotenv/config";
 import type { AgentHarness, ApprovalDecision, ApprovalResponse, ChatMessage, GlobalSettings, ModelConfig, Mode, Project, StreamEvent } from "./types";
 import { loadSettings } from "./storage";
-import { getCursorAuthStatus, runAcpStream, runCursorLogout, startCursorLogin } from "./acp-client";
+import { getCursorAuthStatus, getCodexAuthStatus, getAcpPackageStatus, runAcpStream, runCodexLogout, runCursorLogout, startCodexLogin, startCursorLogin } from "./acp-client";
 import { isAppFocused, showAgentCompletionNotification } from "./main";
 
 const sessionControllers = new Map<string, AbortController>();
@@ -17,7 +17,12 @@ function extractAcpEnvOverrides(settings: GlobalSettings): Record<string, string
 
   const overrides: Record<string, string> = {};
   if (apiKeys.anthropic) overrides.ANTHROPIC_API_KEY = apiKeys.anthropic;
-  if (apiKeys.openai) overrides.OPENAI_API_KEY = apiKeys.openai;
+  
+  const useCodexChatGptSubscription = settings.harness === 'codex' && apiKeys.codexAuthMethod === 'chatgpt-subscription';
+  if (apiKeys.openai && !useCodexChatGptSubscription) {
+    overrides.OPENAI_API_KEY = apiKeys.openai;
+  }
+  
   if (apiKeys.baseten) overrides.BASETEN_API_KEY = apiKeys.baseten;
   if (apiKeys.tavily) overrides.TAVILY_API_KEY = apiKeys.tavily;
 
@@ -26,8 +31,12 @@ function extractAcpEnvOverrides(settings: GlobalSettings): Record<string, string
 
 function resolveAcpRuntimeConfig(): { harness: AgentHarness; envOverrides?: Record<string, string> } {
   const settings = loadSettings();
+  const validHarnesses: AgentHarness[] = ["cursor", "deepagents", "claude-agent", "codex"];
+  const harness = validHarnesses.includes(settings.harness as AgentHarness)
+    ? (settings.harness as AgentHarness)
+    : "cursor";
   return {
-    harness: settings.harness === "deepagents" ? "deepagents" : "cursor",
+    harness,
     envOverrides: extractAcpEnvOverrides(settings),
   };
 }
@@ -162,18 +171,29 @@ export function setupAgentIPC(_mainWindow: BrowserWindow, getTileProject: (tileI
     return runCursorLogout();
   });
 
+  ipcMain.handle("agent:codexAuthStatus", async () => {
+    return getCodexAuthStatus();
+  });
+
+  ipcMain.handle("agent:codexLogin", async () => {
+    return startCodexLogin();
+  });
+
+  ipcMain.handle("agent:codexLogout", async () => {
+    return runCodexLogout();
+  });
+
   ipcMain.handle("agent:invoke", async (_event, userMessage: string): Promise<AgentResponse> => {
     const controller = new AbortController();
     const invokeSessionId = `invoke-${uuidv4()}`;
+    const runtimeConfig = resolveAcpRuntimeConfig();
     const settings = loadSettings();
-    const harness = settings.harness === "deepagents" ? "deepagents" : "cursor";
-    const envOverrides = extractAcpEnvOverrides(settings);
     const modelConfig = settings.modelConfig || { name: "acp-default", provider: "acp-cursor", effort: "default" };
     let content = "";
 
     try {
       await runAcpStream({
-        harness,
+        harness: runtimeConfig.harness,
         sessionId: invokeSessionId,
         messages: [{ role: "user", content: userMessage }],
         mode: "yolo",
@@ -181,7 +201,7 @@ export function setupAgentIPC(_mainWindow: BrowserWindow, getTileProject: (tileI
         folder: process.cwd(),
         controller,
         clientVersion: app.getVersion(),
-        envOverrides,
+        envOverrides: runtimeConfig.envOverrides,
         send: (streamEvent) => {
           if (streamEvent.type === "token" && typeof streamEvent.token === "string") {
             content += streamEvent.token;
@@ -318,5 +338,9 @@ export function setupAgentIPC(_mainWindow: BrowserWindow, getTileProject: (tileI
       console.log(`[agent:compact] Manual compact failed or skipped for session ${sessionId}`);
       send({ type: 'compact-end', sessionId });
     }
+  });
+
+  ipcMain.handle("agent:acp-adapter-status", (_event, packageName: string) => {
+    return getAcpPackageStatus(packageName);
   });
 }

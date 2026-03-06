@@ -22,6 +22,10 @@ contextBridge.exposeInMainWorld('agent', {
   cursorAuthStatus: () => ipcRenderer.invoke('agent:cursorAuthStatus'),
   cursorLogin: () => ipcRenderer.invoke('agent:cursorLogin'),
   cursorLogout: () => ipcRenderer.invoke('agent:cursorLogout'),
+  codexAuthStatus: () => ipcRenderer.invoke('agent:codexAuthStatus'),
+  codexLogin: () => ipcRenderer.invoke('agent:codexLogin'),
+  codexLogout: () => ipcRenderer.invoke('agent:codexLogout'),
+  acpAdapterStatus: (packageName: string) => ipcRenderer.invoke('agent:acp-adapter-status', packageName),
   onStreamEvent: (callback: (event: StreamEvent) => void) => {
     const handler = (_event: Electron.IpcRendererEvent, streamEvent: StreamEvent) => {
       callback(streamEvent);
