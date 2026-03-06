@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { v4 as uuidv4 } from 'uuid';
-import type { Message, Chunk, Mode, ModelConfig, ToolStatus, Thread, Session, Project, ApprovalRequest, DiffData, TodoItem, Tile, LayoutNode, SplitDirection, TileType, Workspace, ApiKeys, FileViewerData, AgentStatus, PermissionMode, AgentHarness } from './types';
+import type { Message, Chunk, Mode, ModelConfig, AcpToolStatus, AcpToolKind, AcpToolLocation, Thread, Session, Project, ApprovalRequest, DiffData, TodoItem, Tile, LayoutNode, SplitDirection, TileType, Workspace, ApiKeys, FileViewerData, AgentStatus, PermissionMode, AgentHarness } from './types';
 import { loadSettings, saveSettings, loadRecentProjects } from './persistence';
 import {
   createInitialLayout,
@@ -70,11 +70,11 @@ interface AppState {
   resumeThread: (sessionId: string, thread: { messages: Message[]; title: string }) => void;
 
   addMessageToSession: (sessionId: string, author: Message['author'], chunks: Chunk[]) => string;
-  updateToolExecution: (sessionId: string, messageId: string, toolCallId: string, status: ToolStatus, output?: string, elapsedMs?: number) => void;
+  updateToolExecution: (sessionId: string, messageId: string, toolCallId: string, status: AcpToolStatus, output?: string, elapsedMs?: number) => void;
 
   startStreaming: (sessionId: string) => string;
   appendStreamToken: (sessionId: string, token: string) => void;
-  addToolStart: (sessionId: string, toolCallId: string, toolName: string, toolArgs: Record<string, unknown>, approvalRequestId?: string, diffData?: DiffData) => void;
+  addToolStart: (sessionId: string, toolCallId: string, title: string, toolKind: AcpToolKind, input: Record<string, unknown>, approvalRequestId?: string, diffData?: DiffData, locations?: AcpToolLocation[]) => void;
   updateToolEnd: (sessionId: string, toolCallId: string, output: string, error: string | undefined, elapsedMs: number) => void;
   finalizeStream: (sessionId: string) => void;
   abortStream: (sessionId: string, error?: string) => void;
@@ -82,7 +82,7 @@ interface AppState {
   setAutoApproveSession: (sessionId: string, value: boolean) => void;
   addPendingApproval: (sessionId: string, request: ApprovalRequest) => void;
   removePendingApproval: (sessionId: string, requestId: string) => void;
-  updateToolStatus: (sessionId: string, toolCallId: string, status: ToolStatus) => void;
+  updateToolStatus: (sessionId: string, toolCallId: string, status: AcpToolStatus) => void;
   updateTodos: (sessionId: string, todos: TodoItem[]) => void;
   setSessionMode: (sessionId: string, mode: Mode) => void;
   setSessionPromptDraft: (sessionId: string, promptDraft: string) => void;
@@ -915,7 +915,7 @@ export const useStore = create<AppState>((set, get) => ({
     });
   },
 
-  addToolStart: (sessionId, toolCallId, toolName, toolArgs, approvalRequestId, diffData) => {
+  addToolStart: (sessionId, toolCallId, title, toolKind, input, approvalRequestId, diffData, locations) => {
     set((state) => {
       const session = state.sessions[sessionId];
       if (!session || !session.streamingMessageId) return state;
@@ -923,11 +923,13 @@ export const useStore = create<AppState>((set, get) => ({
       const toolChunk: Chunk = {
         kind: 'tool-execution',
         toolCallId,
-        toolName,
-        toolArgs,
-        status: approvalRequestId ? 'pending-approval' : 'running',
+        title,
+        toolKind,
+        input,
+        status: approvalRequestId ? 'pending' : 'in_progress',
         approvalRequestId,
         diffData,
+        locations,
       };
 
       const newMessages = session.messages.map((msg) => {
@@ -960,7 +962,7 @@ export const useStore = create<AppState>((set, get) => ({
             if (chunk.kind !== 'tool-execution' || chunk.toolCallId !== toolCallId) return chunk;
             return {
               ...chunk,
-              status: error ? 'error' : 'success',
+              status: error ? 'error' : 'completed',
               output,
               elapsedMs,
             } as Chunk;
