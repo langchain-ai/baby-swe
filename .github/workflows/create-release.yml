@@ -85,7 +85,7 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Build mac distribution
-        run: bun run build && bunx --bun electron-builder --mac --publish never
+        run: bun run build && bunx --bun electron-builder --mac dmg zip --publish never
 
       - name: Package .app for release asset
         id: package_app
@@ -98,6 +98,8 @@ jobs:
             ls -la release
             exit 1
           fi
+
+          MAC_DMG=$(compgen -G "release/Baby SWE-${VERSION}-*.dmg" | head -n 1 || true)
 
           mkdir -p release/unpacked
           ditto -x -k "$MAC_ZIP" release/unpacked
@@ -118,6 +120,7 @@ jobs:
 
           echo "mac_zip=$MAC_ZIP" >> "$GITHUB_OUTPUT"
           echo "app_zip=$APP_ZIP" >> "$GITHUB_OUTPUT"
+          echo "mac_dmg=$MAC_DMG" >> "$GITHUB_OUTPUT"
 
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
@@ -128,3 +131,4 @@ jobs:
           files: |
             ${{ steps.package_app.outputs.mac_zip }}
             ${{ steps.package_app.outputs.app_zip }}
+            ${{ steps.package_app.outputs.mac_dmg }}
