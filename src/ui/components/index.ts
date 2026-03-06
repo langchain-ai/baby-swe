@@ -7,3 +7,4 @@ export { TilingLayout } from './TilingLayout';
 export { SplitResizer } from './SplitResizer';
 export { TerminalTile } from './TerminalTile';
 export { WorkspaceBar } from './WorkspaceBar';
+export { LinearAutocomplete } from './LinearAutocomplete';
