@@ -298,15 +298,11 @@ export const PromptBar = memo(function PromptBar({
     return () => document.removeEventListener('keydown', handleApprovalKeyDown);
   }, [approvalContent, approvalSelectedIndex, hasPendingApproval, isFocused, submitApprovalDecision]);
 
-  useEffect(() => {
-    inputRef.current?.focus();
-  }, [busy]);
-
   useLayoutEffect(() => {
     if (isFocused && !hasPendingApproval) {
       inputRef.current?.focus();
     }
-  }, [isFocused, hasPendingApproval]);
+  }, [busy, isFocused, hasPendingApproval]);
 
   useLayoutEffect(() => {
     const el = inputRef.current;
