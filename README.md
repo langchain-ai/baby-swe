@@ -2,6 +2,30 @@
 
 Terminal-style desktop AI coding assistant built with Electron + React + Zustand, now running as an ACP client with swappable harnesses.
 
+## Installation
+
+### Quick Install (npm)
+
+```bash
+npx baby-swe
+```
+
+Or install globally:
+
+```bash
+npm install -g baby-swe
+baby-swe
+```
+
+### From Source
+
+```bash
+git clone https://github.com/langchain-ai/baby-swe.git
+cd baby-swe
+bun install
+bun run dev
+```
+
 ## ACP-First Architecture
 
 Baby SWE talks ACP and can switch harnesses at runtime from Settings (top-right cog).
