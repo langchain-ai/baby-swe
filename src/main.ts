@@ -576,6 +576,25 @@ function getGlobalWorktreeDir(repoRoot: string, branch: string): string {
   return path.join(baseDir, repoKey, branchKey);
 }
 
+function isManagedWorktreePath(worktreePath: string): boolean {
+  const baseDir = path.join(app.getPath('userData'), 'worktrees');
+  const resolvedBaseDir = path.resolve(baseDir);
+  const resolvedWorktreePath = path.resolve(worktreePath);
+  return resolvedWorktreePath === resolvedBaseDir || resolvedWorktreePath.startsWith(`${resolvedBaseDir}${path.sep}`);
+}
+
+function cleanupWorktreeIfOrphaned(project: Project | null | undefined): void {
+  const worktreePath = project?.worktreePath;
+  if (!project || !worktreePath || !isManagedWorktreePath(worktreePath)) return;
+
+  const stillReferenced = Array.from(tileProjects.values()).some(
+    (tileProject) => tileProject?.path === project.path && tileProject?.worktreePath === worktreePath,
+  );
+  if (stillReferenced) return;
+
+  removeGitWorktree(project.path, worktreePath);
+}
+
 function listGitWorktrees(projectPath: string): WorktreeInfo[] {
   try {
     const result = execFileSync('git', ['worktree', 'list', '--porcelain'], {
@@ -950,6 +969,7 @@ function setupStorageIPC(): void {
   });
 
   ipcMain.handle('tile:openProject', async (_event, tileId: string, folderPath?: string) => {
+    const previousProject = tileProjects.get(tileId);
     if (!folderPath) {
       const result = await dialog.showOpenDialog(mainWindow!, {
         properties: ['openDirectory'],
@@ -965,6 +985,7 @@ function setupStorageIPC(): void {
     const projectWithBranch = { ...project, gitBranch, githubPR };
     tileProjects.set(tileId, projectWithBranch);
     mainWindow?.webContents.send('tile:projectChanged', tileId, projectWithBranch);
+    cleanupWorktreeIfOrphaned(previousProject);
     return projectWithBranch;
   });
 
@@ -973,6 +994,7 @@ function setupStorageIPC(): void {
   });
 
   ipcMain.handle('tile:openWorktree', async (_event, tileId: string, mainProjectPath: string, worktreePath: string) => {
+    const previousProject = tileProjects.get(tileId);
     const gitBranch = getGitBranch(worktreePath);
     const githubPR = getGithubPR(worktreePath);
     const project = storage.getOrCreateProject(mainProjectPath);
@@ -985,12 +1007,15 @@ function setupStorageIPC(): void {
     };
     tileProjects.set(tileId, projectWithWorktree);
     mainWindow?.webContents.send('tile:projectChanged', tileId, projectWithWorktree);
+    cleanupWorktreeIfOrphaned(previousProject);
     return projectWithWorktree;
   });
 
   ipcMain.handle('tile:closeProject', (_event, tileId: string) => {
+    const previousProject = tileProjects.get(tileId);
     tileProjects.delete(tileId);
     mainWindow?.webContents.send('tile:projectChanged', tileId, null);
+    cleanupWorktreeIfOrphaned(previousProject);
   });
 
   ipcMain.handle('fs:listFiles', (_event, projectPath?: string) => {
@@ -1349,7 +1374,23 @@ function setupStorageIPC(): void {
   });
 
   ipcMain.handle('git:removeWorktree', (_event, projectPath: string, worktreePath: string) => {
-    return removeGitWorktree(projectPath, worktreePath);
+    const result = removeGitWorktree(projectPath, worktreePath);
+    if (result.success) {
+      for (const [tileId, project] of tileProjects.entries()) {
+        if (project?.path === projectPath && project.worktreePath === worktreePath) {
+          const updatedProject: Project = {
+            ...project,
+            gitBranch: getGitBranch(projectPath),
+            githubPR: getGithubPR(projectPath),
+            worktreePath: undefined,
+            worktreeType: 'local',
+          };
+          tileProjects.set(tileId, updatedProject);
+          mainWindow?.webContents.send('tile:projectChanged', tileId, updatedProject);
+        }
+      }
+    }
+    return result;
   });
 }
 
