@@ -75,6 +75,10 @@
     },
     "npmRebuild": true
   },
+  "overrides": {
+    "tar": ">=7.5.10",
+    "axios": ">=1.13.5"
+  },
   "devDependencies": {
     "@electron/rebuild": "^3.7.0",
     "@types/diff": "^8.0.0",
