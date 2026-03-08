@@ -80,7 +80,7 @@
     "axios": ">=1.13.5"
   },
   "devDependencies": {
-    "@electron/rebuild": "^3.7.0",
+    "@electron/rebuild": "^4.0.3",
     "@types/diff": "^8.0.0",
     "@types/node": "^20.10.0",
     "@types/react": "^18.2.0",
