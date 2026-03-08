@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Logo } from './Logo';
-import type { AgentHarness, ApiKeys, CursorAuthStatus, CodexAuthStatus, AcpAdapterStatus, CodexAuthMethod } from '../../types';
+import type { AgentHarness, ApiKeys, CursorAuthStatus, CodexAuthStatus, AcpAdapterStatus, CodexAuthMethod, LinearAuthStatus } from '../../types';
+
+type SettingsTab = 'general' | 'integrations';
 
 const DEEPAGENTS_PACKAGE = 'deepagents-acp';
 const CLAUDE_AGENT_PACKAGE = '@zed-industries/claude-agent-acp';
@@ -21,6 +23,7 @@ export function SettingsScreen({
   onSaveApiKeys,
   onClose,
 }: SettingsScreenProps) {
+  const [activeTab, setActiveTab] = useState<SettingsTab>('general');
   const [cursorStatus, setCursorStatus] = useState<CursorAuthStatus | null>(null);
   const [statusLoading, setStatusLoading] = useState(false);
   const [loginLoading, setLoginLoading] = useState(false);
@@ -50,13 +53,59 @@ export function SettingsScreen({
   const [keysError, setKeysError] = useState<string | null>(null);
   const [keysMessage, setKeysMessage] = useState<string | null>(null);
 
+  const [linearApiKey, setLinearApiKey] = useState(initialKeys?.linearApiKey || '');
+  const [showLinearApiKey, setShowLinearApiKey] = useState(false);
+  const [linearAuthStatus, setLinearAuthStatus] = useState<LinearAuthStatus | null>(null);
+  const [linearAuthLoading, setLinearAuthLoading] = useState(false);
+  const [linearMessage, setLinearMessage] = useState<string | null>(null);
+  const [linearSaving, setLinearSaving] = useState(false);
+
   useEffect(() => {
     setAnthropic(initialKeys?.anthropic || '');
     setOpenai(initialKeys?.openai || '');
     setBaseten(initialKeys?.baseten || '');
     setTavily(initialKeys?.tavily || '');
     setCodexAuthMethod(initialKeys?.codexAuthMethod || 'api-key');
+    setLinearApiKey(initialKeys?.linearApiKey || '');
   }, [initialKeys]);
+
+  const refreshLinearAuthStatus = useCallback(async () => {
+    setLinearAuthLoading(true);
+    try {
+      const status = await window.linear.authStatus();
+      setLinearAuthStatus(status);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setLinearAuthStatus({ authenticated: false, error: message });
+    } finally {
+      setLinearAuthLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (activeTab === 'integrations') {
+      refreshLinearAuthStatus();
+    }
+  }, [activeTab, refreshLinearAuthStatus]);
+
+  const handleSaveLinearApiKey = useCallback(async () => {
+    setLinearMessage(null);
+    setLinearSaving(true);
+    try {
+      const keys: ApiKeys = {
+        ...initialKeys,
+        linearApiKey: linearApiKey.trim() || undefined,
+      };
+      await onSaveApiKeys(keys);
+      setLinearMessage('Linear API key saved.');
+      setTimeout(() => refreshLinearAuthStatus(), 500);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setLinearMessage(message);
+    } finally {
+      setLinearSaving(false);
+    }
+  }, [initialKeys, linearApiKey, onSaveApiKeys, refreshLinearAuthStatus]);
 
   const refreshCursorStatus = useCallback(async () => {
     setStatusLoading(true);
@@ -272,6 +321,33 @@ export function SettingsScreen({
           <h2 className="text-xl font-medium text-gray-100">Settings</h2>
         </div>
 
+        <div className="mt-6 flex gap-1 border-b border-[#2a3142]">
+          <button
+            type="button"
+            onClick={() => setActiveTab('general')}
+            className={`px-4 py-2 text-sm font-medium transition-colors ${
+              activeTab === 'general'
+                ? 'text-gray-100 border-b-2 border-[#5a9bc7]'
+                : 'text-gray-400 hover:text-gray-200'
+            }`}
+          >
+            General
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('integrations')}
+            className={`px-4 py-2 text-sm font-medium transition-colors ${
+              activeTab === 'integrations'
+                ? 'text-gray-100 border-b-2 border-[#5a9bc7]'
+                : 'text-gray-400 hover:text-gray-200'
+            }`}
+          >
+            Integrations
+          </button>
+        </div>
+
+        {activeTab === 'general' && (
+          <>
         <section className="mt-8 rounded-xl border border-[#2a3142] bg-[#151b26] p-5">
           <h3 className="text-sm font-semibold text-gray-200">Agent Harness</h3>
           <p className="mt-1 text-xs text-gray-400">
@@ -647,6 +723,90 @@ export function SettingsScreen({
             </div>
           </section>
         )}
+          </>
+        )}
+
+        {activeTab === 'integrations' && (
+          <section className="mt-8 rounded-xl border border-[#2a3142] bg-[#151b26] p-5">
+            <div className="flex items-center gap-3">
+              <LinearLogo />
+              <div>
+                <h3 className="text-sm font-semibold text-gray-200">Linear</h3>
+                <p className="mt-0.5 text-xs text-gray-400">
+                  Connect to Linear to reference issues in your conversations.
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-4 rounded-md border border-[#2a3142] bg-[#111827] p-3">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2 text-sm">
+                  <LinearAuthStatusDot status={linearAuthStatus} loading={linearAuthLoading} />
+                  <span className="text-gray-200">
+                    {linearAuthLoading
+                      ? 'Checking authentication...'
+                      : formatLinearAuthStatus(linearAuthStatus)}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => refreshLinearAuthStatus()}
+                  disabled={linearAuthLoading}
+                  className="px-2 py-1 text-xs bg-gray-700 hover:bg-gray-600 disabled:opacity-50 text-gray-100 rounded-md transition-colors"
+                >
+                  Refresh
+                </button>
+              </div>
+              {linearAuthStatus?.error && (
+                <p className="mt-2 text-xs text-red-400">{linearAuthStatus.error}</p>
+              )}
+            </div>
+
+            <div className="mt-4 space-y-4">
+              <ApiKeyInput
+                label="Linear API Key"
+                placeholder="lin_api_..."
+                value={linearApiKey}
+                onChange={setLinearApiKey}
+                visible={showLinearApiKey}
+                onToggleVisible={() => setShowLinearApiKey((v) => !v)}
+              />
+              <p className="text-xs text-gray-500">
+                Get your API key from{' '}
+                <a
+                  href="https://linear.app/settings/api"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-[#5a9bc7] hover:underline"
+                >
+                  Linear Settings → API
+                </a>
+              </p>
+            </div>
+
+            {linearMessage && (
+              <p className="mt-3 text-xs text-gray-300">{linearMessage}</p>
+            )}
+
+            <div className="mt-4">
+              <button
+                type="button"
+                onClick={handleSaveLinearApiKey}
+                disabled={linearSaving}
+                className="px-4 py-2 bg-[#5a9bc7] hover:bg-[#6daad3] disabled:opacity-50 text-white rounded-md text-sm font-medium transition-colors"
+              >
+                {linearSaving ? 'Saving...' : 'Save Linear API Key'}
+              </button>
+            </div>
+
+            <div className="mt-6 pt-4 border-t border-[#2a3142]">
+              <h4 className="text-sm font-medium text-gray-300">Usage</h4>
+              <p className="mt-2 text-xs text-gray-400">
+                Once connected, type <code className="px-1.5 py-0.5 bg-[#111827] rounded text-gray-300">/linear</code> in the prompt bar to search and attach Linear issues to your messages.
+              </p>
+            </div>
+          </section>
+        )}
 
         <div className="mt-6 flex justify-end">
           <button
@@ -822,4 +982,34 @@ function EyeOffIcon() {
       <line x1="1" y1="1" x2="23" y2="23" />
     </svg>
   );
+}
+
+function LinearLogo() {
+  return (
+    <div className="w-8 h-8 rounded-lg bg-[#5E6AD2] flex items-center justify-center">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+        <path d="M3 17L12 3L21 17H3Z" fill="white" fillOpacity="0.9" />
+      </svg>
+    </div>
+  );
+}
+
+function LinearAuthStatusDot({ status, loading }: { status: LinearAuthStatus | null; loading: boolean }) {
+  const className = loading
+    ? 'bg-gray-500 animate-pulse'
+    : !status
+      ? 'bg-gray-500'
+      : status.authenticated
+        ? 'bg-green-400'
+        : 'bg-yellow-400';
+
+  return <span className={`w-2 h-2 rounded-full ${className}`} />;
+}
+
+function formatLinearAuthStatus(status: LinearAuthStatus | null): string {
+  if (!status) return 'Status unavailable';
+  if (status.authenticated) {
+    return status.name ? `Connected as ${status.name}` : 'Connected to Linear';
+  }
+  return 'Not connected';
 }

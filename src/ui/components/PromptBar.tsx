@@ -10,10 +10,11 @@ import {
   searchFileSuggestions,
 } from './FileAutocomplete';
 import { ModelAutocomplete, getModelsForHarness, getModelCount, getModelAtIndex, type ModelOption } from './ModelAutocomplete';
+import { LinearAutocomplete, useLinearSearch } from './LinearAutocomplete';
 import { ContextIndicator } from './ContextIndicator';
 import { WorktreeSelector } from './WorktreeSelector';
 import type { Command } from '../../commands';
-import type { AgentHarness, ApprovalDecision, DiffData, ImageChunk, ModelConfig, PermissionMode, WorktreeType, AcpToolKind } from '../../types';
+import type { AgentHarness, ApprovalDecision, DiffData, ImageChunk, ModelConfig, PermissionMode, WorktreeType, AcpToolKind, SelectedLinearIssue } from '../../types';
 
 const MODELS: Record<string, string> = {
   'claude-opus-4-6': 'Opus 4.6',
@@ -122,7 +123,7 @@ function buildApprovalPromptContent(request: PromptApprovalRequest): ApprovalPro
 }
 
 interface PromptBarProps {
-  onSubmit: (query: string) => void;
+  onSubmit: (query: string, linearIssues?: SelectedLinearIssue[]) => void;
   busy: boolean;
   projectPath?: string;
   /** The main repo root path (not the worktree path). Used for git operations. */
@@ -201,6 +202,9 @@ export const PromptBar = memo(function PromptBar({
   const [filesLoading, setFilesLoading] = useState(false);
   const [cursorPosition, setCursorPosition] = useState(0);
   const [approvalSelectedIndex, setApprovalSelectedIndex] = useState(0);
+  const [linearSelectedIndex, setLinearSelectedIndex] = useState(0);
+  const [selectedLinearIssues, setSelectedLinearIssues] = useState<SelectedLinearIssue[]>([]);
+  const linearSearch = useLinearSearch();
   const modelConfig = sessionModelConfig ?? defaultModelConfig;
   const setModelConfig = useCallback((config: Partial<ModelConfig>) => {
     setSessionModelConfig(sessionId, config);
@@ -218,8 +222,11 @@ export const PromptBar = memo(function PromptBar({
   const isTypingCommand = query.startsWith('/');
   const commandQuery = isTypingCommand ? query.slice(1).split(/\s/)[0] : '';
   const isModelCommand = query.toLowerCase() === '/model' || query.toLowerCase().startsWith('/model ');
+  const isLinearCommand = query.toLowerCase() === '/linear' || query.toLowerCase().startsWith('/linear ');
+  const linearQuery = isLinearCommand ? query.slice(8).trim() : '';
   const showModelAutocomplete = !hasPendingApproval && isModelCommand;
-  const showCommandAutocomplete = !hasPendingApproval && isTypingCommand && !query.includes(' ') && !isModelCommand;
+  const showLinearAutocomplete = !hasPendingApproval && isLinearCommand;
+  const showCommandAutocomplete = !hasPendingApproval && isTypingCommand && !query.includes(' ') && !isModelCommand && !isLinearCommand;
 
   const fileIndex = useMemo(() => buildFileSearchIndex(projectFiles), [projectFiles]);
 
@@ -328,6 +335,15 @@ export const PromptBar = memo(function PromptBar({
   }, [isModelCommand]);
 
   useEffect(() => {
+    setLinearSelectedIndex(0);
+    if (isLinearCommand) {
+      linearSearch.search(linearQuery);
+    } else {
+      linearSearch.reset();
+    }
+  }, [isLinearCommand, linearQuery]);
+
+  useEffect(() => {
     let cancelled = false;
 
     if (!projectPath) {
@@ -413,6 +429,20 @@ export const PromptBar = memo(function PromptBar({
     inputRef.current?.focus();
   };
 
+  const handleLinearSelect = (issue: SelectedLinearIssue) => {
+    if (selectedLinearIssues.some((i) => i.id === issue.id)) {
+      return;
+    }
+    setSelectedLinearIssues((prev) => [...prev, issue]);
+    setQuery('');
+    linearSearch.reset();
+    inputRef.current?.focus();
+  };
+
+  const handleRemoveLinearIssue = (issueId: string) => {
+    setSelectedLinearIssues((prev) => prev.filter((i) => i.id !== issueId));
+  };
+
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setQuery(e.target.value);
     setCursorPosition(e.target.selectionStart || 0);
@@ -426,6 +456,52 @@ export const PromptBar = memo(function PromptBar({
     if (hasPendingApproval) {
       e.preventDefault();
       return;
+    }
+
+    if (showLinearAutocomplete) {
+      const count = linearSearch.issues.length;
+
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        if (count > 0) {
+          setLinearSelectedIndex((prev) => (prev + 1) % count);
+        }
+        return;
+      }
+
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        if (count > 0) {
+          setLinearSelectedIndex((prev) => (prev - 1 + count) % count);
+        }
+        return;
+      }
+
+      if (e.key === 'Enter' || e.key === 'Tab') {
+        e.preventDefault();
+        const issue = linearSearch.issues[linearSelectedIndex];
+        if (issue) {
+          handleLinearSelect({
+            id: issue.id,
+            identifier: issue.identifier,
+            title: issue.title,
+            description: issue.description,
+            url: issue.url,
+            stateName: issue.state.name,
+            stateColor: issue.state.color,
+            comments: issue.comments,
+            attachments: issue.attachments,
+          });
+        }
+        return;
+      }
+
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setQuery('');
+        linearSearch.reset();
+        return;
+      }
     }
 
     if (showModelAutocomplete) {
@@ -547,10 +623,11 @@ export const PromptBar = memo(function PromptBar({
       }
     }
 
-    if (e.key === 'Enter' && !e.shiftKey && query.trim()) {
+    if (e.key === 'Enter' && !e.shiftKey && (query.trim() || selectedLinearIssues.length > 0)) {
       e.preventDefault();
-      onSubmit(query.trim());
+      onSubmit(query.trim(), selectedLinearIssues.length > 0 ? selectedLinearIssues : undefined);
       setQuery('');
+      setSelectedLinearIssues([]);
     }
   };
 
@@ -580,6 +657,15 @@ export const PromptBar = memo(function PromptBar({
           loading={filesLoading}
         />
       )}
+      {showLinearAutocomplete && (
+        <LinearAutocomplete
+          query={linearQuery}
+          selectedIndex={linearSelectedIndex}
+          onSelect={handleLinearSelect}
+          loading={linearSearch.loading}
+          issues={linearSearch.issues}
+        />
+      )}
 
       {pendingImages && pendingImages.length > 0 && (
         <div className="flex gap-2 mb-2 flex-wrap">
@@ -594,6 +680,35 @@ export const PromptBar = memo(function PromptBar({
                 type="button"
                 onClick={() => onRemoveImage?.(i)}
                 className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-gray-700 hover:bg-red-600 rounded-full flex items-center justify-center text-gray-300 text-xs leading-none opacity-0 group-hover:opacity-100 transition-opacity"
+              >
+                ×
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {selectedLinearIssues.length > 0 && (
+        <div className="flex gap-2 mb-2 flex-wrap">
+          {selectedLinearIssues.map((issue) => (
+            <div
+              key={issue.id}
+              className="relative group flex items-center gap-1.5 px-2 py-1 rounded-md text-sm"
+              style={{
+                backgroundColor: `${issue.stateColor}15`,
+                border: `1px solid ${issue.stateColor}40`,
+              }}
+            >
+              <span
+                className="w-1.5 h-1.5 rounded-full shrink-0"
+                style={{ backgroundColor: issue.stateColor }}
+              />
+              <span className="text-[#5E6AD2] font-medium">#{issue.identifier}</span>
+              <span className="text-gray-300 truncate max-w-[200px]">{issue.title}</span>
+              <button
+                type="button"
+                onClick={() => handleRemoveLinearIssue(issue.id)}
+                className="ml-1 w-4 h-4 flex items-center justify-center text-gray-400 hover:text-red-400 transition-colors"
               >
                 ×
               </button>

@@ -17,7 +17,7 @@ import * as fs from 'fs';
 import * as pty from 'node-pty';
 import { setupAgentIPC } from './agent';
 import * as storage from './storage';
-import type { Project, GithubPR, WorktreeInfo } from './types';
+import type { Project, GithubPR, WorktreeInfo, LinearIssue, LinearAuthStatus, LinearSearchResult } from './types';
 
 const terminals = new Map<string, pty.IPty>();
 
@@ -712,6 +712,241 @@ function listProjectFiles(projectPath: string): string[] {
   }
 }
 
+// ─── Linear API functions ────────────────────────────────────────────────────
+
+async function getLinearApiKey(): Promise<string | null> {
+  try {
+    const settings = await storage.loadSettings();
+    return settings.apiKeys?.linearApiKey || null;
+  } catch {
+    return null;
+  }
+}
+
+async function checkLinearAuth(): Promise<LinearAuthStatus> {
+  const apiKey = await getLinearApiKey();
+  if (!apiKey) {
+    return { authenticated: false };
+  }
+
+  try {
+    const response = await fetch('https://api.linear.app/graphql', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': apiKey,
+      },
+      body: JSON.stringify({
+        query: `query { viewer { id email name } }`,
+      }),
+    });
+
+    if (!response.ok) {
+      return { authenticated: false, error: 'Invalid API key' };
+    }
+
+    const data = await response.json() as { errors?: Array<{ message: string }>; data?: { viewer: { email: string; name: string } } };
+    if (data.errors) {
+      return { authenticated: false, error: data.errors[0]?.message || 'API error' };
+    }
+
+    return {
+      authenticated: true,
+      email: data.data?.viewer.email,
+      name: data.data?.viewer.name,
+    };
+  } catch (e: any) {
+    return { authenticated: false, error: e.message || 'Failed to connect to Linear' };
+  }
+}
+
+async function searchLinearIssues(query: string): Promise<LinearSearchResult> {
+  const apiKey = await getLinearApiKey();
+  if (!apiKey) {
+    return { issues: [], error: 'Linear API key not configured' };
+  }
+
+  try {
+    const response = await fetch('https://api.linear.app/graphql', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': apiKey,
+      },
+      body: JSON.stringify({
+        query: `
+          query SearchIssues($query: String!) {
+            issueSearch(query: $query, first: 20) {
+              nodes {
+                id
+                identifier
+                title
+                description
+                url
+                priority
+                state {
+                  name
+                  color
+                }
+                assignee {
+                  name
+                  email
+                }
+                labels {
+                  nodes {
+                    name
+                    color
+                  }
+                }
+              }
+            }
+          }
+        `,
+        variables: { query },
+      }),
+    });
+
+    if (!response.ok) {
+      return { issues: [], error: 'Failed to search Linear issues' };
+    }
+
+    const data = await response.json() as { errors?: Array<{ message: string }>; data?: { issueSearch: { nodes: any[] } } };
+    if (data.errors) {
+      return { issues: [], error: data.errors[0]?.message || 'API error' };
+    }
+
+    const issues: LinearIssue[] = (data.data?.issueSearch.nodes || []).map((node: any) => ({
+      id: node.id,
+      identifier: node.identifier,
+      title: node.title,
+      description: node.description,
+      url: node.url,
+      priority: node.priority,
+      state: {
+        name: node.state.name,
+        color: node.state.color,
+      },
+      assignee: node.assignee ? {
+        name: node.assignee.name,
+        email: node.assignee.email,
+      } : undefined,
+      labels: (node.labels?.nodes || []).map((l: any) => ({
+        name: l.name,
+        color: l.color,
+      })),
+      comments: [],
+      attachments: [],
+    }));
+
+    return { issues };
+  } catch (e: any) {
+    return { issues: [], error: e.message || 'Failed to search Linear issues' };
+  }
+}
+
+async function getLinearIssue(issueId: string): Promise<LinearIssue | null> {
+  const apiKey = await getLinearApiKey();
+  if (!apiKey) {
+    return null;
+  }
+
+  try {
+    const response = await fetch('https://api.linear.app/graphql', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': apiKey,
+      },
+      body: JSON.stringify({
+        query: `
+          query GetIssue($id: String!) {
+            issue(id: $id) {
+              id
+              identifier
+              title
+              description
+              url
+              priority
+              state {
+                name
+                color
+              }
+              assignee {
+                name
+                email
+              }
+              labels {
+                nodes {
+                  name
+                  color
+                }
+              }
+              comments {
+                nodes {
+                  body
+                  user {
+                    name
+                  }
+                  createdAt
+                }
+              }
+              attachments {
+                nodes {
+                  url
+                  title
+                }
+              }
+            }
+          }
+        `,
+        variables: { id: issueId },
+      }),
+    });
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const data = await response.json() as { errors?: Array<{ message: string }>; data?: { issue: any } };
+    if (data.errors || !data.data?.issue) {
+      return null;
+    }
+
+    const node = data.data.issue;
+    return {
+      id: node.id,
+      identifier: node.identifier,
+      title: node.title,
+      description: node.description,
+      url: node.url,
+      priority: node.priority,
+      state: {
+        name: node.state.name,
+        color: node.state.color,
+      },
+      assignee: node.assignee ? {
+        name: node.assignee.name,
+        email: node.assignee.email,
+      } : undefined,
+      labels: (node.labels?.nodes || []).map((l: any) => ({
+        name: l.name,
+        color: l.color,
+      })),
+      comments: (node.comments?.nodes || []).map((c: any) => ({
+        body: c.body,
+        user: { name: c.user?.name || 'Unknown' },
+        createdAt: c.createdAt,
+      })),
+      attachments: (node.attachments?.nodes || []).map((a: any) => ({
+        url: a.url,
+        title: a.title,
+      })),
+    };
+  } catch {
+    return null;
+  }
+}
+
 function listFilesWithGlob(projectPath: string): string[] {
   const files: string[] = [];
   const seen = new Set<string>();
@@ -1391,6 +1626,20 @@ function setupStorageIPC(): void {
       }
     }
     return result;
+  });
+
+  // ─── Linear IPC handlers ────────────────────────────────────────────────
+
+  ipcMain.handle('linear:authStatus', () => {
+    return checkLinearAuth();
+  });
+
+  ipcMain.handle('linear:search', (_event, query: string) => {
+    return searchLinearIssues(query);
+  });
+
+  ipcMain.handle('linear:getIssue', (_event, issueId: string) => {
+    return getLinearIssue(issueId);
   });
 }
 

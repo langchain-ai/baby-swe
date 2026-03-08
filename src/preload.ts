@@ -130,3 +130,9 @@ contextBridge.exposeInMainWorld('git', {
   removeWorktree: (projectPath: string, worktreePath: string) =>
     ipcRenderer.invoke('git:removeWorktree', projectPath, worktreePath),
 });
+
+contextBridge.exposeInMainWorld('linear', {
+  authStatus: () => ipcRenderer.invoke('linear:authStatus'),
+  search: (query: string) => ipcRenderer.invoke('linear:search', query),
+  getIssue: (issueId: string) => ipcRenderer.invoke('linear:getIssue', issueId),
+});
